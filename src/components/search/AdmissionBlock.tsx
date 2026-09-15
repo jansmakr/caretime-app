@@ -1,10 +1,10 @@
 import type { AdmissionWindow } from "@/lib/hours";
 
 const TONE = {
-  confirmed: "bg-[#E8F6F0] text-[#14704B]",
-  caution: "bg-[#FDF2E4] text-[#9C5C13]",
-  limited: "bg-[#FBEBEA] text-[#93302B]",
-  unverified: "bg-canvas text-ink-muted",
+  confirmed: "bg-confirmed-soft text-confirmed-ink",
+  caution: "bg-caution-soft text-caution-ink",
+  limited: "bg-limited-soft text-limited-ink",
+  unverified: "bg-unverified-soft text-ink-muted",
 } as const;
 
 /**
@@ -19,21 +19,19 @@ export function AdmissionBlock({
   headline: { tone: keyof typeof TONE; big: string; sub: string };
 }) {
   return (
-    <div className={`mt-3 rounded-xl px-3.5 py-3 ${TONE[headline.tone]}`}>
-      <p className="text-[18px] font-bold leading-tight">{headline.big}</p>
-      <p className="mt-1 text-[13px] leading-relaxed opacity-90">{headline.sub}</p>
+    <div className={`mt-3 rounded-2xl px-4 py-3.5 ${TONE[headline.tone]}`}>
+      <p className="text-[20px] font-bold leading-tight tracking-tight">{headline.big}</p>
+      <p className="mt-1 text-[13.5px] leading-relaxed">{headline.sub}</p>
 
       {w.closeLabel && (
-        <div className="mt-2 flex justify-between gap-3 border-t border-black/[.07] pt-2 text-[13px]">
-          <span>
+        <div className="mt-2.5 flex items-center justify-between gap-3 text-[13px] opacity-90">
+          <span className="flex items-center gap-1.5">
             진료 종료 {w.closeLabel}
             {w.shortenedToday && (
-              <span className="ml-1.5 rounded-pill bg-black/[.06] px-2 py-0.5 text-[12px] font-semibold">
-                오늘 단축
-              </span>
+              <span className="rounded-md bg-black/[.06] px-1.5 py-0.5 text-[11.5px] font-bold">오늘 단축</span>
             )}
           </span>
-          {w.shortenedToday && <span className="opacity-75">평소 {w.regularLabel}</span>}
+          {w.shortenedToday && <span>평소 {w.regularLabel}</span>}
         </div>
       )}
     </div>

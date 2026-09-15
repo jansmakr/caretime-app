@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 export default function PartnerLayout({ children }: { children: React.ReactNode }) {
   return (
     <PartnerProvider>
-      <div className="mx-auto min-h-dvh max-w-app pb-8">
+      <div className="mx-auto min-h-dvh max-w-app pb-[calc(24px+env(safe-area-inset-bottom))]">
         <PartnerHeader />
         <DemoNotice />
         <PartnerGate>{children}</PartnerGate>

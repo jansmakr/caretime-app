@@ -7,8 +7,8 @@ export default function HomePage() {
     <>
       <AppHeader />
       <DemoNotice />
-      <main className="px-4 pt-7">
-        <h2 className="text-[22px] font-bold leading-[1.4] tracking-tight">
+      <main className="px-5 pt-8">
+        <h2 className="text-[28px] font-extrabold leading-[1.3]">
           지금 어떤 상황인지
           <br />
           말씀해주세요.

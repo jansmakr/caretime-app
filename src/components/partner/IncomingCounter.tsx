@@ -12,13 +12,13 @@ export function IncomingCounter({ incoming }: { incoming: IncomingAggregate }) {
   ];
 
   return (
-    <dl className="mt-3 grid grid-cols-3 gap-2">
+    <dl className="mt-3.5 grid grid-cols-3 gap-2">
       {cells.map((c) => (
-        <div key={c.label} className="rounded-xl bg-blue-soft px-2 py-3 text-center">
-          <dt className="text-[13px] text-ink-muted">{c.label}</dt>
-          <dd className="mt-1 text-[26px] font-bold leading-none text-blue">
+        <div key={c.label} className="rounded-2xl bg-blue-soft px-2 py-3.5 text-center">
+          <dt className="text-[12.5px] font-semibold text-blue-deep">{c.label}</dt>
+          <dd className="mt-1.5 text-[30px] font-extrabold leading-none tracking-tight text-blue-deep">
             {c.value}
-            <span className="ml-0.5 text-[14px] font-medium">명</span>
+            <span className="ml-0.5 text-[14px] font-semibold">명</span>
           </dd>
         </div>
       ))}
