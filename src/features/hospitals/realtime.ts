@@ -22,7 +22,7 @@ const TABLES = [
 ] as const;
 
 /**
- * onStatus("live") 는 최초 연결과 재연결 때마다 불린다.
+ * onStatus("live") 는 최초 연결·DB 구독 확정·재연결 때마다 불린다(한 번 연결에 두 번 올 수 있다).
  * 끊겨 있던 사이의 변경은 이벤트로 오지 않으므로, 호출하는 쪽은 그때 전체를 다시 읽어야 한다.
  */
 export function subscribeHospitalChanges(
@@ -44,6 +44,15 @@ export function subscribeHospitalChanges(
       },
     );
   }
+
+  // SUBSCRIBED 는 채널 참여 완료일 뿐, DB 변경 구독은 조금 뒤 system 메시지로 확정된다.
+  // 그 사이에 난 변경은 이벤트로 오지 않으므로, 확정 시점에도 한 번 더 "live" 를 알려 다시 읽게 한다.
+  // (인증 토큰이 바뀌어 서버가 재구독할 때도 같은 메시지가 온다)
+  channel.on("system", {}, (payload: { extension?: string; status?: string }) => {
+    if (payload.extension !== "postgres_changes") return;
+    if (payload.status === "ok") onStatus("live");
+    else if (payload.status === "error") onStatus("offline");
+  });
 
   channel.subscribe((status) => {
     if (status === "SUBSCRIBED") onStatus("live");

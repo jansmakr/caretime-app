@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import { subscribeHospitalChanges, type RealtimeConnection } from "./realtime";
 import { fetchHospitalView } from "./repository";
-import { withContactRow, withDailyHoursRow, withLiveStatusRow, withWaitingRow } from "./rows";
+import { mergeFresher, withContactRow, withDailyHoursRow, withLiveStatusRow, withWaitingRow } from "./rows";
 import type { HospitalView } from "./types";
 
 /** 만료·"N분 전" 재판정 주기. Realtime 이벤트가 없어도 오래된 상태는 시간이 지나면 바뀌어야 한다. */
@@ -30,7 +30,7 @@ export function useHospitalLive(initial: HospitalView, renderedAt: string, enabl
 
   useEffect(() => {
     if (!enabled) return;
-    const client = getBrowserSupabase();
+    const client = getPublicBrowserSupabase();
     let cancelled = false;
 
     const unsubscribe = subscribeHospitalChanges(
@@ -57,7 +57,7 @@ export function useHospitalLive(initial: HospitalView, renderedAt: string, enabl
         if (status !== "live") return;
         fetchHospitalView(client, initial.id)
           .then((fresh) => {
-            if (!cancelled && fresh) setHospital(fresh);
+            if (!cancelled && fresh) setHospital((h) => mergeFresher(h, fresh));
           })
           .catch(() => {
             // 다시 읽기에 실패해도 받은 이벤트로 계속 갱신한다. 다음 재연결 때 다시 시도한다.

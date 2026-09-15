@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { MOCK_HOSPITALS } from "./mock";
 import { fetchHospitalViews } from "./repository";
@@ -25,7 +25,7 @@ export function useHospitalList(): HospitalList {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let cancelled = false;
-    fetchHospitalViews(getBrowserSupabase())
+    fetchHospitalViews(getPublicBrowserSupabase())
       .then((hospitals) => !cancelled && setList({ status: "ready", hospitals }))
       .catch(() => !cancelled && setList({ status: "error", hospitals: [] }));
     return () => {
