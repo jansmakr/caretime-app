@@ -76,6 +76,15 @@ export const MOCK_HOSPITALS: HospitalView[] = [
         ageMax: null,
         ageNote: null,
       },
+      // 병원 직접입력. 표준 매핑 전이라 검색 매칭에는 쓰이지 않는다.
+      {
+        capabilityId: null,
+        customLabel: "소아 눈꺼풀 주변 봉합",
+        mappingStatus: "pending",
+        ageMin: 5,
+        ageMax: null,
+        ageNote: null,
+      },
     ],
     hours: hours("h_001", { regularCloseAt: minutesLater(162), todayCloseAt: minutesLater(102), lastAdmissionAt: minutesLater(42), admissionConfirmed: true, todayNote: "오늘은 평소보다 1시간 일찍 종료합니다", verifiedBy: "hospital", verifiedAt: minutesAgo(14) }),
     liveStatus: {

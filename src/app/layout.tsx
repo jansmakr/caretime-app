@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import { BottomNav } from "@/components/layout/BottomNav";
-import { SearchSessionProvider } from "@/features/search-session/SearchSessionProvider";
 
 export const metadata: Metadata = {
   title: "CareTime · 지금 필요한 진료정보를 빠르게",
@@ -18,15 +16,15 @@ export const viewport: Viewport = {
   maximumScale: 5, // 확대를 막지 않는다. 저시력 사용자가 쓰는 앱이다.
 };
 
+/**
+ * 루트 레이아웃은 html/body 만 둔다.
+ * 보호자 화면은 (consumer), 병원 화면은 partner 레이아웃이 각자의 내비게이션을 가진다.
+ * 두 화면이 하단 메뉴를 공유하지 않게 하려는 분리다. (기획안 5항)
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
-      <body>
-        <SearchSessionProvider>
-          <div className="mx-auto min-h-dvh max-w-app pb-[58px]">{children}</div>
-          <BottomNav />
-        </SearchSessionProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

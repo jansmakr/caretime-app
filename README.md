@@ -12,7 +12,7 @@ CareTime은 AI 진단앱도, 병원 추천앱도, 예약중개 서비스도 아�
 
 ```bash
 npm install
-npm run dev     # http://localhost:3000
+npm run dev     # http://localhost:3000  (병원 화면: /partner)
 npm run build   # 프로덕션 빌드
 npm run typecheck
 ```
@@ -101,6 +101,28 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
 (`INCOMING_DISPLAY_THRESHOLD`). 소수 인원일 때 숫자를 그대로 보여주면 같은 대기실의
 보호자끼리 서로를 특정할 수 있기 때문입니다. 병원 화면에서는 정확한 숫자를 그대로 씁니다.
 
+### 7. 병원 파트너 화면(/partner)은 보호자 화면과 섞이지 않는다
+
+`src/app/partner/` · `src/features/partner/`
+
+- **레이아웃 분리** — 보호자 화면은 `(consumer)` 라우트 그룹에만 하단 메뉴와 Search Session이 있습니다.
+  `/partner`는 상단 헤더 탭(오늘 상태 · 내원예정 · 진료기능)만 쓰고, 건강정보 세션에 접근하지 않습니다.
+  `noindex` 처리되어 있습니다.
+- **입력값은 기존 계층 타입 그대로** — 병원이 누르는 값은 `HospitalLiveStatus` / `HospitalHours` /
+  `HospitalContactStatus` / `HospitalWaitingStatus`를 그대로 씁니다. 입력 규칙은
+  `features/partner/service.ts`의 순수 함수(`(state, now) → state`)라 2단계 서버 액션으로 그대로 옮깁니다.
+- **"어제와 동일"** — 어제 확인한 상태·사유·내원 마감을 그대로 다시 쓰고 `verifiedAt`만 지금으로 갱신합니다.
+  "오늘만" 값(단축 종료)은 이어받지 않습니다. 상태 유효시간은 오늘 진료 종료까지입니다.
+- **내원 마감은 저장해야 확정** — "종료 1시간 전"은 입력칸을 채우는 제안일 뿐입니다.
+  진료 시작보다 이른 시각은 자정을 넘긴 다음 날로 해석합니다(야간 00:30 종료 등).
+- **대기와 내원예정은 다른 카드** — 합계를 만드는 함수 자체가 없습니다. 내원예정 10/30/60분 카운터는
+  목록(`IncomingVisit[]`)에서 매번 계산하므로 카운터와 목록 숫자가 어긋나지 않습니다.
+  예정시각이 30분 넘게 지난 건은 집계에서 뺍니다(`INCOMING_OVERDUE_GRACE_MINUTES`).
+- **내원예정에 개인정보 없음** — `CT-XXXX` 임시코드와 보호자가 입력한 사실(나이·부위·상황·지혈여부)만 보여줍니다.
+
+> ⚠️ 현재는 데모 병원 1곳(`h_001`) 고정이며 로그인이 없습니다. 입력값은 브라우저 메모리에만 있어
+> 새로고침하면 초기화되고, 보호자 화면(`/hospital/h_001`)에는 반영되지 않습니다. 저장소·권한은 2단계·6단계에서 붙습니다.
+
 ---
 
 ## 디렉터리
@@ -108,19 +130,26 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
 ```
 src/
   app/
-    page.tsx                  홈 (상황 입력)
-    search/page.tsx           검색 결과
-    hospital/[id]/page.tsx    병원 상세
-    live/page.tsx             실시간 (5단계 자리)
-    more/page.tsx             더보기 (7단계 자리)
+    (consumer)/                 보호자 화면 (하단 메뉴 · Search Session)
+      page.tsx                  홈 (상황 입력)
+      search/page.tsx           검색 결과
+      hospital/[id]/page.tsx    병원 상세
+      live/page.tsx             실시간 (5단계 자리)
+      more/page.tsx             더보기 (7단계 자리)
+    partner/                    병원 파트너 화면 (상단 헤더 탭)
+      page.tsx                  오늘 상태 · 진료시간 · 전화 · 대기 · 내원예정 카운터
+      incoming/page.tsx         내원예정 목록
+      capabilities/page.tsx     등록 진료기능
   components/
     common/   SourceBadge · StatusPill · DemoNotice · EmergencyCallout
     layout/   AppHeader · BottomNav
     home/     HomeSearchForm
     search/   HospitalCard
+    partner/  PartnerHeader · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
   features/
     search-session/  types · extract(규칙 파서) · SearchSessionProvider
-    hospitals/       types · mock · service
+    hospitals/       types · labels · mock · service
+    partner/         types · service(입력 규칙) · mock · PartnerProvider
   lib/
     freshness.ts     신선도·만료 판정 (단일 지점)
 ```
