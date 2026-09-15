@@ -15,7 +15,7 @@ import type { IncomingVisit } from "@/features/partner/types";
 import { VISIT_INTENT_DISCLAIMER } from "@/lib/copy";
 
 export default function PartnerIncomingPage() {
-  const { state, visits, incoming, now } = usePartner();
+  const { state, visits, incoming, now, source } = usePartner();
   if (!state || !incoming) return <PartnerLoading />;
 
   const sorted = sortVisits(visits, now);
@@ -29,6 +29,11 @@ export default function PartnerIncomingPage() {
         <p className="mt-1 text-[13px] text-ink-muted">
           누적 인원입니다. 현재 대기 인원과 합산하지 않습니다.
         </p>
+        {source === "supabase" && (
+          <p className="mt-2 rounded-xl bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-muted">
+            내원예정은 5단계(보호자 공유 기능)에서 실데이터로 연결됩니다. 지금 숫자는 데모 값입니다.
+          </p>
+        )}
         <IncomingCounter incoming={incoming} />
       </section>
 

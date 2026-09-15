@@ -10,7 +10,7 @@ import { WaitingCard } from "@/components/partner/WaitingCard";
 import { usePartner } from "@/features/partner/PartnerProvider";
 
 export default function PartnerTodayPage() {
-  const { state, incoming, now } = usePartner();
+  const { state, incoming, now, source } = usePartner();
   if (!state || !incoming) return <PartnerLoading />;
 
   return (
@@ -31,6 +31,11 @@ export default function PartnerTodayPage() {
         <p className="mt-1 text-[13px] text-ink-muted">
           CareTime에서 도착 예정을 공유한 인원입니다. 현재 대기에 포함되지 않습니다.
         </p>
+        {source === "supabase" && (
+          <p className="mt-2 rounded-xl bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-muted">
+            내원예정은 5단계(보호자 공유 기능)에서 실데이터로 연결됩니다. 지금 숫자는 데모 값입니다.
+          </p>
+        )}
         <IncomingCounter incoming={incoming} />
       </section>
     </main>

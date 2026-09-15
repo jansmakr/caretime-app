@@ -1,4 +1,5 @@
 import type { HospitalLiveStatus } from "@/features/hospitals/types";
+import { formatKstClock } from "@/lib/kst";
 
 /**
  * Release Blocker 2번 — "오래된 병원상태가 현재정보처럼 표시됨" — 을 막는 단일 지점.
@@ -75,9 +76,9 @@ export function describeTimePlan(status: HospitalLiveStatus | null): string | nu
   return null;
 }
 
+/** KST 기준. 서버(UTC)에서 렌더해도 브라우저와 같은 시각이 나온다. */
 export function formatClock(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return formatKstClock(iso);
 }
 
 export function formatAgo(minutesAgo: number): string {

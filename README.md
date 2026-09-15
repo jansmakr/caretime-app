@@ -17,7 +17,8 @@ npm run build   # 프로덕션 빌드
 npm run typecheck
 ```
 
-Node.js 18.18 이상이 필요합니다. 1단계는 외부 서비스 없이 동작하므로 `.env` 없이 바로 실행됩니다.
+Node.js 18.18 이상이 필요합니다. `.env.local` 없이 실행하면 Mock 데이터로 동작합니다.
+Supabase 연결은 아래 「2단계 — Supabase 연결」을 따르세요.
 
 ---
 
@@ -120,8 +121,46 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
   예정시각이 30분 넘게 지난 건은 집계에서 뺍니다(`INCOMING_OVERDUE_GRACE_MINUTES`).
 - **내원예정에 개인정보 없음** — `CT-XXXX` 임시코드와 보호자가 입력한 사실(나이·부위·상황·지혈여부)만 보여줍니다.
 
-> ⚠️ 현재는 데모 병원 1곳(`h_001`) 고정이며 로그인이 없습니다. 입력값은 브라우저 메모리에만 있어
-> 새로고침하면 초기화되고, 보호자 화면(`/hospital/h_001`)에는 반영되지 않습니다. 저장소·권한은 2단계·6단계에서 붙습니다.
+> Supabase 설정이 없으면 데모 병원(`h_001`) 고정·로그인 없음·브라우저 메모리 저장으로 동작합니다.
+
+### 8. 병원 입력은 DB 가 권한과 시각을 확정한다 (2단계)
+
+`supabase/migrations/` · `src/features/hospitals/{rows,repository,realtime}.ts` · `src/features/partner/supabaseBackend.ts`
+
+- **테이블도 계층별로 분리** — `hospitals`(공공) / `hospital_capabilities`(진료기능) /
+  `hospital_live_status` · `hospital_daily_hours` · `hospital_contact_status` · `hospital_waiting_status`(병원 직접확인).
+  대기 테이블에는 내원예정을 더할 컬럼이 없습니다.
+- **쓰기는 소속 병원 계정만 (Release Blocker 1)** — RLS가 `hospital_members`로 판정합니다. anon에는 쓰기 권한 자체가 없고,
+  삭제는 누구에게도 열려 있지 않습니다. 병원 계정도 기본정보·진료기능은 수정할 수 없습니다.
+- **확인시각은 DB 시각** — 트리거가 `verified_at = now()`, `verified_by = 'hospital'`로 덮어씁니다. 클라이언트 시계를 믿지 않습니다.
+- **만료는 최대 24시간** — `expires_at <= verified_at + 24h` 제약. 어제 누른 상태가 오늘 현재처럼 남지 않습니다.
+- **진료일은 KST 05:00에 바뀝니다** — `hospital_daily_hours`는 `(hospital_id, service_date)` 키라 "오늘만" 값이 다음 날로 넘어가지 않습니다.
+  앱(`lib/kst.ts`)과 DB(`kst_service_date()`)가 같은 규칙을 씁니다. 모든 시각은 Asia/Seoul로 포맷해 Vercel(UTC) 서버 렌더와 브라우저가 같은 시각을 보여줍니다.
+- **변경 이력** — 모든 병원 입력이 `hospital_update_log`에 작성자와 함께 쌓입니다(소속 병원만 열람). "어제와 동일"은 여기서 마지막 진료일의 상태를 읽습니다.
+  직원 id는 보호자에게 공개되는 상태 테이블에 두지 않습니다.
+- **실시간** — 보호자 병원 상세는 서버에서 최신값으로 렌더한 뒤 4개 테이블을 Realtime으로 구독합니다.
+  연결·재연결 때마다 전체를 다시 읽어 끊긴 사이의 변경을 놓치지 않고, 끊기면 "실시간 끊김"을 표시합니다.
+  파트너 화면도 같은 채널을 구독해 원장님·당직자 기기끼리 동기화됩니다(내 저장의 메아리·늦게 온 옛 이벤트는 무시).
+
+---
+
+## 2단계 — Supabase 연결
+
+1. **스키마·시드 적용**
+   ```bash
+   supabase login
+   supabase link --project-ref <프로젝트 ref>
+   supabase db push --include-seed   # 시드는 가상 병원 5곳(데모)입니다
+   ```
+2. **환경변수** — `.env.local`(로컬)과 Vercel(Production·Preview)에 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`를 넣습니다.
+   Vercel은 값을 바꾼 뒤 재배포해야 반영됩니다(`NEXT_PUBLIC_*`은 빌드 때 들어갑니다).
+3. **Auth 설정** — 대시보드 Authentication → Sign In / Providers에서 **Allow new users to sign up을 끕니다.**
+   계정은 운영자가 Users → Add user로 만듭니다. (가입을 열어 둬도 소속이 없으면 쓰기는 RLS가 막지만, 불필요한 계정이 생기지 않게 합니다)
+4. **병원 계정 연결** — SQL Editor에서:
+   ```sql
+   insert into public.hospital_members (hospital_id, user_id, role)
+   select 'h_001', id, 'owner' from auth.users where email = '원장님@병원.kr';
+   ```
 
 ---
 
@@ -145,13 +184,19 @@ src/
     layout/   AppHeader · BottomNav
     home/     HomeSearchForm
     search/   HospitalCard
-    partner/  PartnerHeader · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
+    partner/  PartnerHeader · PartnerGate(로그인) · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
+    hospital/ HospitalDetail (실시간 구독 화면)
   features/
     search-session/  types · extract(규칙 파서) · SearchSessionProvider
-    hospitals/       types · labels · mock · service
-    partner/         types · service(입력 규칙) · mock · PartnerProvider
+    hospitals/       types · labels · mock · service · rows(DB↔도메인) · repository · realtime · useHospitalLive
+    partner/         types · service(입력 규칙) · mock · supabaseBackend · PartnerProvider
   lib/
     freshness.ts     신선도·만료 판정 (단일 지점)
+    kst.ts           KST·진료일 (단일 지점)
+    supabase/        config · browser · server
+supabase/
+  migrations/        스키마 · RLS · 트리거 · Realtime
+  seed.sql           가상 병원 5곳 (데모)
 ```
 
 기능을 한 파일에 몰아넣지 않았습니다. 화면은 `app/`, 표현은 `components/`,
@@ -165,7 +210,7 @@ src/
 
 | 단계 | 내용 |
 |---|---|
-| 2 | Supabase 스키마 · RLS · Capability 관리 · /partner 기본 |
+| 2 | ✅ Supabase 스키마 · RLS · /partner 저장 · 병원 상세 Realtime (Capability 관리 화면은 남음) |
 | 3 | **실제 병원 1곳 파일럿** — "어제와 동일" 1클릭이 성립하는지 검증 |
 | 4 | Live Status 입력 · 전화상태 · 자동만료 |
 | 5 | Visit Intent · ETA · 유입 집계 |
@@ -186,7 +231,6 @@ src/
 
 ## 확인 필요 (코드 밖)
 
-- `caretime.kr` 등 도메인 확보 가능 여부
 - 상표 선출원 조사
 - 네이버 카페 묶음명 '나이트케어' → CareTime 변경
 - 공공데이터포털 개발계정 신청 (응급의료정보 조회 V4 / 전국 병·의원 찾기 / 명절 비상 진료기관)

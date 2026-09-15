@@ -64,10 +64,14 @@ function isAgeBlocked(caps: HospitalCapability[], ageYears: number | null): bool
   });
 }
 
-export function searchHospitals(facts: ExtractedFacts): MatchedHospital[] {
+/** hospitals 는 Supabase 연결 시 repository 가 읽은 목록, 아니면 Mock 이다. */
+export function searchHospitals(
+  facts: ExtractedFacts,
+  hospitals: HospitalView[] = MOCK_HOSPITALS,
+): MatchedHospital[] {
   const wanted = relevantCapabilityIds(facts);
 
-  return MOCK_HOSPITALS.map((hospital) => {
+  return hospitals.map((hospital) => {
     const matched = hospital.capabilities.filter(
       (c) => c.capabilityId !== null && wanted.includes(c.capabilityId),
     );
@@ -115,9 +119,9 @@ export function describeIncomingForUser(within30: number | null): string | null 
 }
 
 /** 현재 대기와 내원예정을 합산해 하나의 숫자로 만들지 않는다. (기획안 26항) */
-export function describeWaitingForUser(hospital: HospitalView): string | null {
+export function describeWaitingForUser(hospital: HospitalView, now: Date = new Date()): string | null {
   const w = hospital.waiting;
-  if (!w || (hospital.liveStatus && isExpired(hospital.liveStatus))) return null;
+  if (!w || (hospital.liveStatus && isExpired(hospital.liveStatus, now))) return null;
   if (w.headcount !== null) return `현재 대기 ${w.headcount}명`;
   switch (w.level) {
     case "light":
