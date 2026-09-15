@@ -14,6 +14,7 @@ import { createIncomingDemoVisits, createPartnerDemoState, getPartnerHospital } 
 import {
   aggregateIncoming,
   confirmSameAsYesterday,
+  deriveTodayMode,
   saveTodayHours,
   setContactStatus,
   setLimitReason,
@@ -168,11 +169,28 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
   }, [source, replaceState]);
 
   const reload = useCallback(
-    async (id: string) => {
+    /**
+     * mode "merge": 재조회가 Realtime 이벤트보다 늦게 도착해도 이미 반영한 더 최신 서버 값은 되돌리지 않는다.
+     * mode "replace": 저장 실패 후 되돌리기. 화면의 낙관적 값(클라이언트 시각)이 더 최신이어도 서버 값으로 덮는다.
+     */
+    async (id: string, mode: "merge" | "replace" = "merge") => {
       const t = new Date();
       const loaded = await loadPartnerState(getBrowserSupabase(), id, t);
       if (hospitalIdRef.current !== id) return;
-      const s = loaded.state;
+      const cur = mode === "merge" ? stateRef.current : null;
+      const keepNewer = <T extends { verifiedAt: string }>(a: T, b: T) =>
+        Date.parse(a.verifiedAt) > Date.parse(b.verifiedAt) ? a : b;
+      const s: PartnerState =
+        cur && cur.hospitalId === id
+          ? {
+              ...loaded.state,
+              liveStatus: keepNewer(cur.liveStatus, loaded.state.liveStatus),
+              hours: keepNewer(cur.hours, loaded.state.hours),
+              contact: keepNewer(cur.contact, loaded.state.contact),
+              waiting: keepNewer(cur.waiting, loaded.state.waiting),
+            }
+          : loaded.state;
+      s.mode = deriveTodayMode(s.liveStatus, t);
       lastServerAt.current = {
         live: Date.parse(s.liveStatus.verifiedAt),
         hours: Date.parse(s.hours.verifiedAt),
@@ -258,7 +276,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
             inflight.current[slice] -= 1;
             setNotice(`저장하지 못했습니다. 최신 상태로 다시 불러왔습니다. (${errorText(e)})`);
             const id = hospitalIdRef.current;
-            if (id) void reload(id).catch(() => undefined);
+            if (id) void reload(id, "replace").catch(() => undefined);
           }
         }),
       );

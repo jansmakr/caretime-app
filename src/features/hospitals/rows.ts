@@ -212,6 +212,24 @@ export function withWaitingRow(view: HospitalView, row: WaitingStatusRow): Hospi
   return { ...view, waiting: toWaiting(row) };
 }
 
+/**
+ * 전체 재조회 결과를 현재 화면 값에 합칠 때, 조각별로 확인시각이 더 최신인 쪽을 남긴다.
+ * 재조회 요청이 변경 전에 읽고 이벤트 뒤에 도착하면, 방금 받은 새 값을 옛 값으로 되돌리기 때문이다.
+ */
+export function mergeFresher(current: HospitalView, fresh: HospitalView): HospitalView {
+  const newer = <T extends { verifiedAt: string }>(a: T | null, b: T | null): T | null => {
+    if (!a || !b) return b ?? a;
+    return Date.parse(a.verifiedAt) > Date.parse(b.verifiedAt) ? a : b;
+  };
+  return {
+    ...fresh,
+    liveStatus: newer(current.liveStatus, fresh.liveStatus),
+    hours: newer(current.hours, fresh.hours),
+    contactStatus: newer(current.contactStatus, fresh.contactStatus),
+    waiting: newer(current.waiting, fresh.waiting),
+  };
+}
+
 // ─── 조립 ───────────────────────────────────────────────────
 
 export interface HospitalJoinedRow extends HospitalRow {
