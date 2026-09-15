@@ -10,7 +10,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FFFFFF",
+  themeColor: "#F2F4F6",
+  viewportFit: "cover",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5, // 확대를 막지 않는다. 저시력 사용자가 쓰는 앱이다.
@@ -24,6 +25,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
+      <head>
+        {/* Pretendard 가변 폰트. 화면에 쓰인 글자만 내려받는 동적 서브셋이라 첫 로딩이 가볍다. */}
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

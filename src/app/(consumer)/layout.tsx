@@ -8,7 +8,7 @@ import { SearchSessionProvider } from "@/features/search-session/SearchSessionPr
 export default function ConsumerLayout({ children }: { children: React.ReactNode }) {
   return (
     <SearchSessionProvider>
-      <div className="mx-auto min-h-dvh max-w-app pb-[58px]">{children}</div>
+      <div className="mx-auto min-h-dvh max-w-app pb-[calc(76px+env(safe-area-inset-bottom))]">{children}</div>
       <BottomNav />
     </SearchSessionProvider>
   );

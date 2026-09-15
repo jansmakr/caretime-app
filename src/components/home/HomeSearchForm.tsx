@@ -34,7 +34,7 @@ export function HomeSearchForm() {
   }
 
   return (
-    <div className="mt-5">
+    <div className="mt-6">
       <label htmlFor="situation" className="sr-only">
         상황 설명
       </label>
@@ -44,38 +44,40 @@ export function HomeSearchForm() {
         onChange={(e) => setText(e.target.value)}
         rows={3}
         placeholder="5살 아이 이마가 찢어졌어요..."
-        className="w-full resize-none rounded-card border border-line bg-surface p-4
-                   text-[16px] leading-relaxed placeholder:text-ink-faint
-                   focus:border-blue focus:outline-none"
+        className="w-full resize-none rounded-card bg-surface p-5 text-[17px] leading-relaxed
+                   placeholder:text-ink-faint transition focus:outline-none focus:ring-2 focus:ring-blue"
       />
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-3 gap-2">
         {QUICK_PICKS.map((pick) => (
           <button
             key={pick.id}
             type="button"
             onClick={() => submitPick(pick)}
-            className="h-[46px] rounded-card border border-line bg-surface text-[15px]
-                       transition-colors active:bg-canvas"
+            className="h-12 rounded-field bg-surface px-1 text-[14.5px] font-semibold text-ink
+                       transition active:scale-[0.97] active:bg-fill"
           >
             {pick.label}
           </button>
         ))}
       </div>
 
-      <button type="button" onClick={submitText} disabled={!text.trim()} className="ct-primary mt-4">
+      <button type="button" onClick={submitText} disabled={!text.trim()} className="ct-primary mt-5">
         진료정보 찾기
       </button>
 
       <Link
         href="/live"
-        className="mt-4 flex items-center justify-center gap-1.5 py-2 text-[14px] text-ink-muted"
+        className="mx-auto mt-4 flex w-fit items-center gap-1.5 rounded-pill px-3 py-2 text-[14px] font-medium text-ink-muted active:bg-surface"
       >
-        <span className="h-[6px] w-[6px] rounded-full bg-confirmed" aria-hidden />
+        <span className="relative flex h-2 w-2" aria-hidden>
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-confirmed opacity-50" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-confirmed" />
+        </span>
         실시간 진료상황 보기
       </Link>
 
-      <p className="mt-6 text-center text-[13px] leading-relaxed text-ink-faint">
+      <p className="mt-8 text-center text-[12.5px] leading-relaxed text-ink-faint">
         {NOT_A_BOOKING}
         <br />
         {CALL_IS_SUREST}

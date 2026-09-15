@@ -31,7 +31,7 @@ const STYLES: Record<
     label: "사용자 공유 · 미확인",
     // 사용자 공유만 '비어 있는 점'이다. 확인되지 않았다는 뜻을 모양으로 전달한다.
     dot: "border border-dashed border-unverified bg-transparent",
-    text: "text-unverified",
+    text: "text-unverified-ink",
   },
 };
 
@@ -45,8 +45,8 @@ export function SourceBadge({
   const s = STYLES[source];
   return (
     <span className="inline-flex items-center gap-1.5 text-[13px]">
-      <span className={`h-[7px] w-[7px] shrink-0 rounded-full ${s.dot}`} aria-hidden />
-      <span className={`font-medium ${s.text}`}>{s.label}</span>
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} aria-hidden />
+      <span className={`font-semibold ${s.text}`}>{s.label}</span>
       {verifiedAgo && <span className="text-ink-faint">· {verifiedAgo}</span>}
     </span>
   );

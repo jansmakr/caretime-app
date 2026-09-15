@@ -4,8 +4,13 @@
  */
 export function DemoNotice() {
   return (
-    <div className="border-b border-line bg-[#FFF8E8] px-4 py-2 text-[12px] leading-snug text-caution">
-      데모 화면입니다. 표시된 의료기관과 상태는 모두 가상 데이터이며 실제 진료정보가 아닙니다.
+    <div className="px-4 pt-1">
+      <p className="flex items-start gap-2 rounded-field bg-caution-soft px-3.5 py-2.5 text-[12.5px] leading-snug text-caution-ink">
+        <span className="mt-px shrink-0 rounded-md bg-caution px-1.5 py-px text-[10.5px] font-bold tracking-wide text-white">
+          DEMO
+        </span>
+        표시된 의료기관과 상태는 모두 가상 데이터이며 실제 진료정보가 아닙니다.
+      </p>
     </div>
   );
 }

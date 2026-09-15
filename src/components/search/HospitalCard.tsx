@@ -35,32 +35,32 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
     ["none", "unknown", "toolate", "closed", "now"].includes(admission.state);
 
   return (
-    <article className="ct-card p-4">
+    <article className="ct-card p-5">
       <div className="flex items-start justify-between gap-3">
         <Link href={`/hospital/${hospital.id}`} className="min-w-0">
-          <h3 className="truncate text-[17px] font-semibold">{hospital.publicData.name}</h3>
+          <h3 className="truncate text-[19px] font-bold">{hospital.publicData.name}</h3>
         </Link>
-        <span className="shrink-0 text-[14px] text-ink-muted">
+        <span className="mt-1 shrink-0 text-[13.5px] font-medium text-ink-faint">
           {hospital.travelMinutes}분 · {hospital.distanceKm.toFixed(1)}km
         </span>
       </div>
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {matchedCapabilities.map((cap, i) => (
           <span key={i} className="ct-chip">
             {capabilityLabel(cap)}
-            <span className="ml-1.5 text-ink-faint">{ageConditionLabel(cap)}</span>
+            <span className="ml-1.5 font-normal text-ink-faint">{ageConditionLabel(cap)}</span>
           </span>
         ))}
       </div>
 
       {ageBlocked && (
-        <p className="mt-2 text-[13px] text-caution">
+        <p className="mt-2 text-[13.5px] leading-relaxed text-caution">
           입력하신 연령은 이 의료기관의 등록 조건과 맞지 않습니다. 전화로 확인해 보세요.
         </p>
       )}
 
-      <div className="mt-3 border-t border-line pt-3">
+      <div className="mt-4">
         {hospital.isParticipating && live ? (
           <SourceBadge
             source={live.verifiedBy}
@@ -75,7 +75,7 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
 
         {/* 정상은 기본값이다. 기본값에 배지를 달면 카드가 무거워진다. */}
         {(status.tone !== "confirmed" || timePlan) && (
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-2">
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-2">
             <StatusPill tone={status.tone}>{status.text}</StatusPill>
             {timePlan && <span className="text-[13px] text-ink-muted">{timePlan}</span>}
           </div>
@@ -87,17 +87,17 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
         />
 
         {(waiting || incoming) && (
-          <dl className="mt-2.5 space-y-1 text-[14px]">
+          <dl className="mt-3 space-y-1.5 px-1 text-[14.5px]">
             {waiting && (
               <div className="flex justify-between">
-                <dt className="text-ink-muted">현재 대기</dt>
-                <dd>{waiting}</dd>
+                <dt className="text-ink-faint">현재 대기</dt>
+                <dd className="font-semibold">{waiting}</dd>
               </div>
             )}
             {incoming && (
               <div className="flex justify-between">
-                <dt className="text-ink-muted">내원 예정</dt>
-                <dd className="text-caution">{incoming}</dd>
+                <dt className="text-ink-faint">내원 예정</dt>
+                <dd className="font-semibold text-caution">{incoming}</dd>
               </div>
             )}
           </dl>
@@ -109,11 +109,11 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
           단, 병원이 "전화문의 어려움"을 켜 두었으면 전화를 권하지 않는다. */}
       {hardToCall ? (
         <>
-          <p className="mt-2.5 text-[13px] leading-relaxed text-caution">
+          <p className="mt-3 rounded-field bg-caution-soft px-3.5 py-2.5 text-[13.5px] leading-relaxed text-caution-ink">
             이 의료기관은 현재 전화문의가 어렵습니다. 출발 전 이 화면에서 상태를 한 번 더 확인해
             주세요.
           </p>
-          <div className="mt-2.5 flex gap-2">
+          <div className="mt-3 flex gap-2">
             <Link href={`/hospital/${hospital.id}`} className="ct-secondary">
               상세 보기
             </Link>
@@ -123,16 +123,16 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
           </div>
         </>
       ) : uncertain ? (
-        <>
-          <a href={`tel:${hospital.publicData.tel}`} className="ct-primary mt-3.5">
+        <div className="mt-4 space-y-2">
+          <a href={`tel:${hospital.publicData.tel}`} className="ct-primary">
             출발 전 전화 확인
           </a>
-          <Link href={`/hospital/${hospital.id}`} className="ct-secondary mt-2 w-full">
+          <Link href={`/hospital/${hospital.id}`} className="ct-secondary w-full">
             상세 보기
           </Link>
-        </>
+        </div>
       ) : (
-        <div className="mt-3.5 flex gap-2">
+        <div className="mt-4 flex gap-2">
           <Link href={`/hospital/${hospital.id}`} className="ct-secondary">
             상세 보기
           </Link>

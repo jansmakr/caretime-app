@@ -40,58 +40,58 @@ export function TodayHoursCard({ state, now }: { state: PartnerState; now: Date 
   const save = () => setError(saveTodayHours({ closeClock: close, admissionClock: admission || null }));
 
   return (
-    <section className="ct-card p-4">
+    <section className="ct-card p-5">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[16px] font-semibold">오늘 진료시간</h2>
+        <h2 className="ct-section-title">오늘 진료시간</h2>
         <VerifiedLine verifiedAt={h.verifiedAt} now={now} />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2">
         <label className="block">
-          <span className="text-[13px] text-ink-muted">내원(접수) 마감</span>
+          <span className="text-[13px] font-medium text-ink-faint">내원(접수) 마감</span>
           <input
             type="time"
             value={admission}
             onChange={(e) => setAdmission(e.target.value)}
-            className="mt-1 h-[52px] w-full min-w-0 rounded-card border border-line bg-surface px-2 text-[17px] font-bold"
+            className="ct-field mt-1.5 h-14 min-w-0 px-3 text-[18px] font-bold"
           />
         </label>
         <label className="block">
-          <span className="text-[13px] text-ink-muted">진료 종료</span>
+          <span className="text-[13px] font-medium text-ink-faint">진료 종료</span>
           <input
             type="time"
             value={close}
             onChange={(e) => setClose(e.target.value)}
-            className="mt-1 h-[52px] w-full min-w-0 rounded-card border border-line bg-surface px-2 text-[17px] font-semibold"
+            className="ct-field mt-1.5 h-14 min-w-0 px-3 text-[18px] font-semibold"
           />
         </label>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[13px]">
-        <span className="text-ink-muted">
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[13px]">
+        <span className="text-ink-faint">
           평소 종료 {regularClose}
           {close !== regularClose && (
-            <span className="ml-1.5 rounded-pill bg-[#FDF2E4] px-2 py-0.5 font-semibold text-caution">
+            <span className="ml-1.5 rounded-md bg-caution-soft px-1.5 py-0.5 text-[12px] font-bold text-caution-ink">
               오늘 단축·변경
             </span>
           )}
         </span>
         {suggestion && (
-          <button type="button" onClick={() => setAdmission(suggestion)} className="font-medium text-blue">
+          <button type="button" onClick={() => setAdmission(suggestion)} className="rounded-pill bg-blue-soft px-2.5 py-1 font-semibold text-blue-deep active:brightness-95">
             종료 1시간 전({suggestion})으로 채우기
           </button>
         )}
       </div>
 
       {!admission && (
-        <p className="mt-2 text-[13px] leading-relaxed text-ink-muted">
+        <p className="mt-2.5 text-[13px] leading-relaxed text-ink-faint">
           내원 마감을 비워 두면 보호자 화면에는 시각 대신 &lsquo;의료기관 확인 필요&rsquo;로
           표시됩니다.
         </p>
       )}
-      {error && <p className="mt-2 text-[14px] text-limited">{ERROR_TEXT[error]}</p>}
+      {error && <p className="mt-2.5 text-[14px] font-medium text-limited">{ERROR_TEXT[error]}</p>}
 
-      <button type="button" onClick={save} disabled={saved} className="ct-primary mt-3">
+      <button type="button" onClick={save} disabled={saved} className="ct-primary mt-4">
         {saved ? "저장됨" : "진료시간 저장"}
       </button>
     </section>

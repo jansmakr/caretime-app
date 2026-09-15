@@ -13,8 +13,8 @@ import { usePartner } from "@/features/partner/PartnerProvider";
 
 const MAPPING_TAG: Record<HospitalCapability["mappingStatus"], { text: string; className: string } | null> = {
   standard: null,
-  mapped: { text: "직접입력 · 표준 연결됨", className: "bg-blue-soft text-blue" },
-  pending: { text: "직접입력 · 검토 대기", className: "bg-[#FDF2E4] text-caution" },
+  mapped: { text: "직접입력 · 표준 연결됨", className: "bg-blue-soft text-blue-deep" },
+  pending: { text: "직접입력 · 검토 대기", className: "bg-caution-soft text-caution-ink" },
 };
 
 export default function PartnerCapabilitiesPage() {
@@ -25,33 +25,33 @@ export default function PartnerCapabilitiesPage() {
   const pendingCount = caps.filter((c) => c.mappingStatus === "pending").length;
 
   return (
-    <main className="space-y-3 px-4 py-4">
-      <section className="ct-card">
-        <div className="border-b border-line px-4 py-3.5">
-          <h2 className="text-[16px] font-semibold">등록된 진료기능 {caps.length}개</h2>
+    <main className="space-y-3 px-4 pb-6 pt-3">
+      <section className="ct-card overflow-hidden">
+        <div className="px-5 pb-2 pt-5">
+          <h2 className="ct-section-title">등록된 진료기능 {caps.length}개</h2>
           {pendingCount > 0 && (
-            <p className="mt-1 text-[13px] leading-relaxed text-ink-muted">
+            <p className="mt-1 text-[13px] leading-relaxed text-ink-faint">
               검토 대기 {pendingCount}건은 표준 항목에 연결되기 전까지 보호자 검색 결과에 매칭되지
               않고, 병원 상세 화면에만 표시됩니다.
             </p>
           )}
         </div>
-        <ul className="divide-y divide-line">
+        <ul className="divide-y divide-fill">
           {caps.map((cap, i) => {
             const tag = MAPPING_TAG[cap.mappingStatus];
             return (
-              <li key={i} className="flex items-start justify-between gap-3 px-4 py-3.5">
+              <li key={i} className="flex items-start justify-between gap-3 px-5 py-4">
                 <div className="min-w-0">
                   <p className="text-[15px] font-medium">{capabilityLabel(cap)}</p>
                   {tag && (
                     <span
-                      className={`mt-1.5 inline-flex rounded-pill px-2 py-0.5 text-[12px] font-semibold ${tag.className}`}
+                      className={`mt-1.5 inline-flex rounded-md px-1.5 py-0.5 text-[12px] font-bold ${tag.className}`}
                     >
                       {tag.text}
                     </span>
                   )}
                 </div>
-                <span className="shrink-0 text-[14px] text-ink-muted">{ageConditionLabel(cap)}</span>
+                <span className="shrink-0 text-[14px] text-ink-faint">{ageConditionLabel(cap)}</span>
               </li>
             );
           })}

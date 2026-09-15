@@ -23,14 +23,14 @@ export default function PartnerIncomingPage() {
   const closed = sorted.filter((v) => !isCountable(v, now));
 
   return (
-    <main className="space-y-3 px-4 py-4">
-      <section className="ct-card p-4">
-        <h2 className="text-[16px] font-semibold">내원 예정 현황</h2>
-        <p className="mt-1 text-[13px] text-ink-muted">
+    <main className="space-y-3 px-4 pb-6 pt-3">
+      <section className="ct-card p-5">
+        <h2 className="ct-section-title">내원 예정 현황</h2>
+        <p className="mt-1 text-[13px] leading-relaxed text-ink-faint">
           누적 인원입니다. 현재 대기 인원과 합산하지 않습니다.
         </p>
         {source === "supabase" && (
-          <p className="mt-2 rounded-xl bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-muted">
+          <p className="mt-2.5 rounded-field bg-fill px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-faint">
             내원예정은 5단계(보호자 공유 기능)에서 실데이터로 연결됩니다. 지금 숫자는 데모 값입니다.
           </p>
         )}
@@ -39,7 +39,7 @@ export default function PartnerIncomingPage() {
 
       <VisitList title={`도착 예정 ${active.length}건`} visits={active} now={now} />
       {active.length === 0 && (
-        <p className="ct-card p-6 text-center text-[14px] text-ink-muted">
+        <p className="ct-card p-7 text-center text-[15px] text-ink-muted">
           지금 도착 예정으로 공유된 건이 없습니다.
         </p>
       )}
@@ -47,7 +47,7 @@ export default function PartnerIncomingPage() {
         <VisitList title="집계 제외" visits={closed} now={now} muted />
       )}
 
-      <p className="px-1 text-[13px] leading-relaxed text-ink-faint">
+      <p className="px-1 pt-1 text-[12.5px] leading-relaxed text-ink-faint">
         보호자 이름·연락처는 전달되지 않으며 CT 임시코드로만 구분합니다. 상황 요약은 보호자가
         입력한 내용 그대로이며 CareTime의 판단이 아닙니다. 도착 예정 시각이{" "}
         {INCOMING_OVERDUE_GRACE_MINUTES}분 넘게 지나면 집계에서 빠집니다. {VISIT_INTENT_DISCLAIMER}
@@ -70,18 +70,18 @@ function VisitList({
   if (visits.length === 0) return null;
   return (
     <section>
-      <h3 className="px-1 pb-2 text-[14px] font-semibold text-ink-muted">{title}</h3>
-      <ul className={`ct-card divide-y divide-line ${muted ? "opacity-80" : ""}`}>
+      <h3 className="px-1 pb-2 pt-2 text-[14px] font-bold text-ink-muted">{title}</h3>
+      <ul className={`ct-card divide-y divide-fill overflow-hidden ${muted ? "opacity-75" : ""}`}>
         {visits.map((v) => {
           const d = describeVisit(v, now);
           return (
-            <li key={v.code} className="px-4 py-3.5">
+            <li key={v.code} className="px-5 py-4">
               <div className="flex items-center justify-between gap-3">
-                <span className="font-mono text-[16px] font-bold tracking-wide">{v.code}</span>
+                <span className="font-mono text-[15px] font-bold tracking-wider">{v.code}</span>
                 <StatusPill tone={d.tone}>{d.badge}</StatusPill>
               </div>
-              <p className="mt-1.5 break-keep text-[15px]">{summarizeVisit(v)}</p>
-              <p className="mt-0.5 text-[13px] text-ink-muted">{d.eta}</p>
+              <p className="mt-1.5 break-keep text-[16px] font-semibold">{summarizeVisit(v)}</p>
+              <p className="mt-1 text-[13.5px] text-ink-faint">{d.eta}</p>
             </li>
           );
         })}

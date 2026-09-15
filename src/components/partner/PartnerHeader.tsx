@@ -21,24 +21,29 @@ export function PartnerHeader() {
   const signedIn = source === "supabase" && (phase === "ready" || phase === "no_membership");
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface">
+    <header className="sticky top-0 z-40 bg-canvas/85 backdrop-blur-md">
       <div className="mx-auto max-w-app px-4">
-        <div className="flex h-12 items-center gap-2">
-          <span className="shrink-0 rounded-pill bg-blue-soft px-2 py-0.5 text-[12px] font-semibold text-blue">
-            파트너
+        <div className="flex h-14 items-center gap-2">
+          <span className="shrink-0 rounded-md bg-ink px-1.5 py-0.5 text-[11px] font-bold tracking-wide text-white">
+            PARTNER
           </span>
-          <h1 className="min-w-0 flex-1 truncate text-[16px] font-semibold">
+          <h1 className="min-w-0 flex-1 truncate text-[18px] font-bold">
             {hospital?.publicData.name ?? "CareTime"}
           </h1>
           {signedIn && (
-            <button type="button" onClick={() => void signOut()} className="shrink-0 text-[13px] text-ink-muted">
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="shrink-0 rounded-pill px-2.5 py-1.5 text-[13px] font-semibold text-ink-faint active:bg-surface"
+            >
               로그아웃
             </button>
           )}
         </div>
         {phase === "ready" && (
-          <nav aria-label="파트너 메뉴">
-            <ul className="-mb-px flex">
+          <nav aria-label="파트너 메뉴" className="pb-3">
+            {/* 세그먼트 컨트롤: 보호자 화면의 하단 탭과 모양부터 다르게 둔다. */}
+            <ul className="flex rounded-field bg-line/70 p-1">
               {TABS.map((tab) => {
                 const active = pathname === tab.href;
                 return (
@@ -46,10 +51,8 @@ export function PartnerHeader() {
                     <Link
                       href={tab.href}
                       aria-current={active ? "page" : undefined}
-                      className={`flex h-11 items-center justify-center border-b-2 text-[14px] ${
-                        active
-                          ? "border-blue font-semibold text-blue"
-                          : "border-transparent text-ink-muted"
+                      className={`flex h-9 items-center justify-center rounded-[10px] text-[14px] font-semibold transition ${
+                        active ? "bg-surface text-ink" : "text-ink-faint"
                       }`}
                     >
                       {tab.label}

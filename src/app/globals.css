@@ -5,12 +5,22 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
     @apply bg-canvas text-ink font-sans antialiased;
+    /* 한글 본문은 기본 자간이 넓어 보인다. 살짝 좁혀 정돈한다. */
+    letter-spacing: -0.01em;
     /* 시간·인원 숫자가 핵심 정보라 자릿수가 흔들리면 안 된다. */
     font-variant-numeric: tabular-nums;
+    word-break: keep-all;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
   }
 
   /* 키보드 포커스는 항상 보이게 둔다. 야간에 급하게 쓰는 앱이다. */
@@ -30,24 +40,34 @@
 
 @layer components {
   .ct-card {
-    /* 그림자를 쓰지 않는다. 경계선 하나로만 카드를 만든다. (기획안 52항) */
-    @apply rounded-card border border-line bg-surface;
+    /* 그림자도 테두리도 쓰지 않는다. 회색 바탕 위 흰 면으로만 카드를 만든다. (기획안 52항) */
+    @apply rounded-card bg-surface;
   }
 
   .ct-primary {
-    @apply flex h-[52px] w-full items-center justify-center rounded-card bg-blue
-           text-[16px] font-semibold text-white transition-colors
-           active:bg-blue-deep disabled:bg-line disabled:text-ink-faint;
+    @apply flex h-14 w-full items-center justify-center rounded-field bg-blue
+           text-[17px] font-semibold text-white transition
+           active:scale-[0.98] active:bg-blue-deep
+           disabled:bg-line disabled:text-ink-faint disabled:active:scale-100;
   }
 
   .ct-secondary {
-    @apply flex h-[46px] flex-1 items-center justify-center rounded-card border
-           border-line bg-surface text-[15px] font-medium text-ink
-           transition-colors active:bg-canvas;
+    @apply flex h-12 flex-1 items-center justify-center rounded-field bg-blue-soft
+           text-[15px] font-semibold text-blue-deep transition
+           active:scale-[0.98] active:brightness-95;
   }
 
   .ct-chip {
-    @apply inline-flex items-center rounded-pill border border-line bg-surface
-           px-3 py-1.5 text-[13px] text-ink-muted;
+    @apply inline-flex items-center rounded-pill bg-fill px-2.5 py-1
+           text-[13px] font-medium text-ink-muted;
+  }
+
+  .ct-field {
+    @apply w-full rounded-field bg-fill px-4 text-[16px] text-ink transition
+           placeholder:text-ink-faint focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue;
+  }
+
+  .ct-section-title {
+    @apply text-[17px] font-bold;
   }
 }
