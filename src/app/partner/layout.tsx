@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DemoNotice } from "@/components/common/DemoNotice";
+import { PartnerGate } from "@/components/partner/PartnerGate";
 import { PartnerHeader } from "@/components/partner/PartnerHeader";
 import { PartnerProvider } from "@/features/partner/PartnerProvider";
 
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 /**
  * 병원 파트너 레이아웃.
  * 보호자 화면의 하단 메뉴·Search Session 을 쓰지 않는다. 헤더 탭으로만 이동한다.
- * 로그인(작성 권한)은 6단계 카카오 로그인과 함께 붙는다. 지금은 데모 병원 1곳 고정이다.
+ * Supabase 연결 시 이메일 로그인 + hospital_members 소속 확인을 거친다. (카카오 로그인은 6단계)
  */
 export default function PartnerLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -20,7 +21,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
       <div className="mx-auto min-h-dvh max-w-app pb-8">
         <PartnerHeader />
         <DemoNotice />
-        {children}
+        <PartnerGate>{children}</PartnerGate>
       </div>
     </PartnerProvider>
   );

@@ -1,11 +1,13 @@
 import type {
   ContactStatusCode,
   HospitalHours,
+  HospitalLiveStatus,
   IncomingAggregate,
   LimitReasonCode,
 } from "@/features/hospitals/types";
 import { labelForBodyPart, labelForSituation } from "@/features/search-session/types";
-import { formatClock } from "@/lib/freshness";
+import { formatClock, isExpired } from "@/lib/freshness";
+import { addDays, kstDateTime, kstParts, kstServiceDate } from "@/lib/kst";
 import type {
   HoursSaveError,
   IncomingVisit,
@@ -44,13 +46,26 @@ export function statusExpiresAt(hours: HospitalHours, now: Date): string {
  * 진료 시작보다 이른 시각은 자정을 넘긴 다음 날로 본다. (야간 진료 00:30 종료 등)
  */
 export function clockToIso(clock: string, regularOpenAt: string): string | null {
-  const m = /^(\d{2}):(\d{2})$/.exec(clock);
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(clock);
   if (!m) return null;
   const open = new Date(regularOpenAt);
-  const d = new Date(open);
-  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
-  if (d.getTime() < open.getTime()) d.setDate(d.getDate() + 1);
+  const { date } = kstParts(open);
+  let d = kstDateTime(date, clock);
+  if (d.getTime() < open.getTime()) d = kstDateTime(addDays(date, 1), clock);
   return d.toISOString();
+}
+
+/**
+ * 저장된 상태에서 원탭 토글 표시를 복원한다. (DB 에는 버튼이 아니라 상태만 저장된다)
+ * 오늘 진료일에 확인되지 않았거나 만료됐으면 아무 버튼도 켜지 않는다.
+ * "정상"은 원탭 토글에서 "어제와 동일"로만 만들 수 있으므로 그 버튼으로 표시한다.
+ */
+export function deriveTodayMode(live: HospitalLiveStatus, now: Date): TodayMode | null {
+  const confirmedToday = kstServiceDate(new Date(live.verifiedAt)) === kstServiceDate(now);
+  if (!confirmedToday || isExpired(live, now)) return null;
+  if (live.status === "partial") return "limited";
+  if (live.status === "difficult" || live.status === "paused") return "difficult";
+  return "same_as_yesterday";
 }
 
 /** 어제 값을 그대로 쓰고 확인시각만 갱신한다. */

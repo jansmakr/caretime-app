@@ -1,4 +1,5 @@
 import type { HospitalHours } from "@/features/hospitals/types";
+import { formatKstClock } from "@/lib/kst";
 
 /**
  * 진료시간과 내원(접수) 마감.
@@ -33,10 +34,7 @@ export interface AdmissionWindow {
   note: string | null;
 }
 
-function hhmm(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
+const hhmm = formatKstClock;
 
 export function getAdmissionWindow(
   hours: HospitalHours | null,

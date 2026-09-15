@@ -17,7 +17,8 @@ const TABS = [
 
 export function PartnerHeader() {
   const pathname = usePathname();
-  const { hospital } = usePartner();
+  const { hospital, phase, source, signOut } = usePartner();
+  const signedIn = source === "supabase" && (phase === "ready" || phase === "no_membership");
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface">
@@ -26,30 +27,39 @@ export function PartnerHeader() {
           <span className="shrink-0 rounded-pill bg-blue-soft px-2 py-0.5 text-[12px] font-semibold text-blue">
             파트너
           </span>
-          <h1 className="truncate text-[16px] font-semibold">{hospital.publicData.name}</h1>
+          <h1 className="min-w-0 flex-1 truncate text-[16px] font-semibold">
+            {hospital?.publicData.name ?? "CareTime"}
+          </h1>
+          {signedIn && (
+            <button type="button" onClick={() => void signOut()} className="shrink-0 text-[13px] text-ink-muted">
+              로그아웃
+            </button>
+          )}
         </div>
-        <nav aria-label="파트너 메뉴">
-          <ul className="-mb-px flex">
-            {TABS.map((tab) => {
-              const active = pathname === tab.href;
-              return (
-                <li key={tab.href} className="flex-1">
-                  <Link
-                    href={tab.href}
-                    aria-current={active ? "page" : undefined}
-                    className={`flex h-11 items-center justify-center border-b-2 text-[14px] ${
-                      active
-                        ? "border-blue font-semibold text-blue"
-                        : "border-transparent text-ink-muted"
-                    }`}
-                  >
-                    {tab.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+        {phase === "ready" && (
+          <nav aria-label="파트너 메뉴">
+            <ul className="-mb-px flex">
+              {TABS.map((tab) => {
+                const active = pathname === tab.href;
+                return (
+                  <li key={tab.href} className="flex-1">
+                    <Link
+                      href={tab.href}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex h-11 items-center justify-center border-b-2 text-[14px] ${
+                        active
+                          ? "border-blue font-semibold text-blue"
+                          : "border-transparent text-ink-muted"
+                      }`}
+                    >
+                      {tab.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        )}
       </div>
     </header>
   );

@@ -9,16 +9,18 @@ import { useSearchSession } from "@/features/search-session/SearchSessionProvide
 import { nextQuestion } from "@/features/search-session/extract";
 import { labelForBodyPart, labelForSituation } from "@/features/search-session/types";
 import { searchHospitals } from "@/features/hospitals/service";
+import { useHospitalList } from "@/features/hospitals/useHospitalList";
 import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
 
 export default function SearchPage() {
   const { session, answer, ready } = useSearchSession();
   const [day, setDay] = useState<"today" | "tomorrow">("today");
+  const list = useHospitalList();
 
   const question = session ? nextQuestion(session) : null;
   const results = useMemo(
-    () => (session ? searchHospitals(session.facts) : []),
-    [session],
+    () => (session ? searchHospitals(session.facts, list.hospitals) : []),
+    [session, list.hospitals],
   );
 
   if (!ready) return null;
@@ -105,7 +107,18 @@ export default function SearchPage() {
           </section>
         )}
 
-        {day === "tomorrow" ? (
+        {day === "today" && list.status === "loading" ? (
+          <div className="ct-card p-6 text-center text-[14px] text-ink-muted" aria-busy="true">
+            의료기관 정보를 불러오는 중입니다.
+          </div>
+        ) : day === "today" && list.status === "error" ? (
+          <div className="ct-card p-6 text-center">
+            <p className="text-[15px] font-semibold">의료기관 정보를 불러오지 못했습니다.</p>
+            <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">
+              잠시 후 다시 시도해 주세요. 위급한 상황이라면 119에 연락하세요.
+            </p>
+          </div>
+        ) : day === "tomorrow" ? (
           <div className="ct-card p-6 text-center text-[14px] leading-relaxed text-ink-muted">
             내일 진료 일정 정보는 8단계(공공데이터 연동) 이후에 표시됩니다.
           </div>

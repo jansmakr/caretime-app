@@ -1,11 +1,14 @@
+"use client";
+
+import { PartnerLoading } from "@/components/partner/PartnerLoading";
 import { ageConditionLabel, capabilityLabel } from "@/features/hospitals/service";
 import type { HospitalCapability } from "@/features/hospitals/types";
-import { getPartnerHospital } from "@/features/partner/mock";
+import { usePartner } from "@/features/partner/PartnerProvider";
 
 /**
  * 등록된 진료기능. 보호자 화면과 같은 데이터를 그대로 보여준다.
  * 직접입력(pending) 항목은 표준 매핑 전이라 검색 매칭에 쓰이지 않는다는 점을 병원에 알려준다.
- * 추가·수정은 2단계 Capability 관리에서 연다.
+ * 추가·수정은 운영자 검토를 거친다. 병원 계정에는 hospital_capabilities 쓰기 권한이 없다.
  */
 
 const MAPPING_TAG: Record<HospitalCapability["mappingStatus"], { text: string; className: string } | null> = {
@@ -15,7 +18,9 @@ const MAPPING_TAG: Record<HospitalCapability["mappingStatus"], { text: string; c
 };
 
 export default function PartnerCapabilitiesPage() {
-  const hospital = getPartnerHospital();
+  const { hospital } = usePartner();
+  if (!hospital) return <PartnerLoading />;
+
   const caps = hospital.capabilities;
   const pendingCount = caps.filter((c) => c.mappingStatus === "pending").length;
 
@@ -59,7 +64,7 @@ export default function PartnerCapabilitiesPage() {
       </section>
 
       <p className="px-1 text-[13px] leading-relaxed text-ink-faint">
-        진료기능 추가·수정과 연령조건 변경은 운영팀 확인 후 반영됩니다. (2단계 오픈 예정)
+        진료기능 추가·수정과 연령조건 변경은 운영팀 확인 후 반영됩니다.
       </p>
     </main>
   );
