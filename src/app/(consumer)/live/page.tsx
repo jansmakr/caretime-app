@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
 
 export default function LivePage() {
@@ -15,6 +16,10 @@ export default function LivePage() {
           <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
             보호자가 남긴 현장 정보는 의료기관의 공식 정보와 분리해서 보여줄 예정입니다.
           </p>
+          {/* 이 자리가 열리기 전에 현장톡이 먼저 생겼다. 막다른 화면으로 두지 않는다. */}
+          <Link href="/chat" className="ct-secondary mt-5 w-full">
+            실시간 현장톡 열기
+          </Link>
         </div>
       </main>
     </>

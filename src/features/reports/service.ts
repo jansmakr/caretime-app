@@ -1,4 +1,4 @@
-import { minutesSince } from "@/lib/freshness";
+import { formatMomentAgo } from "@/lib/relativeTime";
 import { normalizeName } from "./directory";
 import { isTemplateUnfilled } from "./templates";
 import {
@@ -14,15 +14,11 @@ import {
  * 여기서 병원 상태를 고치는 함수는 만들지 않는다. (README CI lint 룰 1번)
  */
 
-/** '방금 전' / '10분 전'. 피드는 초 단위를 쓰지 않는다 — 1분 미만은 모두 '방금 전'이다. */
-export function formatReportAgo(createdAt: string, now: Date = new Date()): string {
-  const minutes = minutesSince(createdAt, now);
-  if (minutes < 1) return "방금 전";
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
-}
+/**
+ * '방금 전' / '10분 전'. 피드는 초 단위를 쓰지 않는다 — 1분 미만은 모두 '방금 전'이다.
+ * 현장톡(/chat)과 같은 문구를 쓰도록 lib/relativeTime 을 그대로 쓴다.
+ */
+export const formatReportAgo = formatMomentAgo;
 
 /** 등록 버튼을 열어 줄지 판정한다. 막는 이유가 있으면 문장으로 돌려준다. */
 export function validateDraft(draft: ReportDraft): { ok: true } | { ok: false; reason: string } {

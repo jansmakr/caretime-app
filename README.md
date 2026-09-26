@@ -174,6 +174,53 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
 > 데모 제보 3건은 `renderedAt`을 기준으로 만드는 순수 함수라 서버·브라우저가 같은 값을 만듭니다
 > (상대시각에서 hydration이 어긋나지 않게).
 
+### 10. 현장톡은 병원 상세에 묶이지 않는다
+
+`src/app/(consumer)/chat/page.tsx` · `src/features/chat/` · `src/components/chat/`
+
+같은 사용자 공유 계층인데도 제보 피드와 화면을 따로 둔 이유는 **방향이 다르기 때문**입니다.
+제보는 다녀온 사람이 남기는 기록이고, 현장톡은 지금 묻고 답하는 대화입니다. 대화를 병원 상세
+안에 묶으면 질문이 병원 1곳에 갇혀서 아무도 답하지 않습니다.
+
+- **지역·병원 필터는 좁히는 방향으로만** — 필터에 값이 있으면 그 값과 같은 글만 남습니다.
+  지역을 특정하지 않은 글은 '전체'에서만 보입니다. 관련 있어 보이는 글을 임의로 끌어오면
+  "이 병원 이야기"인 줄 알고 읽게 됩니다.
+- **없는 지역은 고를 수 없다** — 시/도 목록은 실제 의료기관 주소에서 뽑습니다(`sidoOptions`).
+  고를 수는 있는데 결과가 0건인 조합을 만들지 않습니다.
+- **빈 목록은 이유를 말한다** — 필터 때문인지 글이 없는 건지 구분해서 안내하고, 필터가 걸려
+  있으면 '전체 보기'를 같이 냅니다. 목록 건수도 `2 / 5건`으로 표기합니다.
+- **보낸 글은 보고 있던 방으로 간다** — 입력창의 범위는 현재 필터를 따라갑니다. 강서구를 보다가
+  보낸 글이 다른 지역에 붙으면 답이 오지 않습니다.
+- **작성자는 익명 표시명뿐** — `보호자 A3F2` 형태로 이 브라우저에서만 만들고 저장하지 않습니다.
+  계정(카카오 로그인)은 6단계입니다.
+- 퀵 템플릿은 제보와 같은 3분할(열상 · 화상 · 기타)이고 라벨도 같은 표를 읽지만, 문구는
+  **질문형**입니다("· 지금 봉합 가능한가요?"). 답을 미리 채우지 않는 규칙은 같습니다.
+
+하단 메뉴가 3개에서 4개로 늘었습니다. 규칙의 뜻은 개수가 아니라 "보호자 화면과 병원·관리자
+화면을 섞지 않는다"이므로 보호자용 대화방은 여기에 둡니다. 5개가 되려 할 때는 먼저 무엇을
+뺄지 정합니다.
+
+### 11. 무료 입점 안내가 /partner 의 첫 화면이다
+
+`src/components/partner/PartnerJoin.tsx` · `src/features/partner-apply/`
+
+보호자 화면 헤더의 `[무료] 의료기관 참여`를 누르면 로그인 폼이 아니라 입점 안내가 나옵니다.
+계정은 운영팀이 발급하므로(2단계: Allow new users to sign up을 끕니다) 처음 온 의료기관에는
+넣을 아이디가 없습니다. 이미 계정이 있는 병원은 작은 링크로 로그인 폼으로 넘어갑니다.
+
+- **"무료" 바로 아래에 "검색 순서에 영향 없음"을 같이 적습니다.** 무료를 앞세운 자리에서
+  노출·정렬을 약속하면 그때부터 정렬축이 하나가 아니게 됩니다. (Release Blocker 8)
+- **받지 않는 것: 사업자번호 · 요양기관번호 · 결제수단.** 심사·정산 항목을 받기 시작하면
+  "돈 낸 병원"을 구분할 데이터가 생깁니다. 신청서는 운영팀이 연락할 수 있을 만큼만 받습니다
+  (병원명 · 지역 · 담당자명 · 연락처 · 주요 진료분야).
+- **연락처 검증은 형식을 촘촘히 막지 않습니다** — 숫자나 `@`가 있는지만 봅니다. 내선·담당
+  시간 메모처럼 실제로 연락 가능한 표기를 거절하지 않으려는 것입니다.
+- **담당자명·연락처는 보호자 화면에 나오지 않습니다.** 메모리에만 두고 로그로 내보내지 않습니다.
+
+> 접수 테이블과 알림은 아직 없습니다. 그래서 접수 화면이 보낸 내용을 되돌려 보여주고,
+> **"지금은 이 브라우저에만 저장됩니다"**를 명시합니다. 테이블이 생기면 `submitApplication`
+> 안쪽만 바뀝니다.
+
 ---
 
 ## 2단계 — Supabase 연결
@@ -205,10 +252,12 @@ src/
       page.tsx                  홈 (상황 입력)
       search/page.tsx           검색 결과
       hospital/[id]/page.tsx    병원 상세
+      chat/page.tsx             실시간 현장톡 (오픈 대화방 · 지역/병원 필터)
       live/page.tsx             실시간 (5단계 자리)
       more/page.tsx             더보기 (7단계 자리)
     partner/                    병원 파트너 화면 (상단 헤더 탭)
       page.tsx                  오늘 상태 · 진료시간 · 전화 · 대기 · 내원예정 카운터
+                                (비로그인: 무료 입점 안내 + 참여 신청 폼)
       incoming/page.tsx         내원예정 목록
       capabilities/page.tsx     등록 진료기능
   components/
@@ -216,15 +265,19 @@ src/
     layout/   AppHeader · BottomNav
     home/     HomeSearchForm
     search/   HospitalCard
-    partner/  PartnerHeader · PartnerGate(로그인) · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
+    chat/     ChatRoom · ChatComposer · ChatFilterBar
+    partner/  PartnerHeader · PartnerGate(진입 조건) · PartnerJoin(입점 안내·신청) · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
     hospital/ HospitalDetail (실시간 구독 화면) · ReportFeed · ReportForm · ReportTargetPicker · WaitingStepper
   features/
     search-session/  types · extract(규칙 파서) · SearchSessionProvider
     hospitals/       types · labels · mock · service · rows(DB↔도메인) · repository · realtime · useHospitalLive
     reports/         types · templates(카테고리 가이드) · regions · directory(자동완성) · service · store · seed · useReportFeed
+    chat/            types · templates(질문형 퀵 템플릿) · service(필터 규칙) · store · seed · useChatRoom
+    partner-apply/   types · service(신청 검증) · store
     partner/         types · service(입력 규칙) · mock · supabaseBackend · PartnerProvider
   lib/
     freshness.ts     신선도·만료 판정 (단일 지점)
+    relativeTime.ts  '방금 전 / 10분 전' (제보·현장톡 공용 단일 지점)
     kst.ts           KST·진료일 (단일 지점)
     supabase/        config · browser · server
 supabase/
@@ -247,7 +300,7 @@ supabase/
 | 3 | **실제 병원 1곳 파일럿** — "어제와 동일" 1클릭이 성립하는지 검증 |
 | 4 | Live Status 입력 · 전화상태 · 자동만료 |
 | 5 | Visit Intent · ETA · 유입 집계 |
-| 6 | Realtime Feed(화면·입력 규칙 ✅ / 저장·공유 테이블은 남음) · 카카오 로그인 · Moderation |
+| 6 | Realtime Feed · 현장톡(/chat) — 화면·입력 규칙 ✅ / 저장·공유 테이블은 남음 · 카카오 로그인 · Moderation |
 | 7 | Admin · Audit · Abuse Prevention |
 | 8 | 공공데이터 어댑터 · 지도 어댑터 · 카페 요약 · SEO · PWA |
 
