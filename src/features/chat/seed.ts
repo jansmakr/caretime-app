@@ -1,3 +1,4 @@
+import { ZERO_REACTIONS, type ReactionCounts } from "./reactions";
 import type { ChatCategory, ChatMessage, ChatScope } from "./types";
 
 /**
@@ -16,6 +17,8 @@ interface Seed {
   topic: string | null;
   body: string;
   scope: ChatScope;
+  /** 데모용 반응 수. 실제로 누른 사람이 있는 값이 아니다. */
+  reactions?: Partial<ReactionCounts>;
 }
 
 const GANGSEO: ChatScope = {
@@ -41,23 +44,25 @@ const NO_SCOPE: ChatScope = { sido: null, sigungu: null, hospitalId: null, hospi
 const SEEDS: Seed[] = [
   {
     minutesAgo: 3,
-    handle: "보호자 7C1A",
+    handle: "강서구맘",
     category: "laceration",
     topic: null,
     body: ["· 지금 봉합 가능한가요?", "· 소아도 진료되나요?", "6살 이마 열상인데 지금 출발해도 될지 봐주실 분 계신가요."].join("\n"),
     scope: GANGSEO,
+    reactions: { doctor_present: 2 },
   },
   {
     minutesAgo: 11,
-    handle: "보호자 D42E",
+    handle: "강서구지킴이",
     category: "laceration",
     topic: null,
     body: "방금 접수했습니다. 소아 봉합 된다고 안내받았고 앞에 두 명 기다리고 있었습니다.",
     scope: GANGSEO,
+    reactions: { low_wait: 4, doctor_present: 3 },
   },
   {
     minutesAgo: 26,
-    handle: "보호자 9B58",
+    handle: "양천구아빠",
     category: "burn",
     topic: null,
     body: ["· 응급 드레싱 가능한가요?", "· 처치까지 얼마나 걸리나요?", "아이 손등 화상이라 야간에 갈 수 있는 곳을 찾고 있습니다."].join("\n"),
@@ -65,15 +70,16 @@ const SEEDS: Seed[] = [
   },
   {
     minutesAgo: 52,
-    handle: "보호자 3F07",
+    handle: "영등포지킴이",
     category: "other",
     topic: "접수 마감",
     body: "도착했더니 접수가 이미 끝나 있었습니다. 마감 시간 확인하고 출발하시는 게 좋겠습니다.",
     scope: YEONGDEUNGPO,
+    reactions: { closed: 5 },
   },
   {
     minutesAgo: 95,
-    handle: "보호자 A130",
+    handle: "야간보호자",
     category: "other",
     topic: "야간 진료",
     body: "서울 서남권에서 밤 10시 넘어 소아 외상 받아주는 곳 아시는 분 있나요?",
@@ -93,6 +99,7 @@ export function seedChatMessages(baseIso: string): ChatMessage[] {
     body: seed.body,
     scope: seed.scope,
     mine: false,
+    baseReactions: { ...ZERO_REACTIONS, ...seed.reactions },
     createdAt: new Date(base - seed.minutesAgo * 60_000).toISOString(),
   }));
 }

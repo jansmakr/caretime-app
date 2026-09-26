@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { SourceBadge } from "@/components/common/SourceBadge";
 import { SIDO_LIST, type Sido } from "@/features/reports/regions";
 import { summarize, validateApplication, type ApplyField } from "@/features/partner-apply/service";
 import { submitApplication } from "@/features/partner-apply/store";
@@ -27,6 +28,10 @@ import {
 
 const BENEFITS = [
   { title: "등록·이용 비용 없음", detail: "노출을 돈으로 사는 자리가 없습니다." },
+  {
+    title: "공식 병원 인증 뱃지 무료 발급",
+    detail: "직접 입력한 정보에 '🟢 의료기관 직접확인' 표시가 붙습니다.",
+  },
   { title: "검색 순서에 영향 없음", detail: "결과는 거리순 하나로만 정렬됩니다." },
   { title: "입력은 1탭", detail: "\"어제와 동일\" 한 번으로 오늘 상태를 확정합니다." },
   { title: "언제든 중단", detail: "입력을 멈추면 공공정보만 남습니다." },
@@ -134,6 +139,31 @@ export function PartnerJoin({ onSignIn }: { onSignIn: () => void }) {
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* 인증 뱃지 — 무엇을 보증하는 표시인지 먼저 못박는다. */}
+      <section className="ct-card p-6">
+        <h3 className="ct-section-title">
+          공식 병원 인증 뱃지
+          <span className="ml-2 rounded-full bg-blue-600 px-2 py-0.5 align-middle text-[11px] font-bold text-white">
+            무료 발급
+          </span>
+        </h3>
+        <p className="mt-2.5 text-[14.5px] leading-relaxed text-ink-muted">
+          참여하시면 의료기관이 직접 입력한 정보에 아래 표시가 붙습니다. 공공데이터만 있는
+          의료기관과 구분되어, 보호자가 &quot;누가 언제 확인한 정보인지&quot;를 바로 알 수 있습니다.
+        </p>
+
+        <div className="mt-3.5 rounded-field bg-fill px-4 py-3.5">
+          <VerifiedSample />
+        </div>
+
+        {/* 이 뱃지가 진료 수준을 보증하는 표시로 읽히면 안 된다. 같은 카드 안에서 선을 긋는다. */}
+        <p className="mt-3.5 text-[13px] leading-relaxed text-ink-faint">
+          이 표시는 <span className="font-semibold text-ink-muted">정보의 출처와 확인시각</span>을
+          나타냅니다. CareTime은 의료기관의 진료 수준을 평가하거나 인증하지 않으며, 뱃지가 노출
+          순서를 바꾸지도 않습니다.
+        </p>
       </section>
 
       {/* 절차 */}
@@ -252,6 +282,18 @@ export function PartnerJoin({ onSignIn }: { onSignIn: () => void }) {
         이미 계정이 있나요? 파트너 로그인 ›
       </button>
     </main>
+  );
+}
+
+/** 보호자 화면에 실제로 붙는 모양 그대로 보여준다. 안내용으로 다시 그리지 않는다. */
+function VerifiedSample() {
+  return (
+    <>
+      <SourceBadge source="hospital" verifiedAgo="12분 전" />
+      <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-faint">
+        보호자 화면(검색 결과 · 병원 상세)에 이렇게 표시됩니다.
+      </p>
+    </>
   );
 }
 

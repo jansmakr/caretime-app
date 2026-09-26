@@ -57,7 +57,8 @@ export function matchesFilter(message: ChatMessage, filter: ChatFilter): boolean
   return true;
 }
 
-export function filterMessages(messages: ChatMessage[], filter: ChatFilter): ChatMessage[] {
+/** 제네릭으로 둔다. 화면에 넘기는 ChatMessageView 를 통과시킬 때 타입이 좁혀지지 않게. */
+export function filterMessages<T extends ChatMessage>(messages: T[], filter: ChatFilter): T[] {
   return messages.filter((m) => matchesFilter(m, filter));
 }
 

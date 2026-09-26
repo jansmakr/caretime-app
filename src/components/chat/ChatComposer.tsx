@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { HospitalView } from "@/features/hospitals/types";
 import { toDirectory } from "@/features/reports/directory";
 import { CHAT_TEMPLATES, chatTemplate, chatTemplateText, shouldReplaceChatBody } from "@/features/chat/templates";
 import { validateChatDraft } from "@/features/chat/service";
-import { sendChatMessage } from "@/features/chat/store";
+import { ensureNickname, sendChatMessage } from "@/features/chat/store";
+import { COOLDOWN_SECONDS, useCooldownSeconds } from "@/features/chat/useChatRoom";
 import {
   CHAT_BODY_MAX,
   CHAT_TOPIC_MAX,
@@ -27,14 +28,27 @@ import {
 export function ChatComposer({
   hospitals,
   filter,
+  lastSentAt,
+  onSent,
 }: {
   hospitals: HospitalView[];
   filter: ChatFilter;
+  lastSentAt: number | null;
+  onSent: (message: string) => void;
 }) {
   const [category, setCategory] = useState<ChatCategory>("laceration");
   const [topic, setTopic] = useState("");
   const [body, setBody] = useState(() => chatTemplateText("laceration"));
   const [error, setError] = useState<string | null>(null);
+  const [nickname, setNickname] = useState<string | null>(null);
+  const cooldown = useCooldownSeconds(lastSentAt);
+
+  // 닉네임은 브라우저에만 있다. 첫 렌더에 넣으면 서버와 달라지므로 마운트 후에 읽는다.
+  useEffect(() => {
+    setNickname(ensureNickname(filter.sigungu ?? filter.sido ?? null));
+    // 지역을 바꿀 때마다 닉네임을 다시 만들지 않는다. 한 번 정해지면 유지한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ids = useId();
   const meta = chatTemplate(category);
@@ -70,10 +84,14 @@ export function ChatComposer({
       setError(result.reason);
       return;
     }
-    sendChatMessage(draft);
+    if (sendChatMessage(draft) === null) {
+      setError(`잠시 후 다시 보낼 수 있습니다. (${cooldown || COOLDOWN_SECONDS}초)`);
+      return;
+    }
     setBody(chatTemplateText(category));
     setTopic("");
     setError(null);
+    onSent("등록되었습니다");
   }
 
   const scope = scopeFromFilter();
@@ -154,6 +172,12 @@ export function ChatComposer({
         {scopeLabel}
         <br />
         위에서 지역·병원을 고르면 그 방으로 올라갑니다.
+        {nickname && (
+          <>
+            <br />
+            <span className="font-semibold text-ink-muted">{nickname}</span> 이름으로 올라갑니다 · 로그인 없이 등록됩니다
+          </>
+        )}
       </p>
 
       {error && (
@@ -162,8 +186,8 @@ export function ChatComposer({
         </p>
       )}
 
-      <button type="button" onClick={send} className="ct-primary mt-4">
-        보내기
+      <button type="button" onClick={send} disabled={cooldown > 0} className="ct-primary mt-4">
+        {cooldown > 0 ? `${cooldown}초 후 보낼 수 있습니다` : "보내기"}
       </button>
     </section>
   );

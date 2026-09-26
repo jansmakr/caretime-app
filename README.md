@@ -191,7 +191,7 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
   있으면 '전체 보기'를 같이 냅니다. 목록 건수도 `2 / 5건`으로 표기합니다.
 - **보낸 글은 보고 있던 방으로 간다** — 입력창의 범위는 현재 필터를 따라갑니다. 강서구를 보다가
   보낸 글이 다른 지역에 붙으면 답이 오지 않습니다.
-- **작성자는 익명 표시명뿐** — `보호자 A3F2` 형태로 이 브라우저에서만 만들고 저장하지 않습니다.
+- **작성자는 익명 표시명뿐** — `강서구맘` · `야간지킴이` 형태로 이 브라우저에서만 만듭니다(→ 12항).
   계정(카카오 로그인)은 6단계입니다.
 - 퀵 템플릿은 제보와 같은 3분할(열상 · 화상 · 기타)이고 라벨도 같은 표를 읽지만, 문구는
   **질문형**입니다("· 지금 봉합 가능한가요?"). 답을 미리 채우지 않는 규칙은 같습니다.
@@ -199,6 +199,49 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
 하단 메뉴가 3개에서 4개로 늘었습니다. 규칙의 뜻은 개수가 아니라 "보호자 화면과 병원·관리자
 화면을 섞지 않는다"이므로 보호자용 대화방은 여기에 둡니다. 5개가 되려 할 때는 먼저 무엇을
 뺄지 정합니다.
+
+### 12. 초기 활성화 3종은 "쓰기 전에 읽히는" 순서로 둔다
+
+`components/home/HomeLiveFeed.tsx` · `features/chat/{nickname,reactions,share}.ts`
+
+야간에 이 앱을 처음 여는 사람에게 필요한 건 검색 결과보다 방금 다녀온 보호자의 한 줄입니다.
+그래서 라이브 피드를 검색 바 바로 아래(`#live-feed`)에 둡니다.
+
+**① 원터치 등록 — 로그인 없이**
+
+- 닉네임은 첫 글을 쓸 때 만들어 `localStorage` 에 둡니다(`caretime.chat.nickname`).
+  저장소를 못 쓰는 환경(시크릿 모드)에서도 죽지 않고 메모리에만 남습니다.
+- **지역 이름은 실제로 아는 경우에만 붙입니다.** `영등포지킴이` 같은 닉네임은 읽는 사람에게
+  "영등포에 있는 사람"으로 읽힙니다. 무작위로 지역을 붙이면 근거 없는 지역 신뢰도를 만들어
+  냅니다. 보호자가 직접 고른 지역이 있으면 그것을 쓰고(`강서구맘`), 없으면 시간대 낱말을
+  씁니다(`야간지킴이`). 지역을 추측해서 채우지 않는 규칙은 화면 전체에서 같습니다.
+- 스팸 방지는 5초 쿨다운입니다(`CHAT_COOLDOWN_MS`). 판정을 화면에 맡기지 않고 store 에
+  두었습니다 — 홈과 `/chat` 두 곳에서 보낼 수 있으므로 한쪽에서 잠근 것이 다른 쪽에 통해야
+  합니다. 서버 차단·신고(Moderation)는 7단계입니다.
+
+**② 원클릭 빠른 반응**
+
+`[대기 3명 이하 👍] [선생님 계심 🩺] [접수 마감됨 ⚠️]` 세 개로 고정합니다. 늘리면 "무엇을
+누르는 버튼인지" 고민하는 시간이 생기고 그 순간 원클릭이 아니게 됩니다.
+
+- 한 브라우저가 같은 반응을 **한 번만** 올립니다. 다시 누르면 내려갑니다. 연타로 부풀릴 수
+  있으면 그 숫자는 아무 뜻이 없어집니다.
+- 숫자를 크게 쓰지 않습니다. 보호자들의 체감이지 병원이 센 값이 아니며, 같은 카드에
+  `사용자 공유 · 미확인` 배지가 붙어 있습니다. `HospitalWaitingStatus` 로 올라가는 경로는 없습니다.
+
+**③ 공유 카드**
+
+`navigator.share` → 클립보드 → 임시 textarea 순으로 내려갑니다. 어느 환경에서도 "아무 일도
+일어나지 않는" 결과가 나오지 않게 단계를 둡니다. 사용자가 공유 시트를 닫은 것(`AbortError`)은
+실패로 보지 않습니다 — 취소는 취소입니다.
+
+- 문구는 `[케어타임 실시간 현장] {병원명/지역} - {카테고리} 최신 현황 확인하기` 로 끝냅니다.
+  **지금 값을 복사해 나르지 않습니다.** 링크는 몇 시간 뒤에도 열리는데 그때 상황은 이미 다르므로,
+  "지금 진료 가능" 같은 확정적인 말을 공유 텍스트에 넣지 않고 보러 오게 합니다.
+- 병원이 특정된 글은 그 병원 상세로 보냅니다. 거기에 의료기관이 확인한 정보와 제보가 함께 있습니다.
+
+> 홈과 `/chat` 은 요청 시각을 읽으므로 `force-dynamic` 입니다. 정적 생성하면 빌드 때 찍힌
+> 시각이 박혀 배포 직후 "3시간 전"부터 시작합니다.
 
 ### 11. 무료 입점 안내가 /partner 의 첫 화면이다
 
@@ -216,6 +259,10 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
 - **연락처 검증은 형식을 촘촘히 막지 않습니다** — 숫자나 `@`가 있는지만 봅니다. 내선·담당
   시간 메모처럼 실제로 연락 가능한 표기를 거절하지 않으려는 것입니다.
 - **담당자명·연락처는 보호자 화면에 나오지 않습니다.** 메모리에만 두고 로그로 내보내지 않습니다.
+- **"공식 병원 인증 뱃지 무료 발급"은 출처 표시를 뜻합니다.** 참여하면 직접 입력한 정보에
+  `🟢 의료기관 직접확인` 배지가 붙습니다. 안내 화면에서 실제 `SourceBadge` 를 그대로 보여주고,
+  같은 카드 안에 **"진료 수준을 평가하거나 인증하지 않으며, 뱃지가 노출 순서를 바꾸지도 않습니다"**를
+  적었습니다. '인증'이 진료 품질 보증으로 읽히면 CareTime 이 하지 않는 일을 약속하게 됩니다.
 
 > 접수 테이블과 알림은 아직 없습니다. 그래서 접수 화면이 보낸 내용을 되돌려 보여주고,
 > **"지금은 이 브라우저에만 저장됩니다"**를 명시합니다. 테이블이 생기면 `submitApplication`
@@ -249,7 +296,7 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
 src/
   app/
     (consumer)/                 보호자 화면 (하단 메뉴 · Search Session)
-      page.tsx                  홈 (상황 입력)
+      page.tsx                  홈 (상황 입력 + 라이브 피드 · 원터치 등록)
       search/page.tsx           검색 결과
       hospital/[id]/page.tsx    병원 상세
       chat/page.tsx             실시간 현장톡 (오픈 대화방 · 지역/병원 필터)
@@ -261,18 +308,18 @@ src/
       incoming/page.tsx         내원예정 목록
       capabilities/page.tsx     등록 진료기능
   components/
-    common/   SourceBadge · StatusPill · DemoNotice · EmergencyCallout · PartnerCta · LiveInfoNotice
+    common/   SourceBadge · StatusPill · DemoNotice · EmergencyCallout · PartnerCta · LiveInfoNotice · Toast
     layout/   AppHeader · BottomNav
-    home/     HomeSearchForm
+    home/     HomeSearchForm · HomeLiveFeed(라이브 피드 · 원터치 등록)
     search/   HospitalCard
-    chat/     ChatRoom · ChatComposer · ChatFilterBar
+    chat/     ChatRoom · ChatComposer · ChatFilterBar · ChatReactions · ShareButton
     partner/  PartnerHeader · PartnerGate(진입 조건) · PartnerJoin(입점 안내·신청) · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
     hospital/ HospitalDetail (실시간 구독 화면) · ReportFeed · ReportForm · ReportTargetPicker · WaitingStepper
   features/
     search-session/  types · extract(규칙 파서) · SearchSessionProvider
     hospitals/       types · labels · mock · service · rows(DB↔도메인) · repository · realtime · useHospitalLive
     reports/         types · templates(카테고리 가이드) · regions · directory(자동완성) · service · store · seed · useReportFeed
-    chat/            types · templates(질문형 퀵 템플릿) · service(필터 규칙) · store · seed · useChatRoom
+    chat/            types · templates(질문형 퀵 템플릿) · service(필터 규칙) · reactions · nickname · share · store · seed · useChatRoom
     partner-apply/   types · service(신청 검증) · store
     partner/         types · service(입력 규칙) · mock · supabaseBackend · PartnerProvider
   lib/

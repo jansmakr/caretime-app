@@ -1,5 +1,6 @@
 import type { Sido } from "@/features/reports/regions";
 import type { ReportCategory } from "@/features/reports/types";
+import type { ReactionCounts, ReactionKey } from "./reactions";
 
 /**
  * 실시간 현장톡 (/chat).
@@ -38,11 +39,19 @@ export interface ChatDraft {
 
 export interface ChatMessage extends ChatDraft {
   id: string;
-  /** 익명 표시명. 예: "보호자 A3F2". 이름·연락처를 담지 않는다. */
+  /** 익명 표시명. 예: "야간지킴이". 이름·연락처를 담지 않는다. → features/chat/nickname */
   handle: string;
   /** 이 브라우저에서 보낸 글. 정렬·권한에 쓰지 않고 표시에만 쓴다. */
   mine: boolean;
+  /** 글이 들고 있던 반응 수. 이 브라우저가 누른 것은 여기 더하지 않는다. */
+  baseReactions: ReactionCounts;
   createdAt: string; // ISO8601
+}
+
+/** 화면에 넘기는 모양. 저장된 값에 이 브라우저의 반응을 합쳐 둔다. */
+export interface ChatMessageView extends ChatMessage {
+  reactions: ReactionCounts;
+  myReactions: ReactionKey[];
 }
 
 /** 목록 필터. 세 값 모두 null 이면 전체 보기다. */
@@ -63,3 +72,9 @@ export const EMPTY_FILTER: ChatFilter = { sido: null, sigungu: null, hospitalId:
 
 export const CHAT_BODY_MAX = 300;
 export const CHAT_TOPIC_MAX = 30;
+
+/**
+ * 연속 등록 차단 시간. 같은 사람이 같은 내용을 연달아 올리는 것을 막는 최소 장치다.
+ * 서버 차단·신고(Moderation)는 7단계다. 여기서 막는 것은 실수와 연타까지다.
+ */
+export const CHAT_COOLDOWN_MS = 5_000;

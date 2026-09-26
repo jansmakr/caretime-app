@@ -4,13 +4,18 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LiveInfoNotice } from "@/components/common/LiveInfoNotice";
 import { SourceBadge } from "@/components/common/SourceBadge";
+import { Toast, useToast } from "@/components/common/Toast";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
+import { ChatReactions } from "@/components/chat/ChatReactions";
+import { ShareButton } from "@/components/chat/ShareButton";
 import { useHospitalList } from "@/features/hospitals/useHospitalList";
 import { categoryLabel } from "@/features/reports/templates";
+import type { ReactionKey } from "@/features/chat/reactions";
 import { formatChatAgo, isFilterActive } from "@/features/chat/service";
+import { buildRoomShareText, buildShareText } from "@/features/chat/share";
 import { useChatRoom } from "@/features/chat/useChatRoom";
-import { EMPTY_FILTER, type ChatFilter, type ChatMessage } from "@/features/chat/types";
+import { EMPTY_FILTER, EMPTY_SCOPE, type ChatFilter, type ChatMessageView } from "@/features/chat/types";
 import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
 
 /** 상대시각 재판정 주기. 이벤트가 없어도 "3분 전"은 시간이 지나면 바뀌어야 한다. */
@@ -29,7 +34,8 @@ export function ChatRoom({ renderedAt }: { renderedAt: string }) {
   const [filter, setFilter] = useState<ChatFilter>(EMPTY_FILTER);
   const [now, setNow] = useState(() => new Date(renderedAt));
   const list = useHospitalList();
-  const { messages, totalCount } = useChatRoom(renderedAt, filter);
+  const { messages, totalCount, lastSentAt, react } = useChatRoom(renderedAt, filter);
+  const { message: toast, show } = useToast();
 
   useEffect(() => {
     setNow(new Date());
@@ -44,6 +50,9 @@ export function ChatRoom({ renderedAt }: { renderedAt: string }) {
       {/* 상단 고정 고지 — 의료기관 현장 상황이 항상 최우선. 접히지 않는다. */}
       <LiveInfoNotice />
 
+      {/* 톡방 전체 공유. 개별 카드에도 같은 버튼이 있다. */}
+      <ShareButton text={buildRoomShareText()} scope={EMPTY_SCOPE} onResult={show} variant="block" />
+
       <ChatFilterBar
         hospitals={list.hospitals}
         loading={list.status === "loading"}
@@ -51,7 +60,7 @@ export function ChatRoom({ renderedAt }: { renderedAt: string }) {
         onChange={setFilter}
       />
 
-      <ChatComposer hospitals={list.hospitals} filter={filter} />
+      <ChatComposer hospitals={list.hospitals} filter={filter} lastSentAt={lastSentAt} onSent={show} />
 
       <section className="ct-card p-5">
         <div className="flex items-baseline justify-between gap-3">
@@ -64,7 +73,7 @@ export function ChatRoom({ renderedAt }: { renderedAt: string }) {
         <ul className="mt-2 divide-y divide-fill">
           {messages.map((message) => (
             <li key={message.id} className="py-3.5 first:pt-1">
-              <ChatBubble message={message} now={now} />
+              <ChatBubble message={message} now={now} onReact={react} onShared={show} />
             </li>
           ))}
         </ul>
@@ -100,11 +109,23 @@ export function ChatRoom({ renderedAt }: { renderedAt: string }) {
       <Link href="/" className="ct-secondary w-full">
         진료정보 찾기
       </Link>
+
+      <Toast message={toast} />
     </main>
   );
 }
 
-function ChatBubble({ message, now }: { message: ChatMessage; now: Date }) {
+function ChatBubble({
+  message,
+  now,
+  onReact,
+  onShared,
+}: {
+  message: ChatMessageView;
+  now: Date;
+  onReact: (id: string, key: ReactionKey) => void;
+  onShared: (text: string) => void;
+}) {
   const place = [message.scope.hospitalName, message.scope.sigungu ?? message.scope.sido]
     .filter(Boolean)
     .join(" · ");
@@ -133,14 +154,30 @@ function ChatBubble({ message, now }: { message: ChatMessage; now: Date }) {
         <SourceBadge source="user" />
       </div>
 
-      {message.scope.hospitalId && (
-        <Link
-          href={`/hospital/${message.scope.hospitalId}`}
-          className="mt-2 inline-flex text-[13px] font-semibold text-blue"
-        >
-          이 의료기관 정보 보기 ›
-        </Link>
-      )}
+      {/* 원클릭 빠른 반응 — 텍스트 없이 상황을 거든다. */}
+      <ChatReactions
+        counts={message.reactions}
+        mine={message.myReactions}
+        onToggle={(key) => onReact(message.id, key)}
+      />
+
+      <div className="mt-2 flex items-center gap-2">
+        {message.scope.hospitalId ? (
+          <Link
+            href={`/hospital/${message.scope.hospitalId}`}
+            className="flex-1 text-[13px] font-semibold text-blue"
+          >
+            이 의료기관 정보 보기 ›
+          </Link>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <ShareButton
+          text={buildShareText(message.scope, message.category)}
+          scope={message.scope}
+          onResult={onShared}
+        />
+      </div>
     </article>
   );
 }
