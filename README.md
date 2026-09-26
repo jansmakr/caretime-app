@@ -142,6 +142,132 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
   연결·재연결 때마다 전체를 다시 읽어 끊긴 사이의 변경을 놓치지 않고, 끊기면 "실시간 끊김"을 표시합니다.
   파트너 화면도 같은 채널을 구독해 원장님·당직자 기기끼리 동기화됩니다(내 저장의 메아리·늦게 온 옛 이벤트는 무시).
 
+### 9. 보호자 제보는 병원 확인 정보로 승격되지 않는다
+
+`src/features/reports/` · `src/components/hospital/Report*.tsx`
+
+병원 상세에 보호자 실시간 제보(피드 + 작성 폼)가 있습니다. 여기서 들어온 값은
+**계층 ④(병원 직접확인)로 올라갈 길이 없습니다.**
+
+- `UserReport.source`는 `"user"` 리터럴입니다. 인자로 받지 않으므로 다른 출처로 저장될 수 없습니다.
+- `features/reports`는 `hospital_live_status` 등 병원 상태를 쓰는 함수를 import하지 않습니다.
+  (8단계 CI lint 룰 1번이 검사할 경로를 애초에 만들지 않았습니다)
+- 피드의 모든 항목에 `SourceBadge source="user"`(비어 있는 점선 원 · "사용자 공유 · 미확인")가 붙고,
+  병원 확인 카드와 **다른 카드**에 들어갑니다. 한 면에 섞으면 보호자가 둘을 구분하지 못합니다. (12항)
+- 면책 문구(`LiveInfoNotice`)는 **읽는 자리와 쓰는 자리 양쪽에 고정**입니다. 접는 컨트롤이 없습니다.
+  문장은 `lib/copy.ts`의 `USER_REPORT_DISCLAIMER` 한 곳에만 있습니다.
+
+입력 설계에서 지킨 것:
+
+- **세지 않은 것과 0명은 다른 사실** — 대기 인원 Stepper의 기본값은 `null`("확인 못 함")이고,
+  0명에서 `−`를 누르면 다시 `null`로 돌아갑니다. 추정값을 기본값으로 넣지 않습니다.
+- **템플릿은 질문만 채운다** — 카테고리 칩(열상 / 화상 / 기타)을 누르면 확인할 항목이 줄로 채워지지만
+  답은 비어 있습니다. 예시 답을 미리 넣으면 확인하지 않은 내용이 그대로 올라갑니다.
+  줄이 하나도 채워지지 않으면 등록을 막습니다(`isTemplateUnfilled`).
+- **잘못 누른 칩이 글을 지우지 않는다** — 본문이 비어 있거나 직전 템플릿 그대로일 때만 교체합니다
+  (`shouldReplaceBody`).
+- **수기 입력 병원은 끝까지 `hospitalId`가 없다** — 목록에 없는 의료기관은 이름이 **정확히** 같은
+  제보끼리만 함께 보입니다. 비슷한 이름을 같은 병원으로 묶지 않습니다(오연결은 되돌릴 수 없습니다).
+
+> 지금 제보는 브라우저 메모리에만 쌓입니다(새로고침하면 사라지고, 화면이 그 사실을 문장으로 알립니다).
+> 저장소는 `subscribe`/`getSnapshot` 모양이라 6단계에서 화면 코드를 고치지 않고 Supabase 테이블로 교체합니다.
+> 데모 제보 3건은 `renderedAt`을 기준으로 만드는 순수 함수라 서버·브라우저가 같은 값을 만듭니다
+> (상대시각에서 hydration이 어긋나지 않게).
+
+### 10. 현장톡은 병원 상세에 묶이지 않는다
+
+`src/app/(consumer)/chat/page.tsx` · `src/features/chat/` · `src/components/chat/`
+
+같은 사용자 공유 계층인데도 제보 피드와 화면을 따로 둔 이유는 **방향이 다르기 때문**입니다.
+제보는 다녀온 사람이 남기는 기록이고, 현장톡은 지금 묻고 답하는 대화입니다. 대화를 병원 상세
+안에 묶으면 질문이 병원 1곳에 갇혀서 아무도 답하지 않습니다.
+
+- **지역·병원 필터는 좁히는 방향으로만** — 필터에 값이 있으면 그 값과 같은 글만 남습니다.
+  지역을 특정하지 않은 글은 '전체'에서만 보입니다. 관련 있어 보이는 글을 임의로 끌어오면
+  "이 병원 이야기"인 줄 알고 읽게 됩니다.
+- **없는 지역은 고를 수 없다** — 시/도 목록은 실제 의료기관 주소에서 뽑습니다(`sidoOptions`).
+  고를 수는 있는데 결과가 0건인 조합을 만들지 않습니다.
+- **빈 목록은 이유를 말한다** — 필터 때문인지 글이 없는 건지 구분해서 안내하고, 필터가 걸려
+  있으면 '전체 보기'를 같이 냅니다. 목록 건수도 `2 / 5건`으로 표기합니다.
+- **보낸 글은 보고 있던 방으로 간다** — 입력창의 범위는 현재 필터를 따라갑니다. 강서구를 보다가
+  보낸 글이 다른 지역에 붙으면 답이 오지 않습니다.
+- **작성자는 익명 표시명뿐** — `강서구맘` · `야간지킴이` 형태로 이 브라우저에서만 만듭니다(→ 12항).
+  계정(카카오 로그인)은 6단계입니다.
+- 퀵 템플릿은 제보와 같은 3분할(열상 · 화상 · 기타)이고 라벨도 같은 표를 읽지만, 문구는
+  **질문형**입니다("· 지금 봉합 가능한가요?"). 답을 미리 채우지 않는 규칙은 같습니다.
+
+하단 메뉴가 3개에서 4개로 늘었습니다. 규칙의 뜻은 개수가 아니라 "보호자 화면과 병원·관리자
+화면을 섞지 않는다"이므로 보호자용 대화방은 여기에 둡니다. 5개가 되려 할 때는 먼저 무엇을
+뺄지 정합니다.
+
+### 12. 초기 활성화 3종은 "쓰기 전에 읽히는" 순서로 둔다
+
+`components/home/HomeLiveFeed.tsx` · `features/chat/{nickname,reactions,share}.ts`
+
+야간에 이 앱을 처음 여는 사람에게 필요한 건 검색 결과보다 방금 다녀온 보호자의 한 줄입니다.
+그래서 라이브 피드를 검색 바 바로 아래(`#live-feed`)에 둡니다.
+
+**① 원터치 등록 — 로그인 없이**
+
+- 닉네임은 첫 글을 쓸 때 만들어 `localStorage` 에 둡니다(`caretime.chat.nickname`).
+  저장소를 못 쓰는 환경(시크릿 모드)에서도 죽지 않고 메모리에만 남습니다.
+- **지역 이름은 실제로 아는 경우에만 붙입니다.** `영등포지킴이` 같은 닉네임은 읽는 사람에게
+  "영등포에 있는 사람"으로 읽힙니다. 무작위로 지역을 붙이면 근거 없는 지역 신뢰도를 만들어
+  냅니다. 보호자가 직접 고른 지역이 있으면 그것을 쓰고(`강서구맘`), 없으면 시간대 낱말을
+  씁니다(`야간지킴이`). 지역을 추측해서 채우지 않는 규칙은 화면 전체에서 같습니다.
+- 스팸 방지는 5초 쿨다운입니다(`CHAT_COOLDOWN_MS`). 판정을 화면에 맡기지 않고 store 에
+  두었습니다 — 홈과 `/chat` 두 곳에서 보낼 수 있으므로 한쪽에서 잠근 것이 다른 쪽에 통해야
+  합니다. 서버 차단·신고(Moderation)는 7단계입니다.
+
+**② 원클릭 빠른 반응**
+
+`[대기 3명 이하 👍] [선생님 계심 🩺] [접수 마감됨 ⚠️]` 세 개로 고정합니다. 늘리면 "무엇을
+누르는 버튼인지" 고민하는 시간이 생기고 그 순간 원클릭이 아니게 됩니다.
+
+- 한 브라우저가 같은 반응을 **한 번만** 올립니다. 다시 누르면 내려갑니다. 연타로 부풀릴 수
+  있으면 그 숫자는 아무 뜻이 없어집니다.
+- 숫자를 크게 쓰지 않습니다. 보호자들의 체감이지 병원이 센 값이 아니며, 같은 카드에
+  `사용자 공유 · 미확인` 배지가 붙어 있습니다. `HospitalWaitingStatus` 로 올라가는 경로는 없습니다.
+
+**③ 공유 카드**
+
+`navigator.share` → 클립보드 → 임시 textarea 순으로 내려갑니다. 어느 환경에서도 "아무 일도
+일어나지 않는" 결과가 나오지 않게 단계를 둡니다. 사용자가 공유 시트를 닫은 것(`AbortError`)은
+실패로 보지 않습니다 — 취소는 취소입니다.
+
+- 문구는 `[케어타임 실시간 현장] {병원명/지역} - {카테고리} 최신 현황 확인하기` 로 끝냅니다.
+  **지금 값을 복사해 나르지 않습니다.** 링크는 몇 시간 뒤에도 열리는데 그때 상황은 이미 다르므로,
+  "지금 진료 가능" 같은 확정적인 말을 공유 텍스트에 넣지 않고 보러 오게 합니다.
+- 병원이 특정된 글은 그 병원 상세로 보냅니다. 거기에 의료기관이 확인한 정보와 제보가 함께 있습니다.
+
+> 홈과 `/chat` 은 요청 시각을 읽으므로 `force-dynamic` 입니다. 정적 생성하면 빌드 때 찍힌
+> 시각이 박혀 배포 직후 "3시간 전"부터 시작합니다.
+
+### 11. 무료 입점 안내가 /partner 의 첫 화면이다
+
+`src/components/partner/PartnerJoin.tsx` · `src/features/partner-apply/`
+
+보호자 화면 헤더의 `[무료] 의료기관 참여`를 누르면 로그인 폼이 아니라 입점 안내가 나옵니다.
+계정은 운영팀이 발급하므로(2단계: Allow new users to sign up을 끕니다) 처음 온 의료기관에는
+넣을 아이디가 없습니다. 이미 계정이 있는 병원은 작은 링크로 로그인 폼으로 넘어갑니다.
+
+- **"무료" 바로 아래에 "검색 순서에 영향 없음"을 같이 적습니다.** 무료를 앞세운 자리에서
+  노출·정렬을 약속하면 그때부터 정렬축이 하나가 아니게 됩니다. (Release Blocker 8)
+- **받지 않는 것: 사업자번호 · 요양기관번호 · 결제수단.** 심사·정산 항목을 받기 시작하면
+  "돈 낸 병원"을 구분할 데이터가 생깁니다. 신청서는 운영팀이 연락할 수 있을 만큼만 받습니다
+  (병원명 · 지역 · 담당자명 · 연락처 · 주요 진료분야).
+- **연락처 검증은 형식을 촘촘히 막지 않습니다** — 숫자나 `@`가 있는지만 봅니다. 내선·담당
+  시간 메모처럼 실제로 연락 가능한 표기를 거절하지 않으려는 것입니다.
+- **담당자명·연락처는 보호자 화면에 나오지 않습니다.** 메모리에만 두고 로그로 내보내지 않습니다.
+- **"공식 병원 인증 뱃지 무료 발급"은 출처 표시를 뜻합니다.** 참여하면 직접 입력한 정보에
+  `🟢 의료기관 직접확인` 배지가 붙습니다. 안내 화면에서 실제 `SourceBadge` 를 그대로 보여주고,
+  같은 카드 안에 **"진료 수준을 평가하거나 인증하지 않으며, 뱃지가 노출 순서를 바꾸지도 않습니다"**를
+  적었습니다. '인증'이 진료 품질 보증으로 읽히면 CareTime 이 하지 않는 일을 약속하게 됩니다.
+
+> 접수 테이블과 알림은 아직 없습니다. 그래서 접수 화면이 보낸 내용을 되돌려 보여주고,
+> **"지금은 이 브라우저에만 저장됩니다"**를 명시합니다. 테이블이 생기면 `submitApplication`
+> 안쪽만 바뀝니다.
+
 ---
 
 ## 2단계 — Supabase 연결
@@ -170,28 +296,35 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
 src/
   app/
     (consumer)/                 보호자 화면 (하단 메뉴 · Search Session)
-      page.tsx                  홈 (상황 입력)
+      page.tsx                  홈 (상황 입력 + 라이브 피드 · 원터치 등록)
       search/page.tsx           검색 결과
       hospital/[id]/page.tsx    병원 상세
+      chat/page.tsx             실시간 현장톡 (오픈 대화방 · 지역/병원 필터)
       live/page.tsx             실시간 (5단계 자리)
       more/page.tsx             더보기 (7단계 자리)
     partner/                    병원 파트너 화면 (상단 헤더 탭)
       page.tsx                  오늘 상태 · 진료시간 · 전화 · 대기 · 내원예정 카운터
+                                (비로그인: 무료 입점 안내 + 참여 신청 폼)
       incoming/page.tsx         내원예정 목록
       capabilities/page.tsx     등록 진료기능
   components/
-    common/   SourceBadge · StatusPill · DemoNotice · EmergencyCallout
+    common/   SourceBadge · StatusPill · DemoNotice · EmergencyCallout · PartnerCta · LiveInfoNotice · Toast
     layout/   AppHeader · BottomNav
-    home/     HomeSearchForm
+    home/     HomeSearchForm · HomeLiveFeed(라이브 피드 · 원터치 등록)
     search/   HospitalCard
-    partner/  PartnerHeader · PartnerGate(로그인) · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
-    hospital/ HospitalDetail (실시간 구독 화면)
+    chat/     ChatRoom · ChatComposer · ChatFilterBar · ChatReactions · ShareButton
+    partner/  PartnerHeader · PartnerGate(진입 조건) · PartnerJoin(입점 안내·신청) · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
+    hospital/ HospitalDetail (실시간 구독 화면) · ReportFeed · ReportForm · ReportTargetPicker · WaitingStepper
   features/
     search-session/  types · extract(규칙 파서) · SearchSessionProvider
     hospitals/       types · labels · mock · service · rows(DB↔도메인) · repository · realtime · useHospitalLive
+    reports/         types · templates(카테고리 가이드) · regions · directory(자동완성) · service · store · seed · useReportFeed
+    chat/            types · templates(질문형 퀵 템플릿) · service(필터 규칙) · reactions · nickname · share · store · seed · useChatRoom
+    partner-apply/   types · service(신청 검증) · store
     partner/         types · service(입력 규칙) · mock · supabaseBackend · PartnerProvider
   lib/
     freshness.ts     신선도·만료 판정 (단일 지점)
+    relativeTime.ts  '방금 전 / 10분 전' (제보·현장톡 공용 단일 지점)
     kst.ts           KST·진료일 (단일 지점)
     supabase/        config · browser · server
 supabase/
@@ -214,7 +347,7 @@ supabase/
 | 3 | **실제 병원 1곳 파일럿** — "어제와 동일" 1클릭이 성립하는지 검증 |
 | 4 | Live Status 입력 · 전화상태 · 자동만료 |
 | 5 | Visit Intent · ETA · 유입 집계 |
-| 6 | Realtime Feed · 카카오 로그인 · Moderation |
+| 6 | Realtime Feed · 현장톡(/chat) — 화면·입력 규칙 ✅ / 저장·공유 테이블은 남음 · 카카오 로그인 · Moderation |
 | 7 | Admin · Audit · Abuse Prevention |
 | 8 | 공공데이터 어댑터 · 지도 어댑터 · 카페 요약 · SEO · PWA |
 

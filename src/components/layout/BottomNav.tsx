@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-/** 하단 메뉴는 정확히 3개. 병원·관리자 기능은 여기에 넣지 않는다. (기획안 5항) */
+/**
+ * 하단 메뉴는 보호자 기능만 둔다. 병원·관리자 기능은 여기에 넣지 않는다. (기획안 5항)
+ *
+ * 원래 3개로 고정했는데, 실시간 현장톡(/chat)을 더해 4개가 되었다.
+ * 규칙의 뜻은 "개수"가 아니라 "보호자 화면과 병원·관리자 화면을 섞지 않는다"이므로
+ * 보호자용 대화방은 여기에 두는 게 맞다. 5개가 되려 할 때는 먼저 무엇을 뺄지 정한다.
+ */
 const ITEMS = [
   {
     href: "/",
@@ -21,6 +27,19 @@ const ITEMS = [
     icon: (
       <path
         d="M3 12h4l2.5-6 5 12 2.5-6H21"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    ),
+  },
+  {
+    href: "/chat",
+    label: "현장톡",
+    icon: (
+      <path
+        d="M20 12.5c0 3.6-3.6 6.5-8 6.5-.9 0-1.8-.1-2.6-.35L5 20.5l1.2-3.1C4.8 16.2 4 14.4 4 12.5 4 8.9 7.6 6 12 6s8 2.9 8 6.5z"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"

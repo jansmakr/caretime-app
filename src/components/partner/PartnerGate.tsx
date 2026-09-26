@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { PartnerJoin } from "@/components/partner/PartnerJoin";
 import { PartnerLoading } from "@/components/partner/PartnerLoading";
 import { usePartner } from "@/features/partner/PartnerProvider";
 
@@ -8,12 +9,23 @@ import { usePartner } from "@/features/partner/PartnerProvider";
  * 파트너 화면 진입 조건.
  * 로그인하지 않았거나 병원에 연결되지 않은 계정에는 입력 화면 자체를 그리지 않는다.
  * 실제 차단은 DB(RLS)가 하고, 이 컴포넌트는 헛입력을 막는 안내 역할이다.
+ *
+ * 로그인하지 않은 기본 화면은 로그인 폼이 아니라 무료 입점 안내(PartnerJoin)다.
+ * 계정은 운영팀이 발급하므로, 처음 온 의료기관에는 넣을 아이디가 없다.
+ * 이미 계정이 있는 병원은 작은 링크로 로그인 폼으로 넘어간다.
  */
 export function PartnerGate({ children }: { children: React.ReactNode }) {
   const { phase, notice, dismissNotice, connection, source, signOut } = usePartner();
+  const [wantsSignIn, setWantsSignIn] = useState(false);
 
   if (phase === "loading") return <PartnerLoading />;
-  if (phase === "signed_out") return <PartnerSignIn />;
+  if (phase === "signed_out") {
+    return wantsSignIn ? (
+      <PartnerSignIn onBack={() => setWantsSignIn(false)} />
+    ) : (
+      <PartnerJoin onSignIn={() => setWantsSignIn(true)} />
+    );
+  }
 
   if (phase === "no_membership" || phase === "error") {
     return (
@@ -61,7 +73,7 @@ export function PartnerGate({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PartnerSignIn() {
+function PartnerSignIn({ onBack }: { onBack: () => void }) {
   const { signIn } = usePartner();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -116,6 +128,14 @@ function PartnerSignIn() {
           {pending ? "확인 중…" : "로그인"}
         </button>
       </form>
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="mx-auto mt-4 flex w-fit items-center gap-1.5 rounded-pill px-3 py-2 text-[13.5px] font-semibold text-ink-faint active:bg-surface"
+      >
+        ‹ 계정이 없나요? 무료 참여 안내
+      </button>
     </main>
   );
 }
