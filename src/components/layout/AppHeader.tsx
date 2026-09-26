@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EmergencyCallout } from "@/components/common/EmergencyCallout";
+import { PartnerCta } from "@/components/common/PartnerCta";
 
 export function AppHeader({ title, backHref }: { title?: string; backHref?: string }) {
   return (
@@ -26,7 +27,11 @@ export function AppHeader({ title, backHref }: { title?: string; backHref?: stri
             </Link>
           )}
         </div>
-        <EmergencyCallout />
+        {/* 오른쪽 묶음: 참여 CTA → 119. 119 가 항상 가장 바깥(엄지에 가까운 쪽)이다. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <PartnerCta />
+          <EmergencyCallout />
+        </div>
       </div>
     </header>
   );

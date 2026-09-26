@@ -15,6 +15,8 @@ import { useHospitalLive } from "@/features/hospitals/useHospitalLive";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { CALL_IS_SUREST, NOT_A_BOOKING, VISIT_INTENT_DISCLAIMER } from "@/lib/copy";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
+import { ReportFeed } from "@/components/hospital/ReportFeed";
+import { ReportForm } from "@/components/hospital/ReportForm";
 import {
   describeStatus,
   describeTimePlan,
@@ -162,6 +164,11 @@ export function HospitalDetail({
             </dl>
           )}
         </section>
+
+        {/* 계층 ⑤ — 보호자 실시간 제보. 병원 직접확인 카드와 다른 카드로 둔다.
+            읽는 자리(피드)와 쓰는 자리(폼) 양쪽에 유의사항 배너가 고정으로 붙는다. */}
+        <ReportFeed hospital={hospital} renderedAt={renderedAt} now={now} />
+        <ReportForm hospital={hospital} />
 
         {/* 계층 ⑥ — 내원예정. 4단계에서 열린다. 지금은 자리만 만들어 둔다. */}
         <section className="ct-card p-5">

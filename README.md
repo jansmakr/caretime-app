@@ -142,6 +142,38 @@ Analytics에 아동 건강정보가 그대로 남습니다. 그래서 `/search`�
   연결·재연결 때마다 전체를 다시 읽어 끊긴 사이의 변경을 놓치지 않고, 끊기면 "실시간 끊김"을 표시합니다.
   파트너 화면도 같은 채널을 구독해 원장님·당직자 기기끼리 동기화됩니다(내 저장의 메아리·늦게 온 옛 이벤트는 무시).
 
+### 9. 보호자 제보는 병원 확인 정보로 승격되지 않는다
+
+`src/features/reports/` · `src/components/hospital/Report*.tsx`
+
+병원 상세에 보호자 실시간 제보(피드 + 작성 폼)가 있습니다. 여기서 들어온 값은
+**계층 ④(병원 직접확인)로 올라갈 길이 없습니다.**
+
+- `UserReport.source`는 `"user"` 리터럴입니다. 인자로 받지 않으므로 다른 출처로 저장될 수 없습니다.
+- `features/reports`는 `hospital_live_status` 등 병원 상태를 쓰는 함수를 import하지 않습니다.
+  (8단계 CI lint 룰 1번이 검사할 경로를 애초에 만들지 않았습니다)
+- 피드의 모든 항목에 `SourceBadge source="user"`(비어 있는 점선 원 · "사용자 공유 · 미확인")가 붙고,
+  병원 확인 카드와 **다른 카드**에 들어갑니다. 한 면에 섞으면 보호자가 둘을 구분하지 못합니다. (12항)
+- 면책 문구(`LiveInfoNotice`)는 **읽는 자리와 쓰는 자리 양쪽에 고정**입니다. 접는 컨트롤이 없습니다.
+  문장은 `lib/copy.ts`의 `USER_REPORT_DISCLAIMER` 한 곳에만 있습니다.
+
+입력 설계에서 지킨 것:
+
+- **세지 않은 것과 0명은 다른 사실** — 대기 인원 Stepper의 기본값은 `null`("확인 못 함")이고,
+  0명에서 `−`를 누르면 다시 `null`로 돌아갑니다. 추정값을 기본값으로 넣지 않습니다.
+- **템플릿은 질문만 채운다** — 카테고리 칩(열상 / 화상 / 기타)을 누르면 확인할 항목이 줄로 채워지지만
+  답은 비어 있습니다. 예시 답을 미리 넣으면 확인하지 않은 내용이 그대로 올라갑니다.
+  줄이 하나도 채워지지 않으면 등록을 막습니다(`isTemplateUnfilled`).
+- **잘못 누른 칩이 글을 지우지 않는다** — 본문이 비어 있거나 직전 템플릿 그대로일 때만 교체합니다
+  (`shouldReplaceBody`).
+- **수기 입력 병원은 끝까지 `hospitalId`가 없다** — 목록에 없는 의료기관은 이름이 **정확히** 같은
+  제보끼리만 함께 보입니다. 비슷한 이름을 같은 병원으로 묶지 않습니다(오연결은 되돌릴 수 없습니다).
+
+> 지금 제보는 브라우저 메모리에만 쌓입니다(새로고침하면 사라지고, 화면이 그 사실을 문장으로 알립니다).
+> 저장소는 `subscribe`/`getSnapshot` 모양이라 6단계에서 화면 코드를 고치지 않고 Supabase 테이블로 교체합니다.
+> 데모 제보 3건은 `renderedAt`을 기준으로 만드는 순수 함수라 서버·브라우저가 같은 값을 만듭니다
+> (상대시각에서 hydration이 어긋나지 않게).
+
 ---
 
 ## 2단계 — Supabase 연결
@@ -180,15 +212,16 @@ src/
       incoming/page.tsx         내원예정 목록
       capabilities/page.tsx     등록 진료기능
   components/
-    common/   SourceBadge · StatusPill · DemoNotice · EmergencyCallout
+    common/   SourceBadge · StatusPill · DemoNotice · EmergencyCallout · PartnerCta · LiveInfoNotice
     layout/   AppHeader · BottomNav
     home/     HomeSearchForm
     search/   HospitalCard
     partner/  PartnerHeader · PartnerGate(로그인) · ChoiceGroup · 상태/시간/전화/대기 카드 · IncomingCounter
-    hospital/ HospitalDetail (실시간 구독 화면)
+    hospital/ HospitalDetail (실시간 구독 화면) · ReportFeed · ReportForm · ReportTargetPicker · WaitingStepper
   features/
     search-session/  types · extract(규칙 파서) · SearchSessionProvider
     hospitals/       types · labels · mock · service · rows(DB↔도메인) · repository · realtime · useHospitalLive
+    reports/         types · templates(카테고리 가이드) · regions · directory(자동완성) · service · store · seed · useReportFeed
     partner/         types · service(입력 규칙) · mock · supabaseBackend · PartnerProvider
   lib/
     freshness.ts     신선도·만료 판정 (단일 지점)
@@ -214,7 +247,7 @@ supabase/
 | 3 | **실제 병원 1곳 파일럿** — "어제와 동일" 1클릭이 성립하는지 검증 |
 | 4 | Live Status 입력 · 전화상태 · 자동만료 |
 | 5 | Visit Intent · ETA · 유입 집계 |
-| 6 | Realtime Feed · 카카오 로그인 · Moderation |
+| 6 | Realtime Feed(화면·입력 규칙 ✅ / 저장·공유 테이블은 남음) · 카카오 로그인 · Moderation |
 | 7 | Admin · Audit · Abuse Prevention |
 | 8 | 공공데이터 어댑터 · 지도 어댑터 · 카페 요약 · SEO · PWA |
 
