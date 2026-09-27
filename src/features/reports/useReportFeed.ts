@@ -3,6 +3,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import type { HospitalView } from "@/features/hospitals/types";
 import { seedReports } from "./seed";
+import { showDemoReports } from "@/lib/demoContent";
 import type { HospitalRef } from "./directory";
 import { byNewestFirst, reportsForHospital } from "./service";
 import {
@@ -25,7 +26,11 @@ export function useReportFeed(hospital: HospitalView, renderedAt: string): UserR
   const address = hospital.publicData.address;
   // 실시간 갱신으로 hospital 객체가 새로 만들어져도 데모 제보는 다시 만들지 않는다.
   const ref: HospitalRef = useMemo(() => ({ id, name, address }), [id, name, address]);
-  const seeded = useMemo(() => seedReports(ref, renderedAt), [ref, renderedAt]);
+  // 운영에서는 가상 제보를 렌더하지 않는다. (lib/demoContent)
+  const seeded = useMemo(
+    () => (showDemoReports ? seedReports(ref, renderedAt) : []),
+    [ref, renderedAt],
+  );
   const submitted = useSyncExternalStore(
     subscribeReports,
     getSubmittedReports,

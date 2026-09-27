@@ -11,6 +11,12 @@ import {
 import { describeStatus, describeTimePlan, formatAgo, getFreshness, isExpired } from "@/lib/freshness";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
+import {
+  showArrivalIntent,
+  showDemoDistance,
+  showOfficialSourceBadge,
+  showTravelEstimate,
+} from "@/lib/demoContent";
 
 /**
  * 병원 카드는 11항에 나열된 항목만 보여준다.
@@ -26,7 +32,7 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
   const timePlan = expired ? null : describeTimePlan(live);
   const waiting = describeWaitingForUser(hospital);
   const incoming = describeIncomingForUser(hospital.incoming?.within30 ?? null);
-  const admission = getAdmissionWindow(hospital.hours, hospital.travelMinutes);
+  const admission = getAdmissionWindow(hospital.hours, showTravelEstimate ? hospital.travelMinutes : 0);
   const hardToCall = hospital.contactStatus?.status === "difficult";
   // 연령조건이 맞지 않으면 확실한 정보로 취급하지 않는다. 전화 확인이 먼저다.
   const uncertain =
@@ -40,9 +46,12 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
         <Link href={`/hospital/${hospital.id}`} className="min-w-0">
           <h3 className="truncate text-[19px] font-bold">{hospital.publicData.name}</h3>
         </Link>
-        <span className="mt-1 shrink-0 text-[13.5px] font-medium text-ink-faint">
-          {hospital.travelMinutes}분 · {hospital.distanceKm.toFixed(1)}km
-        </span>
+        {/* 고정 데모 출발점 기준이라 '내 주변' 거리·이동시간이 아니다. 운영에서는 숨긴다. */}
+        {showDemoDistance && (
+          <span className="mt-1 shrink-0 text-[13.5px] font-medium text-ink-faint">
+            {hospital.travelMinutes}분 · {hospital.distanceKm.toFixed(1)}km
+          </span>
+        )}
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -61,7 +70,8 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
       )}
 
       <div className="mt-4">
-        {hospital.isParticipating && live ? (
+        {/* 검증된 기관 제공 근거가 없으면 공식 배지 대신 공공정보만 쓴다. */}
+        {showOfficialSourceBadge && hospital.isParticipating && live ? (
           <SourceBadge
             source={live.verifiedBy}
             verifiedAgo={formatAgo(getFreshness(live.verifiedAt).minutesAgo)}
@@ -83,7 +93,7 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
 
         <AdmissionBlock
           window={admission}
-          headline={admissionHeadline(admission, hospital.travelMinutes)}
+          headline={admissionHeadline(admission, hospital.travelMinutes, showTravelEstimate)}
         />
 
         {(waiting || incoming) && (
@@ -94,7 +104,8 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
                 <dd className="font-semibold">{waiting}</dd>
               </div>
             )}
-            {incoming && (
+            {/* 도착 예정 알리기는 후속 개발이라 표시하지 않는다. (lib/demoContent) */}
+            {showArrivalIntent && incoming && (
               <div className="flex justify-between">
                 <dt className="text-ink-faint">내원 예정</dt>
                 <dd className="font-semibold text-caution">{incoming}</dd>

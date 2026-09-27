@@ -85,7 +85,14 @@ export function getAdmissionWindow(
 export function admissionHeadline(
   w: AdmissionWindow,
   travelMinutes: number,
+  /**
+   * 예상 이동 시간을 문구에 쓸 수 있는가.
+   * false 면 이동 시간을 언급하지 않는다 — 근거 없는 추정을 문장으로 확정하지 않기 위해서다.
+   * (lib/demoContent.showTravelEstimate)
+   */
+  showTravel = true,
 ): { tone: "confirmed" | "caution" | "limited" | "unverified"; big: string; sub: string } {
+  const travelNote = "이동 시간은 직접 확인해 주세요";
   switch (w.state) {
     case "none":
       return { tone: "unverified", big: "진료시간 정보 없음", sub: "전화로 확인해 주세요" };
@@ -105,25 +112,31 @@ export function admissionHeadline(
       return {
         tone: "limited",
         big: `내원 마감 ${w.admissionLabel}`,
-        sub: `지금 출발해도 이동 ${travelMinutes}분이라 마감 이후 도착합니다`,
+        sub: showTravel
+          ? `지금 출발해도 이동 ${travelMinutes}분이라 마감 이후 도착합니다`
+          : `내원 마감 시각이 지났습니다 · ${travelNote}`,
       };
     case "now":
       return {
         tone: "caution",
         big: `내원 마감까지 ${w.minutesLeft}분`,
-        sub: `이동 ${travelMinutes}분 · 지금 출발해야 합니다`,
+        sub: showTravel ? `이동 ${travelMinutes}분 · 지금 출발해야 합니다` : travelNote,
       };
     case "hurry":
       return {
         tone: "caution",
         big: `내원 마감까지 ${w.minutesLeft}분`,
-        sub: `내원 마감 ${w.admissionLabel} · 이동 ${travelMinutes}분`,
+        sub: showTravel
+          ? `내원 마감 ${w.admissionLabel} · 이동 ${travelMinutes}분`
+          : `내원 마감 ${w.admissionLabel} · ${travelNote}`,
       };
     case "ample":
       return {
         tone: "confirmed",
         big: `내원 마감 ${w.admissionLabel}`,
-        sub: `남은 시간 ${w.minutesLeft}분 · 이동 ${travelMinutes}분`,
+        sub: showTravel
+          ? `남은 시간 ${w.minutesLeft}분 · 이동 ${travelMinutes}분`
+          : `남은 시간 ${w.minutesLeft}분 · ${travelNote}`,
       };
   }
 }

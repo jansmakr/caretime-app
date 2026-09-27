@@ -3,15 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePartner } from "@/features/partner/PartnerProvider";
+import { showArrivalIntent } from "@/lib/demoContent";
 
 /**
  * 파트너 전용 상단 헤더.
  * 보호자 하단 메뉴(BottomNav)와 섞이지 않도록 탭을 위에 둔다. (기획안 5항)
  * 119 버튼은 보호자 화면에만 있다. 병원 직원 화면에서는 오탭 위험만 늘린다.
  */
+/*
+ * 도착 예정 알리기는 후속 개발이라 메뉴에서 뺀다.
+ * /partner/incoming 페이지와 데이터는 그대로 두었고 링크만 닫았다.
+ * 되살릴 때는 lib/demoContent.showArrivalIntent 를 true 로 바꾼다.
+ */
 const TABS = [
   { href: "/partner", label: "오늘 상태" },
-  { href: "/partner/incoming", label: "내원예정" },
+  ...(showArrivalIntent ? [{ href: "/partner/incoming", label: "내원예정" }] : []),
   { href: "/partner/capabilities", label: "진료기능" },
 ];
 

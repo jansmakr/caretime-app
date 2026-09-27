@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { withMyReactions } from "./reactions";
 import { seedChatMessages } from "./seed";
+import { showDemoReports } from "@/lib/demoContent";
 import { byNewestFirst, filterMessages } from "./service";
 import {
   getChatSnapshot,
@@ -25,7 +26,11 @@ import { CHAT_COOLDOWN_MS, type ChatFilter, type ChatMessageView } from "./types
  */
 export function useChatRoom(renderedAt: string, filter: ChatFilter) {
   const snapshot = useSyncExternalStore(subscribeChat, getChatSnapshot, getChatSnapshotOnServer);
-  const seeded = useMemo(() => seedChatMessages(renderedAt), [renderedAt]);
+  // 운영에서는 가상 대화를 렌더하지 않는다. 빈 상태를 0건으로 꾸미지 않기 위해 목록만 비운다.
+  const seeded = useMemo(
+    () => (showDemoReports ? seedChatMessages(renderedAt) : []),
+    [renderedAt],
+  );
 
   // 저장된 닉네임은 브라우저에만 있다. 첫 렌더가 아니라 마운트 후에 올린다.
   useEffect(() => {

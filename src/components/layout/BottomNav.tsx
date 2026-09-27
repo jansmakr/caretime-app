@@ -6,9 +6,9 @@ import { usePathname } from "next/navigation";
 /**
  * 하단 메뉴는 보호자 기능만 둔다. 병원·관리자 기능은 여기에 넣지 않는다. (기획안 5항)
  *
- * 원래 3개로 고정했는데, 실시간 현장톡(/chat)을 더해 4개가 되었다.
- * 규칙의 뜻은 "개수"가 아니라 "보호자 화면과 병원·관리자 화면을 섞지 않는다"이므로
- * 보호자용 대화방은 여기에 두는 게 맞다. 5개가 되려 할 때는 먼저 무엇을 뺄지 정한다.
+ * 현장톡(/chat)을 더하면서 '실시간'(/live, 5단계 자리표시자)을 뺐다.
+ * 두 항목이 같은 것을 가리켜 중복이었다. /live 경로는 살려 두고 /chat 으로 리다이렉트한다.
+ * 규칙의 뜻은 "개수"가 아니라 "보호자 화면과 병원·관리자 화면을 섞지 않는다"이다.
  */
 const ITEMS = [
   {
@@ -19,19 +19,6 @@ const ITEMS = [
         <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
         <path d="M16 16l4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       </>
-    ),
-  },
-  {
-    href: "/live",
-    label: "실시간",
-    icon: (
-      <path
-        d="M3 12h4l2.5-6 5 12 2.5-6H21"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     ),
   },
   {

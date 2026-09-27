@@ -25,6 +25,12 @@ import {
   isExpired,
 } from "@/lib/freshness";
 import { CONTACT_TEXT, REASON_TEXT } from "@/features/hospitals/labels";
+import {
+  showArrivalIntent,
+  showDemoDistance,
+  showOfficialSourceBadge,
+  showTravelEstimate,
+} from "@/lib/demoContent";
 
 /**
  * 병원 상세. 서버가 읽은 값으로 렌더한 뒤, Supabase 연결 시 병원 직접입력 4개 테이블을 실시간 구독한다.
@@ -46,7 +52,12 @@ export function HospitalDetail({
   const status = describeStatus(live, now);
   const timePlan = expired ? null : describeTimePlan(live);
   const waiting = describeWaitingForUser(hospital, now);
-  const admission = getAdmissionWindow(hospital.hours, hospital.travelMinutes, now);
+  // 이동 시간 추정을 못 믹을 때는 0 을 넣는다. 그러면 마감 판정이 '마감 시각 vs 지금'만 본다.
+  const admission = getAdmissionWindow(
+    hospital.hours,
+    showTravelEstimate ? hospital.travelMinutes : 0,
+    now,
+  );
 
   return (
     <>
@@ -63,9 +74,12 @@ export function HospitalDetail({
           <dl className="mt-3 space-y-2.5 text-[15px]">
             <Row label="주소">{hospital.publicData.address}</Row>
             <Row label="전화">{hospital.publicData.tel}</Row>
-            <Row label="거리">
-              {hospital.distanceKm.toFixed(1)}km · 약 {hospital.travelMinutes}분
-            </Row>
+            {/* 거리는 고정 데모 출발점 기준이라 '내 주변' 거리가 아니다. 운영에서는 숨긴다. */}
+            {showDemoDistance && (
+              <Row label="거리">
+                {hospital.distanceKm.toFixed(1)}km · 약 {hospital.travelMinutes}분
+              </Row>
+            )}
           </dl>
         </section>
 
@@ -74,7 +88,7 @@ export function HospitalDetail({
           <h2 className="ct-section-title">오늘 진료시간</h2>
           <AdmissionBlock
             window={admission}
-            headline={admissionHeadline(admission, hospital.travelMinutes)}
+            headline={admissionHeadline(admission, hospital.travelMinutes, showTravelEstimate)}
           />
           {admission.note && (
             <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">{admission.note}</p>
@@ -117,7 +131,8 @@ export function HospitalDetail({
               현재 상태
               <LiveIndicator connection={connection} />
             </h2>
-            {live && !expired && (
+            {/* 검증된 기관 제공 근거가 없으면 공식 배지를 만들지 않는다. (lib/demoContent) */}
+            {showOfficialSourceBadge && live && !expired && (
               <SourceBadge
                 source={live.verifiedBy}
                 verifiedAgo={formatAgo(getFreshness(live.verifiedAt, now).minutesAgo)}
@@ -170,17 +185,23 @@ export function HospitalDetail({
         <ReportFeed hospital={hospital} renderedAt={renderedAt} now={now} />
         <ReportForm hospital={hospital} />
 
-        {/* 계층 ⑥ — 내원예정. 4단계에서 열린다. 지금은 자리만 만들어 둔다. */}
-        <section className="ct-card p-5">
-          <h2 className="ct-section-title">내원 예정 알리기</h2>
-          <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
-            도착 예정 시간을 의료기관에 미리 알리는 기능입니다. 4단계에서 열립니다.
-          </p>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-caution">{VISIT_INTENT_DISCLAIMER}</p>
-          <button type="button" disabled className="ct-primary mt-4">
-            내원 예정 알리기
-          </button>
-        </section>
+        {/*
+          계층 ⑥ — 도착 예정 알리기. 후속 개발이라 사용자 흐름에서 빼 둔다.
+          코드·타입·데이터는 지우지 않았고 진입점만 닫았다. 되살릴 때는
+          lib/demoContent.showArrivalIntent 를 true 로 바꾼다.
+        */}
+        {showArrivalIntent && (
+          <section className="ct-card p-5">
+            <h2 className="ct-section-title">내원 예정 알리기</h2>
+            <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
+              도착 예정 시간을 의료기관에 미리 알리는 기능입니다.
+            </p>
+            <p className="mt-2 text-[13.5px] leading-relaxed text-caution">{VISIT_INTENT_DISCLAIMER}</p>
+            <button type="button" disabled className="ct-primary mt-4">
+              내원 예정 알리기
+            </button>
+          </section>
+        )}
 
         {hospital.isParticipating && (
           <p className="px-1 pt-1 text-[13px] leading-relaxed text-ink-faint">

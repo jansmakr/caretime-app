@@ -17,6 +17,7 @@ import { buildRoomShareText, buildShareText } from "@/features/chat/share";
 import { useChatRoom } from "@/features/chat/useChatRoom";
 import { EMPTY_FILTER, EMPTY_SCOPE, type ChatFilter, type ChatMessageView } from "@/features/chat/types";
 import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
+import { isFieldTalkSharingLive } from "@/lib/demoContent";
 
 /** 상대시각 재판정 주기. 이벤트가 없어도 "3분 전"은 시간이 지나면 바뀌어야 한다. */
 const TICK_MS = 30_000;
@@ -30,8 +31,15 @@ const TICK_MS = 30_000;
  * 첫 렌더의 now 는 서버 시각(renderedAt)을 쓴다. 마운트 후 실제 시각으로 바꿔
  * 상대시각에서 hydration 이 어긋나지 않게 한다. (병원 상세와 같은 방식)
  */
-export function ChatRoom({ renderedAt }: { renderedAt: string }) {
-  const [filter, setFilter] = useState<ChatFilter>(EMPTY_FILTER);
+export function ChatRoom({
+  renderedAt,
+  initialFilter = EMPTY_FILTER,
+}: {
+  renderedAt: string;
+  /** URL 로 들어온 조건. 허용값 검증은 features/chat/urlFilter 가 이미 마쳤다. */
+  initialFilter?: ChatFilter;
+}) {
+  const [filter, setFilter] = useState<ChatFilter>(initialFilter);
   const [now, setNow] = useState(() => new Date(renderedAt));
   const list = useHospitalList();
   const { messages, totalCount, lastSentAt, react } = useChatRoom(renderedAt, filter);
@@ -60,7 +68,23 @@ export function ChatRoom({ renderedAt }: { renderedAt: string }) {
         onChange={setFilter}
       />
 
-      <ChatComposer hospitals={list.hospitals} filter={filter} lastSentAt={lastSentAt} onSent={show} />
+      {/*
+        작성 기능은 아직 서버에 저장되지 않는다(브라우저 메모리 전용, 실시간 수신 없음).
+        저장되지 않는 입력을 공유처럼 보이게 하지 않기 위해 운영에서는 작성창을 닫고
+        준비 중으로 안내한다. 읽기는 그대로 둔다.
+      */}
+      {isFieldTalkSharingLive ? (
+        <ChatComposer hospitals={list.hospitals} filter={filter} lastSentAt={lastSentAt} onSent={show} />
+      ) : (
+        <section className="ct-card p-5">
+          <h2 className="ct-section-title">현장 상황 남기기</h2>
+          <p className="mt-2 rounded-field border border-amber-200 bg-amber-50 px-3.5 py-3 text-[13.5px] leading-relaxed text-amber-900">
+            <span className="mr-1.5 font-bold">준비 중</span>
+            제보 작성과 공유 기능을 준비하고 있습니다. 아직 다른 분들에게 전달되지 않아 작성창을
+            열어 두지 않았습니다. 지금 상황은 병원에 전화로 확인해 주세요.
+          </p>
+        </section>
+      )}
 
       <section className="ct-card p-5">
         <div className="flex items-baseline justify-between gap-3">
@@ -98,8 +122,9 @@ export function ChatRoom({ renderedAt }: { renderedAt: string }) {
         )}
 
         <p className="mt-3 text-[12px] leading-relaxed text-ink-faint">
-          보낸 글은 지금 이 브라우저에만 보관됩니다. 6단계(Realtime Feed · 로그인 · Moderation)에서
-          실제 공유로 연결됩니다.
+          {isFieldTalkSharingLive
+            ? "보낸 글은 지금 이 브라우저에만 보관됩니다. 서버 저장·실시간 공유는 아직 연결되지 않았습니다."
+            : "제보 공유 기능은 준비 중입니다. 목록이 비어 있는 것은 오류가 아니라 아직 올라온 제보가 없다는 뜻입니다."}
         </p>
       </section>
 
