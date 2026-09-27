@@ -6,17 +6,12 @@ import {
   capabilityLabel,
   describeIncomingForUser,
   describeWaitingForUser,
-  type MatchedHospital,
 } from "@/features/hospitals/service";
+import { straightLineLabel, type ConditionState, type DiscoveryMatch } from "@/features/discovery/match";
 import { describeStatus, describeTimePlan, formatAgo, getFreshness, isExpired } from "@/lib/freshness";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
-import {
-  showArrivalIntent,
-  showDemoDistance,
-  showOfficialSourceBadge,
-  showTravelEstimate,
-} from "@/lib/demoContent";
+import { showArrivalIntent, showOfficialSourceBadge, showTravelEstimate } from "@/lib/demoContent";
 
 /**
  * 병원 카드는 11항에 나열된 항목만 보여준다.
@@ -24,8 +19,14 @@ import {
  * "똑닥보다 복잡해지면 다시 단순화한다"(54항)를 먼저 떠올린다.
  */
 
-export function HospitalCard({ match }: { match: MatchedHospital }) {
-  const { hospital, matchedCapabilities, ageBlocked } = match;
+const CONDITION_TONE: Record<ConditionState, string> = {
+  confirmed: "bg-confirmed-soft text-confirmed-ink",
+  unknown: "bg-caution-soft text-caution-ink",
+  mismatch: "bg-limited-soft text-limited-ink",
+};
+
+export function HospitalCard({ match }: { match: DiscoveryMatch }) {
+  const { hospital, relatedCapabilities, conditions, straightLineKm } = match;
   const live = hospital.liveStatus;
   const expired = live ? isExpired(live) : true;
   const status = describeStatus(live);
@@ -35,9 +36,10 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
   const admission = getAdmissionWindow(hospital.hours, showTravelEstimate ? hospital.travelMinutes : 0);
   const hardToCall = hospital.contactStatus?.status === "difficult";
   // 연령조건이 맞지 않으면 확실한 정보로 취급하지 않는다. 전화 확인이 먼저다.
+  // 조건이 하나라도 미확인·불일치면 전화 확인을 앞으로 끌어올린다.
   const uncertain =
     expired ||
-    ageBlocked ||
+    conditions.some((c) => c.state !== "confirmed") ||
     ["none", "unknown", "toolate", "closed", "now"].includes(admission.state);
 
   return (
@@ -46,16 +48,20 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
         <Link href={`/hospital/${hospital.id}`} className="min-w-0">
           <h3 className="truncate text-[19px] font-bold">{hospital.publicData.name}</h3>
         </Link>
-        {/* 고정 데모 출발점 기준이라 '내 주변' 거리·이동시간이 아니다. 운영에서는 숨긴다. */}
-        {showDemoDistance && (
+        {/*
+          거리는 사용자가 [내 주변]을 허용해 실제 좌표가 있을 때만 보여준다.
+          수동 지역 선택으로는 계산하지 않고, 이동 시간은 쓰지 않는다.
+          고정 데모 출발점 기준 값(hospital.distanceKm)은 쓰지 않는다.
+        */}
+        {straightLineKm !== null && (
           <span className="mt-1 shrink-0 text-[13.5px] font-medium text-ink-faint">
-            {hospital.travelMinutes}분 · {hospital.distanceKm.toFixed(1)}km
+            {straightLineLabel(straightLineKm)}
           </span>
         )}
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
-        {matchedCapabilities.map((cap, i) => (
+        {relatedCapabilities.map((cap, i) => (
           <span key={i} className="ct-chip">
             {capabilityLabel(cap)}
             <span className="ml-1.5 font-normal text-ink-faint">{ageConditionLabel(cap)}</span>
@@ -63,10 +69,25 @@ export function HospitalCard({ match }: { match: MatchedHospital }) {
         ))}
       </div>
 
-      {ageBlocked && (
-        <p className="mt-2 text-[13.5px] leading-relaxed text-caution">
-          입력하신 연령은 이 의료기관의 등록 조건과 맞지 않습니다. 전화로 확인해 보세요.
-        </p>
+      {/*
+        선택 조건별 상태. 확인된 것 / 전화 확인이 필요한 것 / 명시적으로 맞지 않는 것을
+        구분한다. 정보가 없다는 이유로 '진료 불가'라고 적지 않는다.
+      */}
+      {conditions.length > 0 && (
+        <ul className="mt-2.5 space-y-1.5">
+          {conditions.map((c) => (
+            <li key={c.label} className="flex items-start gap-2">
+              <span
+                className={`mt-px shrink-0 rounded-md px-1.5 py-0.5 text-[11.5px] font-bold ${CONDITION_TONE[c.state]}`}
+              >
+                {c.state === "confirmed" ? "확인" : c.state === "mismatch" ? "불일치" : "미확인"}
+              </span>
+              <span className="min-w-0 break-keep text-[13.5px] leading-snug text-ink-muted">
+                {c.detail}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
 
       <div className="mt-4">

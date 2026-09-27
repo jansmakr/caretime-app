@@ -1,5 +1,6 @@
 import { BottomNav } from "@/components/layout/BottomNav";
 import { SearchSessionProvider } from "@/features/search-session/SearchSessionProvider";
+import { DiscoveryProvider } from "@/features/discovery/DiscoveryProvider";
 
 /**
  * 보호자 화면 레이아웃.
@@ -8,8 +9,10 @@ import { SearchSessionProvider } from "@/features/search-session/SearchSessionPr
 export default function ConsumerLayout({ children }: { children: React.ReactNode }) {
   return (
     <SearchSessionProvider>
-      <div className="mx-auto min-h-dvh max-w-app pb-[calc(76px+env(safe-area-inset-bottom))]">{children}</div>
-      <BottomNav />
+      <DiscoveryProvider>
+        <div className="mx-auto min-h-dvh max-w-app pb-[calc(76px+env(safe-area-inset-bottom))]">{children}</div>
+        <BottomNav />
+      </DiscoveryProvider>
     </SearchSessionProvider>
   );
 }

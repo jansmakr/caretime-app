@@ -1,7 +1,7 @@
 import { AppHeader } from "@/components/layout/AppHeader";
 import { DemoNotice } from "@/components/common/DemoNotice";
-import { LiveTalkBanner } from "@/components/home/LiveTalkBanner";
-import { HomeSearchForm } from "@/components/home/HomeSearchForm";
+import { DiscoveryForm } from "@/components/home/DiscoveryForm";
+import { HomeLiveTalkBanner } from "@/components/home/HomeLiveTalkBanner";
 
 /*
  * 홈은 다시 정적 렌더다.
@@ -16,18 +16,17 @@ export default function HomePage() {
       <AppHeader />
       <DemoNotice />
       <main className="px-5 pt-8">
-        <h2 className="text-[28px] font-extrabold leading-[1.3]">
-          지금 어떤 상황인지
+        <h2 className="text-[26px] font-extrabold leading-[1.3]">
+          어디에서 어떤 진료를
           <br />
-          말씀해주세요.
+          찾으시나요?
         </h2>
-        <HomeSearchForm />
+        <DiscoveryForm />
         {/*
          * 현장톡 배너. 본문 흐름 안에 두고 하단 고정·팝업으로 만들지 않는다.
-         * 홈에는 아직 지역·진료 항목 선택 UI 가 없어서 넘길 조건이 없다.
-         * 임의 기본 지역을 만들지 않고 /chat 으로만 보낸다. 조건 전달은 2단계에서 붙는다.
+         * 선택한 지역·일반 카테고리만 넘긴다. 나이·방문 목적·좌표는 넘기지 않는다.
          */}
-        <LiveTalkBanner />
+        <HomeLiveTalkBanner />
       </main>
     </>
   );
