@@ -132,6 +132,31 @@ export interface PublicHospitalData {
   syncedAt: string;
 }
 
+/**
+ * 항목별 공식 상태 (service_statuses). 병원당 여러 줄이다.
+ *
+ * 기존 HospitalLiveStatus(병원당 한 줄)와 **병존**한다. 옮기는 중이기 때문이다.
+ *   services   : 항목별 목록. 아직 화면에 노출하지 않는다. (턴 1.6 에서 연다)
+ *   liveStatus : 그 목록을 가장 보수적으로 접은 대표 하나. 화면이 지금 읽는 값이다.
+ * 접기 규칙은 features/hospitals/serviceStatus.ts 에 있다.
+ *
+ * status 가 null 이면 병원이 이 항목에 아직 아무 값도 게시하지 않은 것이다.
+ * 없는 값을 '가능'으로 읽지 않기 위해 null 을 그대로 들고 온다.
+ */
+export interface HospitalServiceStatus {
+  serviceId: string;
+  category: "laceration" | "burn" | "other";
+  serviceCode: string;
+  /** null = 미게시. 만료 판정은 읽는 시점에 한다(serviceStatus.effectiveStatusOf). */
+  status: "AVAILABLE" | "LIMITED" | "CLOSED" | "PAUSED" | null;
+  waitBucket: "UNKNOWN" | "LE30" | "FROM30TO60" | "GE60";
+  validUntil: string | null;
+  updatedAt: string | null;
+  reopenAt: string | null;
+  /** 동시 수정 compare-and-swap 용. 화면은 쓰지 않는다. */
+  version: number;
+}
+
 /** 화면 조립용 뷰 모델. 각 조각은 출처를 잃지 않은 채로 들어온다. */
 export interface HospitalView {
   id: string;
@@ -140,7 +165,16 @@ export interface HospitalView {
   travelMinutes: number;
   capabilities: HospitalCapability[];
   hours: HospitalHours | null;
+  /**
+   * 병원 대표 상태. services 를 가장 보수적으로 접은 값이다.
+   * service_statuses 이행 전에는 옛 hospital_live_status 에서 그대로 온다.
+   */
   liveStatus: HospitalLiveStatus | null;
+  /**
+   * 항목별 공식 상태 목록. **아직 화면에 노출하지 않는다.**
+   * 이행 전에는 빈 배열이다. 턴 1.6 에서 카드·상세가 이 값을 읽는다.
+   */
+  services: HospitalServiceStatus[];
   contactStatus: HospitalContactStatus | null;
   waiting: HospitalWaitingStatus | null;
   incoming: IncomingAggregate | null;

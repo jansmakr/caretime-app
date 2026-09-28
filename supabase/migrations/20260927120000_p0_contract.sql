@@ -20,7 +20,18 @@
 
 create type public.application_state as enum
   ('DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO', 'APPROVED', 'REJECTED');
-create type public.post_category as enum ('laceration', 'burn', 'other');
+/*
+ * 글 분류. care_category(진료 항목)와 값이 같지만 **같은 타입으로 합치지 않는다.**
+ *
+ * 이름을 post_category 에서 chat_topic 으로 바꾼 이유가 그것이다.
+ * 값이 같은 채로 이름까지 비슷하면 반년 뒤 누가 복붙 실수로 보고 하나로 합친다.
+ *
+ * 분리하는 근거는 앞으로 값이 갈라지기 때문이다.
+ *   care_category : 병원이 실제로 하는 처치를 따라간다. 병원이 등록·토글하는 단위다.
+ *   chat_topic    : 보호자가 쓰는 말을 따라간다. 글을 고르는 칩의 단위다.
+ * 같이 움직일 이유가 없다. 한쪽이 늘어날 때 다른 쪽을 따라 늘리면 안 된다.
+ */
+create type public.chat_topic as enum ('laceration', 'burn', 'other');
 create type public.post_kind as enum ('observation', 'question');
 create type public.content_visibility as enum
   ('VISIBLE', 'FLAGGED', 'QUARANTINED', 'RESTORED', 'REMOVED');
@@ -87,7 +98,7 @@ create index guest_sessions_expiry on public.guest_sessions (expires_at) where r
 create table public.posts (
   id uuid primary key default gen_random_uuid(),
   hospital_id text not null references public.hospitals (id) on delete cascade,
-  category public.post_category not null,
+  category public.chat_topic not null,
   guest_id uuid not null references public.guest_sessions (id) on delete cascade,
   -- 병원 간 활동 연결을 줄이기 위한 방별 별칭. (§3.1)
   room_alias text not null,
@@ -117,7 +128,7 @@ create index posts_purge on public.posts (purge_at);
 create table public.observations (
   id uuid primary key default gen_random_uuid(),
   hospital_id text not null references public.hospitals (id) on delete cascade,
-  category public.post_category not null,
+  category public.chat_topic not null,
   guest_id uuid not null references public.guest_sessions (id) on delete cascade,
   metric public.observation_metric not null,
   value text not null,

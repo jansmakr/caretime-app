@@ -31,8 +31,14 @@ export function getFreshness(verifiedAt: string, now: Date = new Date()): Freshn
   return { level: "recheck", minutesAgo };
 }
 
-/** 만료된 상태는 조회 시점에서 걸러낸다. DB 쿼리에서도 동일 조건을 건다. */
-export function isExpired(status: HospitalLiveStatus, now: Date = new Date()): boolean {
+/**
+ * 만료된 상태는 조회 시점에서 걸러낸다. DB 쿼리에서도 동일 조건을 건다.
+ *
+ * 파라미터를 구조적 타입으로 둔다. 항목별 상태(HospitalServiceStatus)도 같은 규칙으로
+ * 만료를 판정해야 하는데, 규칙을 두 번 쓰면 한쪽만 고쳐지는 날이 온다.
+ * 판정 기준은 여기 한 줄뿐이다.
+ */
+export function isExpired(status: { expiresAt: string }, now: Date = new Date()): boolean {
   return new Date(status.expiresAt).getTime() <= now.getTime();
 }
 

@@ -2,6 +2,7 @@ import { addDays, kstDateTime, kstServiceDate } from "@/lib/kst";
 import type {
   ContactStatusCode,
   HospitalCapability,
+  HospitalServiceStatus,
   HospitalContactStatus,
   HospitalHours,
   HospitalLiveStatus,
@@ -85,6 +86,43 @@ export interface WaitingStatusRow {
   verified_at: string;
 }
 
+/**
+ * service_statuses + hospital_services 조인 행. (migration 20260926120000)
+ *
+ * **아직 조회하지 않는다.** migration 을 적용한 뒤 repository 의 SELECT 에 더한다.
+ * 지금 넣어 두는 이유: 접기 규칙 테스트가 이 모양을 전제로 하고, 적용 시점에
+ * 타입부터 새로 쓰지 않아도 되게 하려는 것이다.
+ */
+export interface ServiceStatusRow {
+  hospital_id: string;
+  service_id: string;
+  status: "AVAILABLE" | "LIMITED" | "CLOSED" | "PAUSED";
+  wait_bucket: "UNKNOWN" | "LE30" | "FROM30TO60" | "GE60";
+  reason_code: string | null;
+  reopen_at: string | null;
+  valid_until: string;
+  updated_at: string;
+  version: number;
+}
+
+export interface HospitalServiceRow {
+  id: string;
+  hospital_id: string;
+  category: "laceration" | "burn" | "other";
+  service_code: string;
+  reported_age_min: number | null;
+  reported_age_max: number | null;
+  capability_note: string | null;
+  profile_verified_at: string | null;
+  /** PostgREST 는 1:1 조인을 객체로, 1:N 을 배열로 준다. 어느 쪽이 와도 받는다. */
+  service_statuses: ServiceStatusRow[] | ServiceStatusRow | null;
+}
+
+export const SERVICE_STATUS_COLUMNS =
+  "hospital_id,service_id,status,wait_bucket,reason_code,reopen_at,valid_until,updated_at,version";
+export const HOSPITAL_SERVICE_COLUMNS =
+  "id,hospital_id,category,service_code,reported_age_min,reported_age_max,capability_note,profile_verified_at";
+
 export const LIVE_STATUS_COLUMNS =
   "hospital_id,capability_id,status,reason_code,custom_reason,detail_text,starts_at,expected_resume_at,recheck_at,verified_by,verified_at,expires_at";
 export const DAILY_HOURS_COLUMNS =
@@ -138,6 +176,28 @@ export function toWaiting(row: WaitingStatusRow): HospitalWaitingStatus {
     headcount: row.headcount,
     verifiedAt: row.verified_at,
   };
+}
+
+/**
+ * 항목 행 → 도메인. 상태가 게시되지 않은 항목도 **목록에서 빼지 않는다.**
+ * 빼면 "항목이 없는 병원"과 "항목은 있는데 아직 안 누른 병원"을 구분할 수 없다.
+ * 전자는 접수 개념이 없고, 후자는 눌러 주기를 기다리는 상태다.
+ */
+export function toServiceStatuses(rows: HospitalServiceRow[]): HospitalServiceStatus[] {
+  return rows.map((row) => {
+    const status = one(row.service_statuses);
+    return {
+      serviceId: row.id,
+      category: row.category,
+      serviceCode: row.service_code,
+      status: status?.status ?? null,
+      waitBucket: status?.wait_bucket ?? "UNKNOWN",
+      validUntil: status?.valid_until ?? null,
+      updatedAt: status?.updated_at ?? null,
+      reopenAt: status?.reopen_at ?? null,
+      version: status?.version ?? 0,
+    };
+  });
 }
 
 /** 병원 전체 상태를 우선하고, 없으면 진료기능별 상태 중 하나를 쓴다. */
@@ -275,6 +335,13 @@ export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView 
     waiting: waiting ? toWaiting(waiting) : null,
     // 내원예정은 5단계(Visit Intent)에서 테이블이 생긴다. 그 전까지 보호자 화면에 표시하지 않는다.
     incoming: null,
+    /*
+     * 항목별 상태. 아직 조회하지 않는다.
+     * service_statuses migration 을 적용한 뒤 repository 의 SELECT 에 조인을 더하고
+     * toServiceStatuses() 로 채운다. 그때 liveStatus 는 이 목록을 접은 대표가 된다.
+     * (접기 규칙: features/hospitals/serviceStatus.ts)
+     */
+    services: [],
     isParticipating: row.is_participating,
   };
 }

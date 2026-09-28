@@ -16,9 +16,10 @@
 --   - 기존 컬럼·테이블을 바꾸지 않는다. 추가만 한다.
 --   - hospitals.id 는 text('h_001')이다. 그대로 참조한다.
 --
--- 이 파일의 타임스탬프(0926)가 p0_contract(0927)보다 앞인 이유:
---   둘 다 아직 어디에도 적용되지 않았다. p0_contract 가 이 파일의 enum·테이블을 참조하므로
---   이름 순서로 먼저 돌아야 한다. 적용 이력이 없으므로 번호 조정이 안전하다.
+-- 타임스탬프 주의 — 되돌리지 말 것:
+--   p0_contract(0927)가 이 파일의 타입을 참조하므로 이름 순서상 먼저 돌아야 한다.
+--   작성 순서와 번호가 다른 것은 의도다.
+--   (둘 다 아직 어디에도 적용되지 않았으므로 번호 조정이 안전했다)
 -- ============================================================
 
 -- ── enum ────────────────────────────────────────────────────
@@ -41,9 +42,17 @@ create type public.wait_bucket as enum ('UNKNOWN', 'LE30', 'FROM30TO60', 'GE60')
 create type public.verification_state as enum
   ('PENDING', 'UNDER_REVIEW', 'NEEDS_INFO', 'APPROVED', 'REJECTED');
 
-/**
- * 진료 항목 분류. 현장톡 글 분류(p0_contract 의 post_category)와 값이 같지만 도메인이 다르다.
- * 지금 한 타입으로 합치면 두 migration 사이에 의존 순서가 생긴다. 턴 5 에서 함께 정리한다.
+/*
+ * 진료 항목 분류. 현장톡 글 분류(p0_contract 의 chat_topic)와 값이 같지만
+ * **같은 타입으로 합치지 않는다.**
+ *
+ * 분리하는 근거는 앞으로 값이 갈라지기 때문이다.
+ *   care_category : 병원이 실제로 하는 처치를 따라간다. 병원이 등록·토글하는 단위다.
+ *   chat_topic    : 보호자가 쓰는 말을 따라간다. 글을 고르는 칩의 단위다.
+ * 같이 움직일 이유가 없다. 한쪽이 늘어날 때 다른 쪽을 따라 늘리면 안 된다.
+ *
+ * 이름을 서로 다르게 둔 것도 그래서다 — 값이 같은 채로 이름까지 비슷하면
+ * 반년 뒤 누가 복붙 실수로 보고 하나로 합친다.
  */
 create type public.care_category as enum ('laceration', 'burn', 'other');
 
@@ -205,6 +214,24 @@ group by hc.hospital_id, cat.category
 on conflict (hospital_id, service_code) do nothing;
 
 -- service_statuses 는 의도적으로 비어 있다. INSERT 하지 않는다.
+
+-- ── 병원 대표 상태로 접는 규칙 (읽기 계층) ─────────────────
+--
+-- 화면은 아직 "병원의 상태는 하나"를 전제한다. 그래서 읽기 계층이 항목 목록을
+-- 대표 하나로 접는다. 구현은 src/features/hospitals/serviceStatus.ts 다.
+--
+--   CLOSED > PAUSED > LIMITED > UNKNOWN > AVAILABLE
+--
+-- 가장 보수적인 항목으로 접는다. 좋은 쪽으로 접지 않는다.
+-- 항목이 하나라도 CLOSED 면 대표는 CLOSED 다. 전부 AVAILABLE 일 때만 AVAILABLE 이다.
+-- 미설정·만료(UNKNOWN)도 AVAILABLE 보다 앞이다.
+--
+-- 이유: 봉합=AVAILABLE / 화상=CLOSED 인 병원을 "지금 접수 가능"으로 접으면
+--       화상 환자 보호자가 그걸 보고 야간에 출발한다. 헛걸음을 없애는 게 목적인데
+--       접기 규칙이 헛걸음을 만든다. 검색에서 덜 보이는 손해보다 잘못 보내는 손해가 크다.
+--
+-- 이 규칙을 SQL 뷰로 옮기려는 사람에게: 만료 판정이 읽는 시점에 일어나야 하므로
+-- now() 를 쓰는 뷰가 필요하다. 지금은 애플리케이션 계층에 두고 vitest 로 고정해 두었다.
 
 -- ============================================================
 -- RLS
