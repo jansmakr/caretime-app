@@ -25,7 +25,8 @@ import {
   PartnerSetupError,
   SLICE_OF_TABLE,
   applyHospitalChange,
-  fetchMembership,
+  fetchMemberships,
+  type Membership,
   loadPartnerState,
   saveSlice,
   type PartnerSlice,
@@ -47,7 +48,17 @@ const TICK_MS = 30_000;
 /** 대기 스테퍼 연타를 한 번의 저장으로 묶는 시간. */
 const WAITING_DEBOUNCE_MS = 600;
 
-export type PartnerPhase = "loading" | "signed_out" | "no_membership" | "ready" | "error";
+/**
+ * choose_hospital: 소속이 여러 곳이라 사용자가 골라야 하는 상태.
+ * 한 곳이면 이 상태를 거치지 않고 바로 ready 로 간다.
+ */
+export type PartnerPhase =
+  | "loading"
+  | "signed_out"
+  | "choose_hospital"
+  | "no_membership"
+  | "ready"
+  | "error";
 
 interface PartnerContextValue {
   source: "demo" | "supabase";
@@ -56,6 +67,10 @@ interface PartnerContextValue {
   notice: string | null;
   dismissNotice: () => void;
   connection: RealtimeConnection | "off";
+  /** 로그인한 사용자의 소속 기관 전부. 선택 화면이 쓴다. */
+  memberships: Membership[];
+  /** 여러 곳 중 고른 기관. 한 곳이면 자동으로 정해진다. */
+  selectHospital: (hospitalId: string) => void;
   hospital: HospitalView | null;
   state: PartnerState | null;
   visits: IncomingVisit[];
@@ -91,6 +106,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
   const [visits, setVisits] = useState<IncomingVisit[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [hospitalId, setHospitalId] = useState<string | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
 
   // 연타·동시 저장에서 항상 최신 값을 기준으로 계산하기 위한 거울. 렌더를 기다리지 않는다.
   const stateRef = useRef<PartnerState | null>(null);
@@ -134,6 +150,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       userIdRef.current = userId;
       hospitalIdRef.current = null;
       setHospitalId(null);
+      setMemberships([]);
       replaceState(null);
       setHospital(null);
       if (!userId) {
@@ -142,14 +159,20 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       }
       setPhase("loading");
       try {
-        const membership = await fetchMembership(client);
+        const found = await fetchMemberships(client);
         if (cancelled) return;
-        if (!membership) {
+        setMemberships(found);
+        if (found.length === 0) {
           setPhase("no_membership");
           return;
         }
-        hospitalIdRef.current = membership.hospitalId;
-        setHospitalId(membership.hospitalId);
+        if (found.length > 1) {
+          // 겸직 직원. 어느 기관으로 들어갈지 본인이 고른다. 첫 행을 임의로 쓰지 않는다.
+          setPhase("choose_hospital");
+          return;
+        }
+        hospitalIdRef.current = found[0].hospitalId;
+        setHospitalId(found[0].hospitalId);
       } catch (e) {
         if (cancelled) return;
         setNotice(errorText(e));
@@ -344,6 +367,21 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
     await getBrowserSupabase().auth.signOut();
   }, []);
 
+  /**
+   * 소속 기관 선택. 목록에 없는 id 는 받지 않는다 —
+   * 화면에서 넘어온 값을 그대로 믿고 다른 기관으로 들어가지 않게 한다.
+   * (실제 차단은 RLS 가 하지만, 헛요청을 보내지 않는다)
+   */
+  const selectHospital = useCallback(
+    (id: string) => {
+      if (!memberships.some((m) => m.hospitalId === id)) return;
+      hospitalIdRef.current = id;
+      setHospitalId(id);
+      setPhase("loading");
+    },
+    [memberships],
+  );
+
   const incoming = useMemo(
     () => (state ? aggregateIncoming(state.hospitalId, visits, now) : null),
     [state, visits, now],
@@ -356,6 +394,8 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       notice,
       dismissNotice: () => setNotice(null),
       connection,
+      memberships,
+      selectHospital,
       hospital,
       state,
       visits,
@@ -371,7 +411,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       stepWaitingHeadcount: (delta) =>
         apply((s, t) => setWaitingHeadcount(s, (s.waiting.headcount ?? 0) + delta, t), ["waiting"]),
     }),
-    [source, phase, notice, connection, hospital, state, visits, incoming, now, signIn, signOut, apply, saveHours],
+    [source, phase, notice, connection, memberships, selectHospital, hospital, state, visits, incoming, now, signIn, signOut, apply, saveHours],
   );
 
   return <PartnerContext.Provider value={value}>{children}</PartnerContext.Provider>;

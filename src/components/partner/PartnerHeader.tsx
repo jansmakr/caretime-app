@@ -24,7 +24,8 @@ const TABS = [
 export function PartnerHeader() {
   const pathname = usePathname();
   const { hospital, phase, source, signOut } = usePartner();
-  const signedIn = source === "supabase" && (phase === "ready" || phase === "no_membership");
+  const signedIn =
+    source === "supabase" && (phase === "ready" || phase === "no_membership" || phase === "choose_hospital");
 
   return (
     <header className="sticky top-0 z-40 bg-canvas/85 backdrop-blur-md">

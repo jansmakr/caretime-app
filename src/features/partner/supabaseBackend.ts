@@ -38,15 +38,38 @@ export const SLICE_OF_TABLE: Record<HospitalChange["table"], PartnerSlice> = {
 /** 운영자가 계정을 병원에 연결하지 않았거나, 병원 기본정보가 부족해 입력을 받을 수 없는 경우. */
 export class PartnerSetupError extends Error {}
 
-export async function fetchMembership(client: SupabaseClient): Promise<{ hospitalId: string } | null> {
+export interface Membership {
+  hospitalId: string;
+  role: "owner" | "staff";
+  /** 선택 화면에 보여줄 기관명. hospitals 는 공개 읽기라 조인으로 가져온다. */
+  hospitalName: string;
+}
+
+/**
+ * 로그인한 사용자의 소속 기관 **전부**.
+ *
+ * RLS 의 "own membership" 정책이 user_id = auth.uid() 행만 돌려주므로
+ * 클라이언트가 타인의 소속을 볼 수 없다. 서버에서 다시 걸러야 할 값이 아니다.
+ *
+ * 한 곳이면 바로 진입하고, 여러 곳이면 선택 화면을 띄운다. 그래서 limit 을 걸지 않는다.
+ * (이전 구현은 .limit(1) 로 첫 행만 가져와 겸직 직원이 다른 기관으로 못 들어갔다)
+ */
+export async function fetchMemberships(client: SupabaseClient): Promise<Membership[]> {
   const { data, error } = await client
     .from("hospital_members")
-    .select("hospital_id")
-    .order("created_at")
-    .limit(1)
-    .maybeSingle();
+    .select("hospital_id, role, hospitals(name)")
+    .order("created_at");
   if (error) throw new Error(`소속 병원 조회 실패: ${error.message}`);
-  return data ? { hospitalId: (data as { hospital_id: string }).hospital_id } : null;
+
+  type Row = { hospital_id: string; role: "owner" | "staff"; hospitals: { name: string } | { name: string }[] | null };
+  return (data as unknown as Row[]).map((row) => {
+    const joined = Array.isArray(row.hospitals) ? row.hospitals[0] : row.hospitals;
+    return {
+      hospitalId: row.hospital_id,
+      role: row.role,
+      hospitalName: joined?.name ?? row.hospital_id,
+    };
+  });
 }
 
 export async function loadPartnerState(
