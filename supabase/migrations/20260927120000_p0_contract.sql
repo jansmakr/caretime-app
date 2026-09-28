@@ -10,16 +10,14 @@
 --   - hospitals.id 는 현재 text('h_001')이며 그대로 참조한다.
 --     PRD §9.1 은 UUID 를 적었지만, 바꾸면 이미 공유된 /hospital/{id} 링크가 깨진다.
 --     UUID 전환이 필요해지면 별도 컬럼 추가 + 이중 조회 기간을 둔 뒤 정리한다.
---   - service_statuses 는 기존 hospital_live_status 와 **병존**한다.
---     읽기 경로를 순차 전환한 뒤에야 옛 테이블 정리를 검토한다.
+--   - 항목별 공식 상태(care_category · service_status_code · wait_bucket ·
+--     verification_state · hospital_services · service_statuses · status_events)는
+--     20260926120000_service_statuses.sql 로 옮겼다. 여기서 다시 만들지 않는다.
+--     이 파일은 그 타입들을 참조만 한다(이름 순서상 먼저 돈다).
 -- ============================================================
 
 -- ── enum ────────────────────────────────────────────────────
 
-create type public.service_status_code as enum ('AVAILABLE', 'CLOSED', 'PAUSED', 'UNKNOWN');
-create type public.wait_bucket as enum ('UNKNOWN', 'LE30', 'FROM30TO60', 'GE60');
-create type public.verification_state as enum
-  ('PENDING', 'UNDER_REVIEW', 'NEEDS_INFO', 'APPROVED', 'REJECTED');
 create type public.application_state as enum
   ('DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO', 'APPROVED', 'REJECTED');
 create type public.post_category as enum ('laceration', 'burn', 'other');
@@ -32,91 +30,7 @@ create type public.report_reason as enum
 create type public.report_state as enum ('OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED');
 create type public.moderation_action as enum ('QUARANTINE', 'REMOVE', 'RESTORE', 'DISMISS');
 
--- ── 기관 심사 상태 (기존 hospitals 에 additive) ─────────────
---
--- default 를 두지 않는다. default 가 있으면 나중에 실제 병원을 넣을 때도 값을 안 쓰고
--- 지나가서 "심사하지 않은 병원이 조용히 PENDING 으로 들어오는" 일이 반복된다.
--- 삽입할 때 반드시 명시하게 하고, 기존 행은 여기서 한 번 명시적으로 채운다.
-alter table public.hospitals
-  add column if not exists verification_state public.verification_state,
-  add column if not exists verified_at timestamptz,
-  add column if not exists registry_key text;
 
--- 기존 시드 5행(hpid MOCK0001~0005)은 심사한 적이 없다. 명시적으로 PENDING 이다.
--- 승인 전에는 deriveOfficialStatus() 가 UNVERIFIED 로 내린다. (§9.2)
-update public.hospitals set verification_state = 'PENDING' where verification_state is null;
-
-alter table public.hospitals
-  alter column verification_state set not null;
-
-create unique index if not exists hospitals_registry_key_unique
-  on public.hospitals (registry_key) where registry_key is not null;
-
--- ── 진료 항목 (PRD §9.1 hospital_services) ──────────────────
--- 기존 hospital_capabilities 와 병존한다. 이쪽은 PRD 의 category/service_code 계약이다.
-create table public.hospital_services (
-  id uuid primary key default gen_random_uuid(),
-  hospital_id text not null references public.hospitals (id) on delete cascade,
-  category public.post_category not null,
-  service_code text not null,
-  reported_age_min smallint,
-  reported_age_max smallint,
-  capability_note text check (char_length(capability_note) <= 120),
-  profile_verified_at timestamptz,
-  created_at timestamptz not null default now(),
-  constraint hospital_services_code unique (hospital_id, service_code),
-  constraint hospital_services_age check (
-    reported_age_min is null or reported_age_max is null or reported_age_min <= reported_age_max
-  )
-);
-create index hospital_services_lookup on public.hospital_services (hospital_id, category);
-
--- ── 항목별 공식 상태 (PRD §6.2 · §9.1 service_statuses) ─────
-create table public.service_statuses (
-  hospital_id text not null references public.hospitals (id) on delete cascade,
-  service_id uuid not null references public.hospital_services (id) on delete cascade,
-  status public.service_status_code not null,
-  wait_bucket public.wait_bucket not null default 'UNKNOWN',
-  reason_code text check (char_length(reason_code) <= 40),
-  reopen_at timestamptz,
-  valid_until timestamptz not null,
-  updated_by uuid not null references auth.users (id),
-  updated_at timestamptz not null default now(),
-  -- 동시 편집 compare-and-swap 용. 조용히 덮어쓰지 않는다. (§6.2)
-  version integer not null default 1,
-  primary key (hospital_id, service_id),
-  -- 다른 병원의 service_id 로 쓰는 것을 DB 가 막는다. (§9.1 composite FK 검증)
-  constraint service_statuses_same_hospital
-    foreign key (service_id, hospital_id)
-    references public.hospital_services (id, hospital_id),
-  -- AVAILABLE·PAUSED 는 최대 60분, CLOSED 는 최대 12시간. (§6.2)
-  constraint service_statuses_ttl check (
-    valid_until > updated_at
-    and case
-      when status = 'CLOSED' then valid_until <= updated_at + interval '12 hours'
-      else valid_until <= updated_at + interval '60 minutes'
-    end
-  ),
-  -- UNKNOWN 은 저장하는 값이 아니라 파생값이다. (§6.2 · features/p0/status.ts)
-  constraint service_statuses_not_unknown check (status <> 'UNKNOWN')
-);
-
--- service_id → (id, hospital_id) 복합 FK 를 위한 유니크
-alter table public.hospital_services
-  add constraint hospital_services_id_hospital unique (id, hospital_id);
-
--- ── 상태 변경 이력 (PRD §9.1 status_events) ─────────────────
-create table public.status_events (
-  id bigint generated always as identity primary key,
-  hospital_id text not null references public.hospitals (id) on delete cascade,
-  service_id uuid not null references public.hospital_services (id) on delete cascade,
-  actor_user_id uuid references auth.users (id),
-  old_json jsonb,
-  new_json jsonb not null,
-  version integer not null,
-  created_at timestamptz not null default now()
-);
-create index status_events_lookup on public.status_events (hospital_id, created_at desc, id desc);
 
 -- ── 공지 (PRD §6.3) ─────────────────────────────────────────
 create table public.notices (
@@ -307,9 +221,6 @@ create index idempotency_expiry on public.idempotency_keys (expires_at);
 -- 정책이 없으면 RLS 가 전부 거절한다.
 -- ============================================================
 
-alter table public.hospital_services enable row level security;
-alter table public.service_statuses enable row level security;
-alter table public.status_events enable row level security;
 alter table public.notices enable row level security;
 alter table public.partner_applications enable row level security;
 alter table public.guest_sessions enable row level security;
@@ -324,23 +235,6 @@ alter table public.idempotency_keys enable row level security;
 -- 소속 판정은 기존 public.is_hospital_member() 를 그대로 쓴다. 새로 만들지 않는다.
 
 -- 병원 직원: 자기 기관의 항목·상태·공지만. 권한 회수는 다음 요청부터 막힌다. (§5.2)
-create policy "member read services" on public.hospital_services
-  for select to authenticated
-  using (public.is_hospital_member(hospital_id));
-
-create policy "member read statuses" on public.service_statuses
-  for select to authenticated
-  using (public.is_hospital_member(hospital_id));
-
-create policy "member write statuses" on public.service_statuses
-  for insert to authenticated
-  with check (public.is_hospital_member(hospital_id));
-
-create policy "member update statuses" on public.service_statuses
-  for update to authenticated
-  using (public.is_hospital_member(hospital_id))
-  with check (public.is_hospital_member(hospital_id));
-
 create policy "member read notices" on public.notices
   for select to authenticated
   using (public.is_hospital_member(hospital_id));
