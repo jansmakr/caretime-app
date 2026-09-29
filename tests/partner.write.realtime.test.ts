@@ -67,12 +67,20 @@ afterAll(async () => {
   await partner.auth.signOut();
 });
 
+/**
+ * 주 버튼을 누른 것과 같다 — 항목값 전부를 같은 값으로 세팅한다.
+ * 저장되는 실체가 항목값이므로 liveStatus 만 바꾸면 아무것도 바뀌지 않는다.
+ */
 async function save(status: "normal" | "partial" | "paused" | "difficult", now = new Date()) {
   const { state } = await loadPartnerState(partner, HOSPITAL, now);
   return saveSlice(
     partner,
     "live",
-    { ...state, liveStatus: { ...state.liveStatus, status } },
+    {
+      ...state,
+      liveStatus: { ...state.liveStatus, status },
+      services: state.services.map((svc) => ({ ...svc, status })),
+    },
     now,
   );
 }
@@ -152,7 +160,11 @@ describe("파트너 쓰기 → service_statuses", () => {
       await saveSlice(
         partner,
         "live",
-        { ...state, liveStatus: { ...state.liveStatus, status: "normal", expiresAt: bogus } },
+        {
+          ...state,
+          liveStatus: { ...state.liveStatus, status: "normal", expiresAt: bogus },
+          services: state.services.map((svc) => ({ ...svc, status: "normal" as const })),
+        },
         new Date(),
       );
 
@@ -241,5 +253,56 @@ describe("파트너 읽기 — 만료된 값도 본다", () => {
     // 파트너 화면: 만료된 상태로 읽어서 "다시 눌러 주세요"를 만들 수 있다.
     const { state } = await loadPartnerState(partner, HOSPITAL, new Date());
     expect(Date.parse(state.liveStatus.expiresAt)).toBeLessThan(Date.now());
+  }, TEST_MS);
+});
+
+describe("다음 날 — 예외가 DB 를 거쳐 재현된다", () => {
+  it("★ 어제 남긴 항목별 이력이 yesterday.services 로 돌아온다", async () => {
+    /*
+     * 순수 함수 테스트(features/partner/services.test.ts)는 "yesterday.services 가 있으면
+     * 재현된다"를 고정한다. 여기서는 그 표가 **실제로 채워지는지**를 본다 —
+     * status_events 를 진료일 경계로 갈라 항목마다 가장 최근 것 하나를 고르는 부분이
+     * 이 기능에서 가장 조용히 틀리기 쉬운 곳이다.
+     */
+    await save("difficult");
+
+    // 방금 쌓인 이력을 어제로 돌린다. status_events 에는 트리거가 없어 그대로 들어간다.
+    const yesterday = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+    const moved = await fetch(`${REST}/status_events?hospital_id=eq.${HOSPITAL}`, {
+      method: "PATCH",
+      headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ created_at: yesterday }),
+    });
+    if (!moved.ok) throw new Error(`이력 이동 실패 → ${moved.status} ${await moved.text()}`);
+
+    const { state } = await loadPartnerState(partner, HOSPITAL, new Date());
+
+    const services = await adminJson<{ id: string }[]>(
+      `hospital_services?hospital_id=eq.${HOSPITAL}&select=id`,
+    );
+    expect(Object.keys(state.yesterday.services).sort()).toEqual(
+      services.map((s) => s.id).sort(),
+    );
+    for (const id of services.map((s) => s.id)) {
+      expect(state.yesterday.services[id]).toBe("difficult");
+    }
+  }, TEST_MS);
+
+  it("★ 오늘 쌓인 이력은 '어제'로 세지 않는다", async () => {
+    await save("difficult");
+    const yesterday = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+    await fetch(`${REST}/status_events?hospital_id=eq.${HOSPITAL}`, {
+      method: "PATCH",
+      headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ created_at: yesterday }),
+    });
+
+    // 오늘 다시 눌렀다. 이건 "어제"가 아니라 방금 누른 값이다.
+    await save("normal");
+
+    const { state } = await loadPartnerState(partner, HOSPITAL, new Date());
+    for (const value of Object.values(state.yesterday.services)) {
+      expect(value).toBe("difficult");
+    }
   }, TEST_MS);
 });

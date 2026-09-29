@@ -20,11 +20,16 @@ import {
 } from "@/features/hospitals/rows";
 import { representativeLiveStatus } from "@/features/hospitals/serviceStatus";
 import type { ServiceStatus } from "@/features/p0/status";
-import type { HospitalLiveStatus, HospitalView, LimitReasonCode } from "@/features/hospitals/types";
+import type {
+  HospitalLiveStatus,
+  HospitalView,
+  LimitReasonCode,
+  LiveStatusCode,
+} from "@/features/hospitals/types";
 import { formatClock } from "@/lib/freshness";
 import { kstServiceDate } from "@/lib/kst";
 import { deriveTodayMode } from "./service";
-import type { PartnerState, YesterdaySnapshot } from "./types";
+import type { PartnerServiceStatus, PartnerState, YesterdaySnapshot } from "./types";
 
 /**
  * 파트너 화면 ↔ Supabase.
@@ -84,10 +89,10 @@ export async function loadPartnerState(
   now: Date,
 ): Promise<{ hospital: HospitalView; state: PartnerState }> {
   const today = kstServiceDate(now);
-  const [hospital, representative, lastEventsRes, lastDailyRes] = await Promise.all([
+  const [hospital, current, lastEventsRes, lastDailyRes] = await Promise.all([
     fetchHospitalView(client, hospitalId, now),
-    // 현재 상태: 항목별 원본을 읽어 대표 하나로 접는다(만료된 값도 본다).
-    readRepresentative(client, hospitalId, now),
+    // 현재 상태: 항목별 원본을 읽는다(만료된 값도 본다). 대표는 그것을 접은 결과다.
+    readCurrentStatus(client, hospitalId, now),
     /*
      * "어제와 동일"이 읽는 이력.
      *
@@ -127,8 +132,8 @@ export async function loadPartnerState(
 
   // 한 번도 확인한 적 없는 병원은 "이미 만료된 상태"로 시작한다. 현재값처럼 보이지 않게.
   const never = hospital.publicData.syncedAt;
-  const liveStatus: HospitalLiveStatus = representative
-    ? toLiveStatus(representative)
+  const liveStatus: HospitalLiveStatus = current.representative
+    ? toLiveStatus(current.representative)
     : {
         hospitalId,
         capabilityId: null,
@@ -149,7 +154,23 @@ export async function loadPartnerState(
    * 그건 "어제"가 아니라 방금 누른 값이다.
    */
   const events = (lastEventsRes.data ?? []) as { new_json: ServiceStatusRow; created_at: string }[];
-  const lastEvent = events.find((e) => kstServiceDate(new Date(e.created_at)) < today);
+  const beforeToday = events.filter((e) => kstServiceDate(new Date(e.created_at)) < today);
+  const lastEvent = beforeToday[0];
+
+  /*
+   * 어제의 **항목별** 값. 항목마다 가장 최근 것 하나씩.
+   * events 는 id 내림차순이라 먼저 만나는 것이 그 항목의 마지막 값이다.
+   *
+   * 이게 있어야 다음 날 "어제와 동일"이 예외까지 되살린다. 없으면 예외를 만든 병원이
+   * 매일 항목을 다시 눌러야 하고, 그러면 아무도 예외를 쓰지 않는다.
+   */
+  const yesterdayServices: Record<string, LiveStatusCode> = {};
+  for (const e of beforeToday) {
+    const id = e.new_json.service_id;
+    if (id && !(id in yesterdayServices)) {
+      yesterdayServices[id] = TO_LEGACY_STATUS[e.new_json.status];
+    }
+  }
   const lastLive = lastEvent
     ? {
         // 옛 4값으로 되돌려 화면에 넘긴다. 화면이 아직 4값으로 입력을 받는다.
@@ -166,6 +187,7 @@ export async function loadPartnerState(
     customReason: lastLive ? lastLive.custom_reason : liveStatus.customReason,
     detailText: lastLive ? lastLive.detail_text : liveStatus.detailText,
     lastAdmissionClock: lastDaily?.last_admission_at ? formatClock(lastDaily.last_admission_at) : null,
+    services: yesterdayServices,
   };
 
   return {
@@ -177,6 +199,7 @@ export async function loadPartnerState(
       hours: hospital.hours,
       contact: hospital.contactStatus ?? { hospitalId, status: "available", customNote: null, verifiedAt: never },
       waiting: hospital.waiting ?? { hospitalId, level: "normal", headcount: 0, verifiedAt: never },
+      services: current.services,
       yesterday,
     },
   };
@@ -248,11 +271,18 @@ const MEMBER_STATUS_COLUMNS = `${SERVICE_STATUS_PUBLIC_COLUMNS},version`;
  * 파트너 화면은 만료된 값을 **봐야 한다** — "어제 확인한 상태가 만료됨"을 보여 주고
  * 다시 누르게 하는 것이 이 화면의 첫 화면이다. 숨기면 그 안내를 만들 수 없다.
  */
-async function readRepresentative(
+interface CurrentStatus {
+  /** 접힌 대표. 항목이 하나도 게시되지 않았으면 null. */
+  representative: LiveStatusRow | null;
+  /** 항목별 값. 게시되지 않은 항목은 "정상"으로 시작한다(화면의 기본 선택). */
+  services: PartnerServiceStatus[];
+}
+
+async function readCurrentStatus(
   client: SupabaseClient,
   hospitalId: string,
   now: Date,
-): Promise<LiveStatusRow | null> {
+): Promise<CurrentStatus> {
   const [catalogRes, statusRes] = await Promise.all([
     client.from("hospital_services").select(HOSPITAL_SERVICE_PUBLIC_COLUMNS).eq("hospital_id", hospitalId),
     client.from("service_statuses").select(MEMBER_STATUS_COLUMNS).eq("hospital_id", hospitalId),
@@ -264,23 +294,34 @@ async function readRepresentative(
     (catalogRes.data ?? []) as unknown as HospitalServiceRow[],
     (statusRes.data ?? []) as unknown as ServiceStatusRow[],
   );
+  const partnerServices: PartnerServiceStatus[] = services.map((svc) => ({
+    serviceId: svc.serviceId,
+    category: svc.category,
+    // 아직 누르지 않은 항목은 "정상"을 기본 선택으로 둔다. 저장되기 전까지는 아무 주장도 아니다.
+    status: svc.status === null ? "normal" : TO_LEGACY_STATUS[svc.status],
+    expiresAt: svc.validUntil,
+  }));
+
   const rep = representativeLiveStatus(hospitalId, services, now);
-  if (!rep) return null;
+  if (!rep) return { representative: null, services: partnerServices };
 
   // 화면이 읽는 모양(DB 행)으로 맞춘다. 저장하지 않는 파생물이다.
   return {
-    hospital_id: rep.hospitalId,
-    capability_id: null,
-    status: rep.status,
-    reason_code: rep.reasonCode,
-    custom_reason: rep.customReason,
-    detail_text: rep.detailText,
-    starts_at: rep.startsAt,
-    expected_resume_at: rep.expectedResumeAt,
-    recheck_at: rep.recheckAt,
-    verified_by: rep.verifiedBy,
-    verified_at: rep.verifiedAt,
-    expires_at: rep.expiresAt,
+    services: partnerServices,
+    representative: {
+      hospital_id: rep.hospitalId,
+      capability_id: null,
+      status: rep.status,
+      reason_code: rep.reasonCode,
+      custom_reason: rep.customReason,
+      detail_text: rep.detailText,
+      starts_at: rep.startsAt,
+      expected_resume_at: rep.expectedResumeAt,
+      recheck_at: rep.recheckAt,
+      verified_by: rep.verifiedBy,
+      verified_at: rep.verifiedAt,
+      expires_at: rep.expiresAt,
+    },
   };
 }
 
@@ -310,15 +351,9 @@ export async function saveSlice(
        * 시각·작성자·만료·version 은 DB 트리거가 찍는다(stamp_write). 보내지 않는다 —
        * 기기 시계가 몇 초 어긋나면 TTL CHECK 에 걸려 "저장 실패"가 된다.
        */
-      const status = TO_SERVICE_STATUS[state.liveStatus.status];
+      const services = state.services;
 
-      const { data: services, error: servicesError } = await client
-        .from("hospital_services")
-        .select("id")
-        .eq("hospital_id", hospital_id);
-      if (servicesError) throw new Error(servicesError.message);
-
-      if (!services || services.length === 0) {
+      if (services.length === 0) {
         // 조용히 성공하면 병원은 눌렀는데 화면에 아무것도 안 나온다. 그건 더 나쁘다.
         throw new PartnerSetupError(
           "이 의료기관에 등록된 진료 항목이 없어 상태를 저장할 수 없습니다. 운영자에게 문의해 주세요.",
@@ -328,11 +363,12 @@ export async function saveSlice(
       const { error } = await client.from("service_statuses").upsert(
         services.map((svc) => ({
           hospital_id,
-          service_id: (svc as { id: string }).id,
-          status,
+          service_id: svc.serviceId,
+          status: TO_SERVICE_STATUS[svc.status],
           wait_bucket: "UNKNOWN",
           reason_code: state.liveStatus.reasonCode,
-          reopen_at: status === "PAUSED" ? state.liveStatus.expectedResumeAt : null,
+          // 재개 예정 시각은 '일시 중단'에서만 뜻이 있다. 항목마다 따로 본다.
+          reopen_at: svc.status === "paused" ? state.liveStatus.expectedResumeAt : null,
           /*
            * 만료는 서버가 정한다(stamp_write → clamp_status_valid_until).
            * 얼마나 유효한지는 병원이 고르는 값이 아니라 우리 정책이고, 기기 시계를 끼우면
@@ -354,9 +390,9 @@ export async function saveSlice(
        * 화면은 아직 "병원의 상태는 하나"를 전제하므로 옛 모양(HospitalLiveStatus)으로
        * 맞춰 준다. 이 값은 읽기 전용 파생물이다 — 어디에도 저장되지 않는다.
        */
-      const fresh = await readRepresentative(client, hospital_id, now);
-      if (!fresh) throw new Error("상태를 저장했지만 다시 읽지 못했습니다.");
-      return { table: "service_statuses", row: fresh };
+      const fresh = await readCurrentStatus(client, hospital_id, now);
+      if (!fresh.representative) throw new Error("상태를 저장했지만 다시 읽지 못했습니다.");
+      return { table: "service_statuses", row: fresh.representative };
     }
     case "hours": {
       const h = state.hours;

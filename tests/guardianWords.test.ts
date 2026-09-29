@@ -38,6 +38,9 @@ const GUARDIAN_DIRS = [
 
 const BANNED_IN_GUARDIAN = ["열상"];
 
+/** 병원 화면. 여기는 의료 용어를 쓰고, 보호자용 표를 읽으면 안 된다. */
+const PARTNER_DIRS = ["src/app/partner", "src/components/partner"];
+
 function walk(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir)) {
@@ -49,6 +52,7 @@ function walk(dir: string): string[] {
 }
 
 const guardianFiles = GUARDIAN_DIRS.flatMap((d) => walk(d));
+const partnerFiles = PARTNER_DIRS.flatMap((d) => walk(d));
 
 /**
  * 주석을 지운다. 규칙을 코드에 설명해 두는 것을 막을 이유가 없다 —
@@ -205,5 +209,30 @@ describe("보호자 화면 소스", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("병원 화면 소스", () => {
+  it("파일을 실제로 찾았다", () => {
+    expect(partnerFiles.length).toBeGreaterThan(5);
+  });
+
+  it("★ 보호자용 라벨 표를 import 하지 않는다", () => {
+    /*
+     * 반대 방향도 막는다. 병원 화면에 "찢어진 상처"가 뜨면 야간 당직자가 한 번 더
+     * 읽어야 한다. 표가 두 벌인 이유는 읽는 사람이 다르기 때문이고, 그 구분은
+     * 양쪽에서 지켜져야 뜻이 있다.
+     */
+    const offenders = partnerFiles.filter((f) =>
+      readFileSync(f, "utf8").includes("CATEGORY_LABEL_GUARDIAN"),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it("병원 화면은 '열상'을 쓴다 — 표가 실제로 갈려 있다", () => {
+    const usesPartnerTable = partnerFiles.some((f) =>
+      readFileSync(f, "utf8").includes("CATEGORY_LABEL_PARTNER"),
+    );
+    expect(usesPartnerTable).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import type {
   HospitalView,
   IncomingAggregate,
   LimitReasonCode,
+  LiveStatusCode,
 } from "@/features/hospitals/types";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -18,6 +19,7 @@ import {
   saveTodayHours,
   setContactStatus,
   setLimitReason,
+  setServiceStatus,
   setTodayMode,
   setWaitingHeadcount,
 } from "./service";
@@ -81,6 +83,8 @@ interface PartnerContextValue {
   confirmSameAsYesterday: () => void;
   setTodayMode: (mode: "limited" | "difficult") => void;
   setLimitReason: (code: LimitReasonCode | null) => void;
+  /** 항목 하나만 바꾼다. 나머지는 그대로 두고 대표 상태를 다시 접는다. */
+  setServiceStatus: (serviceId: string, status: LiveStatusCode) => void;
   saveTodayHours: (input: { closeClock: string; admissionClock: string | null }) => HoursSaveError | null;
   setContactStatus: (status: ContactStatusCode) => void;
   /** 대기 인원 증감. 연타해도 누락되지 않게 이전 값 기준으로 더한다. */
@@ -420,6 +424,8 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       confirmSameAsYesterday: () => apply(confirmSameAsYesterday, ["live", "hours"]),
       setTodayMode: (mode) => apply((s, t) => setTodayMode(s, mode, t), ["live"]),
       setLimitReason: (code) => apply((s, t) => setLimitReason(s, code, t), ["live"]),
+      setServiceStatus: (serviceId, status) =>
+        apply((s, t) => setServiceStatus(s, serviceId, status, t), ["live"]),
       saveTodayHours: saveHours,
       setContactStatus: (status) => apply((s, t) => setContactStatus(s, status, t), ["contact"]),
       stepWaitingHeadcount: (delta) =>

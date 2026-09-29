@@ -4,13 +4,17 @@ import type {
   HospitalLiveStatus,
   IncomingAggregate,
   LimitReasonCode,
+  LiveStatusCode,
 } from "@/features/hospitals/types";
+import { CATEGORY_LABEL_PARTNER } from "@/features/hospitals/labels";
+import { FOLD_PRIORITY } from "@/features/hospitals/serviceStatus";
 import { labelForBodyPart, labelForSituation } from "@/features/search-session/types";
 import { formatClock, isExpired } from "@/lib/freshness";
 import { addDays, kstDateTime, kstParts, kstServiceDate } from "@/lib/kst";
 import type {
   HoursSaveError,
   IncomingVisit,
+  PartnerServiceStatus,
   PartnerState,
   TodayMode,
 } from "./types";
@@ -55,6 +59,117 @@ export function clockToIso(clock: string, regularOpenAt: string): string | null 
   return d.toISOString();
 }
 
+
+// ─── 항목별 상태 ──────────────────────────────────────────────
+
+/**
+ * 항목값들을 병원 하나로 접는다.
+ *
+ * 순서는 보호자 쪽과 **같은 표**를 쓴다(features/hospitals/serviceStatus.FOLD_PRIORITY).
+ * 여기서 순서를 다시 적으면 두 화면이 갈라지는 날이 온다 — 병원이 누른 것과 보호자가
+ * 본 것이 달라지면 이 서비스의 전제가 무너진다.
+ */
+const TO_LEGACY_FOLD: Record<"AVAILABLE" | "LIMITED" | "PAUSED" | "CLOSED", LiveStatusCode> = {
+  AVAILABLE: "normal",
+  LIMITED: "partial",
+  PAUSED: "paused",
+  CLOSED: "difficult",
+};
+
+const PARTNER_FOLD_ORDER: LiveStatusCode[] = FOLD_PRIORITY.filter(
+  (code) => code !== "UNKNOWN",
+).map((code) => TO_LEGACY_FOLD[code as keyof typeof TO_LEGACY_FOLD]);
+
+export function foldPartnerStatuses(list: LiveStatusCode[]): LiveStatusCode {
+  for (const candidate of PARTNER_FOLD_ORDER) {
+    if (list.includes(candidate)) return candidate;
+  }
+  return "normal";
+}
+
+/**
+ * 주 버튼과 다른 항목들. 요약 한 줄과 "예외가 있는가" 판정에 쓴다.
+ * 비어 있으면 화면에 요약 줄을 그리지 않는다(원칙 4·10).
+ */
+export function serviceExceptions(state: PartnerState): PartnerServiceStatus[] {
+  const folded = foldPartnerStatuses(state.services.map((s) => s.status));
+  return state.services.filter((s) => s.status !== folded);
+}
+
+/**
+ * 요약 한 줄. "화상만 오늘 어려움" 처럼 읽힌다.
+ * 예외가 없으면 null — 없는 사실을 위해 줄을 만들지 않는다.
+ */
+export function describeExceptions(state: PartnerState): string | null {
+  const exceptions = serviceExceptions(state);
+  if (exceptions.length === 0) return null;
+
+  const names = exceptions.map((e) => CATEGORY_LABEL_PARTNER[e.category]);
+  const statuses = new Set(exceptions.map((e) => e.status));
+  // 예외들이 서로 다른 상태면 상태말을 묶어 쓸 수 없다. 그때는 항목 이름만 알린다.
+  if (statuses.size > 1) return `${names.join(" · ")} 따로 설정됨`;
+  return `${names.join(" · ")}만 ${MODE_TEXT[[...statuses][0]]}`;
+}
+
+const MODE_TEXT: Record<LiveStatusCode, string> = {
+  normal: "진료 가능",
+  partial: "일부 제한",
+  paused: "잠시 중단",
+  difficult: "오늘 어려움",
+};
+
+/**
+ * 다시 눌러야 하는 시각. **가장 이른 것 하나만** 본다.
+ *
+ * 항목마다 만료가 따로 돌아서 여러 시각을 나열하면 병원이 계산을 해야 한다.
+ * 계산은 우리가 하고 결론을 준다(원칙 5). 문구도 "N분 뒤 만료"가 아니라
+ * 병원이 할 일로 쓴다 — 여기는 병원 화면이다.
+ */
+export function nextRecheckMinutes(state: PartnerState, now: Date): number | null {
+  const times = state.services
+    .map((s) => s.expiresAt)
+    .filter((v): v is string => v !== null)
+    .map((v) => Date.parse(v))
+    .filter((t) => t > now.getTime());
+  if (times.length === 0) return null;
+  return Math.max(1, Math.round((Math.min(...times) - now.getTime()) / 60_000));
+}
+
+/** 항목 하나만 바꾼다. 나머지는 그대로 두고 대표 상태를 다시 접는다. */
+export function setServiceStatus(
+  state: PartnerState,
+  serviceId: string,
+  status: LiveStatusCode,
+  now: Date,
+): PartnerState {
+  const services = state.services.map((s) => (s.serviceId === serviceId ? { ...s, status } : s));
+  return withFoldedStatus(state, services, now);
+}
+
+/** 항목값에서 대표 상태·버튼 표시를 다시 만든다. 저장되는 실체는 항목값이다. */
+function withFoldedStatus(
+  state: PartnerState,
+  services: PartnerServiceStatus[],
+  now: Date,
+): PartnerState {
+  const folded = foldPartnerStatuses(services.map((s) => s.status));
+  const verifiedAt = now.toISOString();
+  const liveStatus: HospitalLiveStatus = {
+    ...state.liveStatus,
+    capabilityId: null,
+    status: folded,
+    verifiedBy: "hospital",
+    verifiedAt,
+    expiresAt: statusExpiresAt(state.hours, now),
+  };
+  return {
+    ...state,
+    services,
+    liveStatus,
+    mode: folded === "partial" ? "limited" : folded === "normal" ? "same_as_yesterday" : "difficult",
+  };
+}
+
 /**
  * 저장된 상태에서 원탭 토글 표시를 복원한다. (DB 에는 버튼이 아니라 상태만 저장된다)
  * 오늘 진료일에 확인되지 않았거나 만료됐으면 아무 버튼도 켜지 않는다.
@@ -86,14 +201,24 @@ export function confirmSameAsYesterday(state: PartnerState, now: Date): PartnerS
     verifiedAt,
   };
 
+  /*
+   * 어제의 항목별 값을 그대로 되살린다. 기록이 없는 항목은 어제의 병원 전체 값을 쓴다.
+   * 이게 이 화면의 전부다 — 예외를 만든 병원도 다음 날은 버튼 하나로 끝나야 한다.
+   */
+  const services = state.services.map((svc) => ({
+    ...svc,
+    status: y.services[svc.serviceId] ?? y.status,
+  }));
+
   return {
     ...state,
     mode: "same_as_yesterday",
     hours,
+    services,
     liveStatus: {
       ...state.liveStatus,
       capabilityId: null,
-      status: y.status,
+      status: foldPartnerStatuses(services.map((svc) => svc.status)),
       reasonCode: y.reasonCode,
       customReason: y.customReason,
       detailText: y.detailText,
@@ -113,13 +238,16 @@ export function setTodayMode(
   now: Date,
 ): PartnerState {
   const verifiedAt = now.toISOString();
+  const status: LiveStatusCode = mode === "limited" ? "partial" : "difficult";
   return {
     ...state,
     mode,
+    // 주 버튼은 항목값을 한꺼번에 세팅한다. 그래서 접힌 상태로도 저장이 끝난다(1탭).
+    services: state.services.map((svc) => ({ ...svc, status })),
     liveStatus: {
       ...state.liveStatus,
       capabilityId: null,
-      status: mode === "limited" ? "partial" : "difficult",
+      status,
       // 사유는 새로 고른다. 이전 사유가 새 상태에 딸려가면 사실과 다른 문구가 된다.
       reasonCode: null,
       customReason: null,
