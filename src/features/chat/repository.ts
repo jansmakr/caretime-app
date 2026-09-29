@@ -187,6 +187,34 @@ export async function insertReaction(reportId: string, key: ReactionKey): Promis
   }).catch(() => undefined);
 }
 
+export type ReportReason =
+  | "PRIVACY"
+  | "SUSPECTED_FALSE"
+  | "ABUSE"
+  | "SPAM"
+  | "DANGEROUS_ADVICE"
+  | "OTHER";
+
+/**
+ * 신고.
+ *
+ * 접수되면 서버가 **즉시** 글을 내린다. 사람이 보기 전에 내린다 — 신고는 새벽에
+ * 들어오고 운영자는 자고 있다. 복구만 사람이 정한다.
+ *
+ * 내려간 글은 broadcast 로 사라짐이 전파되므로, 신고한 사람뿐 아니라 그 방을 열어 둔
+ * 모두의 화면에서 빠진다. 여기서 목록을 직접 건드리지 않는다.
+ */
+export async function reportFieldReport(reportId: string, reason: ReportReason): Promise<void> {
+  const response = await fetch("/api/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ reportId, reason }),
+  });
+  if (response.status === 429) throw new RateLimitedError(30);
+  if (!response.ok) throw new Error("신고를 접수하지 못했습니다.");
+}
+
 /** 이 브라우저의 닉네임. 서버가 세션을 만들고 정한다. */
 export async function fetchGuestNickname(): Promise<string | null> {
   try {

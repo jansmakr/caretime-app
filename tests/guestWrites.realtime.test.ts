@@ -76,8 +76,15 @@ class Browser {
 }
 
 async function cleanup(): Promise<void> {
+  // 신고·조치가 글을 참조하므로 먼저 지운다.
+  await fetch(`${REST}/moderation_actions?reason_code=eq.auto_on_report`, {
+    method: "DELETE",
+    headers: admin,
+  });
+  await fetch(`${REST}/reports?target_type=eq.post`, { method: "DELETE", headers: admin });
   await fetch(`${REST}/field_reports?body=like.*접수*`, { method: "DELETE", headers: admin });
   await fetch(`${REST}/field_reports?body=like.*테스트*`, { method: "DELETE", headers: admin });
+  await fetch(`${REST}/field_reports?body=like.*전화*`, { method: "DELETE", headers: admin });
 }
 
 beforeAll(async () => {
@@ -287,5 +294,146 @@ describe("멱등성", () => {
       (r) => r.json() as Promise<unknown[]>,
     );
     expect(rows).toHaveLength(1);
+  }, TEST_MS);
+});
+
+describe("개인정보 필터", () => {
+  it("★ 전화번호가 적힌 글은 올라가지 않는다", async () => {
+    const browser = new Browser();
+    const res = await browser.writeReport({ body: "제 번호 010-1234-5678로 연락 주세요" });
+
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toContain("전화번호");
+  }, TEST_MS);
+
+  it("★ 주민등록번호 모양도 막는다", async () => {
+    const browser = new Browser();
+    const res = await browser.writeReport({ body: "테스트 900101-1234567 입니다" });
+    expect(res.status).toBe(422);
+  }, TEST_MS);
+
+  it("★ 병원 대표번호는 통과한다 — 도움이 되는 정보다", async () => {
+    const tels = await fetch(`${REST}/hospitals?select=tel&limit=1`, { headers: admin }).then(
+      (r) => r.json() as Promise<{ tel: string }[]>,
+    );
+    const browser = new Browser();
+    const res = await browser.writeReport({ body: `테스트 ${tels[0].tel} 로 전화해 보세요` });
+    expect(res.status).toBe(200);
+  }, TEST_MS);
+
+  it("평범한 글은 막지 않는다", async () => {
+    const browser = new Browser();
+    const res = await browser.writeReport({ body: "테스트 지금 대기 3명이고 21시 30분 마감이래요" });
+    expect(res.status).toBe(200);
+  }, TEST_MS);
+});
+
+describe("신고 → 자동 격리", () => {
+  /** 운영자 권한으로 글을 심는다. 신고자와 글쓴이가 달라야 한다. */
+  async function seedReport(body: string): Promise<string> {
+    const id = crypto.randomUUID();
+    const res = await fetch(`${REST}/field_reports`, {
+      method: "POST",
+      headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ id, category: "laceration", body, handle: "테스트작성자" }),
+    });
+    if (!res.ok) throw new Error(`심기 실패 → ${res.status} ${await res.text()}`);
+    return id;
+  }
+
+  async function visibilityOf(id: string): Promise<string> {
+    const rows = await fetch(`${REST}/field_reports?id=eq.${id}&select=visibility`, {
+      headers: admin,
+    }).then((r) => r.json() as Promise<{ visibility: string }[]>);
+    return rows[0]?.visibility ?? "(없음)";
+  }
+
+  it("★ 신고가 들어오면 사람 없이 바로 내려간다", async () => {
+    const id = await seedReport("테스트 신고될 글입니다");
+    expect(await visibilityOf(id)).toBe("VISIBLE");
+
+    const browser = new Browser();
+    const res = await browser.post("/api/reports", { reportId: id, reason: "PRIVACY" });
+    expect(res.status).toBe(200);
+
+    // 운영자가 보기 전에 내려가 있어야 한다. 신고는 새벽에 들어온다.
+    expect(await visibilityOf(id)).toBe("QUARANTINED");
+  }, TEST_MS);
+
+  it("★ 내려간 글은 공개 목록에서 사라진다", async () => {
+    const id = await seedReport("테스트 목록에서 사라질 글");
+    const browser = new Browser();
+    await browser.post("/api/reports", { reportId: id, reason: "ABUSE" });
+
+    const visible = await fetch(`${REST}/field_reports_public?id=eq.${id}&select=id`, {
+      headers: { apikey: anonKey },
+    }).then((r) => r.json() as Promise<unknown[]>);
+    expect(visible).toEqual([]);
+  }, TEST_MS);
+
+  it("★ 누가 왜 내렸는지 기록이 남는다", async () => {
+    const id = await seedReport("테스트 기록이 남을 글");
+    const browser = new Browser();
+    await browser.post("/api/reports", { reportId: id, reason: "SPAM" });
+
+    const actions = await fetch(
+      `${REST}/moderation_actions?target_id=eq.${id}&select=action,reason_code,actor_id`,
+      { headers: admin },
+    ).then((r) => r.json() as Promise<{ action: string; reason_code: string; actor_id: string | null }[]>);
+
+    expect(actions).toHaveLength(1);
+    expect(actions[0].action).toBe("QUARANTINE");
+    expect(actions[0].reason_code).toBe("auto_on_report");
+    // 사람이 아니라 규칙이 내렸다. 없는 사람을 적지 않는다.
+    expect(actions[0].actor_id).toBeNull();
+  }, TEST_MS);
+
+  it("★ 같은 사람이 다시 신고해도 기록이 부풀지 않는다", async () => {
+    const id = await seedReport("테스트 두 번 신고될 글");
+    const browser = new Browser();
+
+    expect((await browser.post("/api/reports", { reportId: id, reason: "SPAM" })).status).toBe(200);
+    expect((await browser.post("/api/reports", { reportId: id, reason: "SPAM" })).status).toBe(200);
+
+    const actions = await fetch(`${REST}/moderation_actions?target_id=eq.${id}&select=action`, {
+      headers: admin,
+    }).then((r) => r.json() as Promise<unknown[]>);
+    expect(actions).toHaveLength(1);
+  }, TEST_MS);
+
+  it("★ anon 키로 직접 신고를 넣을 수 없다 — 신고가 도배 수단이 된다", async () => {
+    const { error } = await anon.from("reports").insert({
+      target_type: "post",
+      target_id: crypto.randomUUID(),
+      reporter_guest_id: crypto.randomUUID(),
+      reason: "SPAM",
+    });
+    expect(error?.code).toBe("42501");
+  }, TEST_MS);
+
+  it("모양이 틀린 신고는 거절한다", async () => {
+    const browser = new Browser();
+    expect((await browser.post("/api/reports", { reportId: "x", reason: "SPAM" })).status).toBe(400);
+    expect(
+      (await browser.post("/api/reports", { reportId: crypto.randomUUID(), reason: "뭔가" })).status,
+    ).toBe(400);
+  }, TEST_MS);
+
+  it("복구하면 다시 보인다 — 운영자가 콘솔에서 하는 일", async () => {
+    const id = await seedReport("테스트 복구될 글");
+    const browser = new Browser();
+    await browser.post("/api/reports", { reportId: id, reason: "SUSPECTED_FALSE" });
+    expect(await visibilityOf(id)).toBe("QUARANTINED");
+
+    await fetch(`${REST}/field_reports?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ visibility: "VISIBLE" }),
+    });
+
+    const visible = await fetch(`${REST}/field_reports_public?id=eq.${id}&select=id`, {
+      headers: { apikey: anonKey },
+    }).then((r) => r.json() as Promise<unknown[]>);
+    expect(visible).toHaveLength(1);
   }, TEST_MS);
 });

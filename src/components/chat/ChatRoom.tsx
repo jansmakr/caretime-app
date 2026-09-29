@@ -9,6 +9,7 @@ import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
 import { ChatReactions } from "@/components/chat/ChatReactions";
+import { ReportButton } from "@/components/chat/ReportButton";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useHospitalList } from "@/features/hospitals/useHospitalList";
 import { categoryLabel } from "@/features/reports/templates";
@@ -254,6 +255,8 @@ function ChatBubble({
         ) : (
           <span className="flex-1" />
         )}
+        {/* 내 글은 신고하지 않는다. 지우는 경로는 아직 없다 — 그건 별도 작업이다. */}
+        {!message.mine && <ReportButton messageId={message.id} onResult={onShared} />}
         <ShareButton
           text={buildShareText(message.scope, message.category)}
           scope={message.scope}

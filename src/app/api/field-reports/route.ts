@@ -8,6 +8,7 @@ import {
   type GuestSession,
 } from "@/features/chat/guestSession";
 import { checkRate, isDuplicateBody } from "@/features/p0/limits";
+import { findPiiExcludingKnown } from "@/features/p0/pii";
 import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { CHAT_BODY_MAX, CHAT_TOPIC_MAX } from "@/features/chat/types";
@@ -78,6 +79,22 @@ export async function POST(request: NextRequest) {
     payload.sigungu === null || payload.sigungu === undefined ? null : text(payload.sigungu, 30);
 
   if (!id || !category || !body) return fail(400, "글을 저장할 수 없습니다.", freshToken);
+
+  /*
+   * 개인정보는 올라가기 전에 막는다. 한 번 올라간 값은 지우기 전에 이미 읽힌다.
+   * 판정은 서버가 한다 — 화면에서만 막으면 화면을 거치지 않는 요청에 뚫린다.
+   *
+   * 병원 대표번호는 통과시킨다. "여기 02-1234-5678로 전화해 보세요"는 개인정보가
+   * 아니라 도움이 되는 정보다. 단 **아는 번호만** 통과한다 — "병원 번호처럼 보이면
+   * 통과"로 만들면 개인 번호를 병원 번호인 척 적을 수 있다.
+   */
+  const { data: phoneRows } = await admin.from("hospitals").select("tel");
+  const knownPhones = ((phoneRows ?? []) as { tel: string | null }[])
+    .map((row) => row.tel)
+    .filter((tel): tel is string => tel !== null);
+
+  const pii = findPiiExcludingKnown(body, knownPhones);
+  if (pii) return fail(422, pii.message, freshToken);
   // 시군구만 있으면 어디인지 알 수 없다. DB 의 CHECK 와 같은 규칙을 여기서 먼저 본다.
   if (sigungu !== null && sido === null) return fail(400, "지역이 올바르지 않습니다.", freshToken);
 
