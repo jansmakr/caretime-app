@@ -1,4 +1,10 @@
 import { describeStatus, describeTimePlan, formatAgo, getFreshness, isExpired } from "@/lib/freshness";
+import {
+  CATEGORY_LABEL_GUARDIAN,
+  CATEGORY_STATUS_GUARDIAN,
+  type CareCategory,
+} from "./labels";
+import { effectiveStatusOf, foldRepresentative } from "./serviceStatus";
 import type { HospitalView } from "./types";
 
 /**
@@ -63,6 +69,75 @@ export function deriveDisplayUrgency(hospital: HospitalView, now: Date): Display
   return { level: "normal", callDiscouraged };
 }
 
+
+/**
+ * 항목별 표시.
+ *
+ * 접기 규칙은 보수적이다 — 화상이 마감이면 병원 대표가 마감이다. 그게 헛걸음을 막는다.
+ * 그런데 그것만 보여 주면 보호자에게 "여기는 안 된다"로만 읽혀서, **갈 수 있는 병원을
+ * 놓친다.** 봉합은 되는데 화상만 안 되는 병원이 야간의 일상이다.
+ *
+ * 그래서 두 가지를 따로 뽑는다.
+ *   partiallyOpen  카드에 한 줄로 알릴 사실. 항목을 나열하지 않는다(원칙 4).
+ *   lines          상세에서만 그리는 항목별 줄.
+ */
+export interface ServiceLine {
+  category: CareCategory;
+  /** 보호자 말. 병원 화면 라벨(CATEGORY_LABEL_PARTNER)을 쓰지 않는다. */
+  label: string;
+  status: "AVAILABLE" | "LIMITED" | "PAUSED" | "CLOSED" | "UNKNOWN";
+  /** "가능" · "마감" 같은 짧은 상태말. */
+  statusText: string;
+}
+
+export interface ServiceBreakdown {
+  /**
+   * 항목별 줄. **그릴 필요가 없으면 빈 배열이다.**
+   * 항목이 하나뿐이거나 전부 같은 상태면 그리지 않는다 — 같은 말을 여러 줄로 쓰는 것이고,
+   * 읽어야 하는 줄만 늘어난다(원칙 4·10).
+   */
+  lines: ServiceLine[];
+  /**
+   * 대표는 막혀 보이는데 실제로 가능한 항목이 있다.
+   *
+   * 대표가 UNKNOWN 일 때는 켜지 않는다. 그때 대표의 뜻은 "모른다"이고, 거기에
+   * "일부 항목만 가능"을 붙이면 나머지에 대해 우리가 모르는 것을 아는 척하게 된다.
+   * (PAUSED 도 포함한다. 막혀 보이는 것은 CLOSED·LIMITED 와 같고, 같은 이유로
+   *  갈 수 있는 병원을 놓치게 만든다.)
+   */
+  partiallyOpen: boolean;
+}
+
+const BLOCKED_LOOKING = ["CLOSED", "LIMITED", "PAUSED"] as const;
+
+export function deriveServiceBreakdown(hospital: HospitalView, now: Date): ServiceBreakdown {
+  const services = hospital.services;
+  const effective = services.map((svc) => ({
+    category: svc.category,
+    status: effectiveStatusOf(svc, now),
+  }));
+
+  const representative = foldRepresentative(services, now).status;
+  const someOpen = effective.some((e) => e.status === "AVAILABLE");
+  const partiallyOpen =
+    someOpen && (BLOCKED_LOOKING as readonly string[]).includes(representative);
+
+  const allSame = effective.every((e) => e.status === effective[0]?.status);
+  const worthDrawing = effective.length > 1 && !allSame;
+
+  return {
+    lines: worthDrawing
+      ? effective.map((e) => ({
+          category: e.category,
+          label: CATEGORY_LABEL_GUARDIAN[e.category],
+          status: e.status,
+          statusText: CATEGORY_STATUS_GUARDIAN[e.status],
+        }))
+      : [],
+    partiallyOpen,
+  };
+}
+
 export interface StatusView {
   /** 저장된 상태가 읽는 시점에 만료됐는가. 상태가 아예 없으면 true 로 본다. */
   expired: boolean;
@@ -80,6 +155,7 @@ export interface StatusView {
   /** 공공데이터 동기화 시각 문구. 병원 직접확인 정보가 없을 때 쓴다. */
   publicSyncedAgo: string;
   urgency: DisplayUrgency;
+  breakdown: ServiceBreakdown;
   /**
    * 만료되지는 않았지만 30분 규칙으로 표시만 "확인 필요"로 내린 경우.
    * 화면이 "왜 확인 필요인가"를 구분해야 할 때 본다(만료인가, 오래됐는가).
@@ -132,6 +208,7 @@ export function deriveStatusView(hospital: HospitalView, now: Date): StatusView 
     verifiedAgo: verifiedMinutesAgo === null ? null : formatAgo(verifiedMinutesAgo),
     publicSyncedAgo: formatAgo(getFreshness(hospital.publicData.syncedAt, now).minutesAgo),
     urgency,
+    breakdown: deriveServiceBreakdown(hospital, now),
     downgraded,
     noGuidance,
   };

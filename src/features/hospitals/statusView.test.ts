@@ -4,7 +4,11 @@ import {
   deriveDisplayUrgency,
   deriveStatusView,
 } from "@/features/hospitals/statusView";
-import type { HospitalView, HospitalLiveStatus } from "@/features/hospitals/types";
+import type {
+  HospitalLiveStatus,
+  HospitalServiceStatus,
+  HospitalView,
+} from "@/features/hospitals/types";
 
 /**
  * 시간 판정의 기준 시각을 못박는다.
@@ -343,5 +347,135 @@ describe("noGuidance — 권할 행동이 없을 때", () => {
     deriveStatusView(h, NOW);
     expect(h.liveStatus).toBe(stored);
     expect(stored.status).toBe("normal");
+  });
+});
+
+/**
+ * 항목별 표시.
+ *
+ * 접기 규칙이 보수적인 것은 맞다(화상 마감 → 병원 대표 마감). 그런데 그것만 보여 주면
+ * 보호자에게 "여기는 안 된다"로만 읽혀 **갈 수 있는 병원을 놓친다.** 봉합은 되는데
+ * 화상만 안 되는 병원이 야간의 일상이다. 그래서 카드에 한 줄이 필요하다.
+ */
+function svc(
+  category: "laceration" | "burn" | "other",
+  status: "AVAILABLE" | "LIMITED" | "PAUSED" | "CLOSED" | null,
+  over: Partial<HospitalServiceStatus> = {},
+): HospitalServiceStatus {
+  return {
+    serviceId: `svc-${category}`,
+    category,
+    serviceCode: category,
+    status,
+    waitBucket: "UNKNOWN",
+    validUntil: status === null ? null : at(30),
+    updatedAt: status === null ? null : at(-5),
+    reopenAt: null,
+    version: null,
+    ...over,
+  };
+}
+
+describe("카드 한 줄 — 일부 항목만 가능", () => {
+  it("★ 대표가 마감이어도 가능한 항목이 있으면 알린다", () => {
+    const h = hospital({
+      liveStatus: null,
+      services: [svc("laceration", "AVAILABLE"), svc("burn", "CLOSED")],
+    });
+    const v = deriveStatusView(h, NOW);
+    expect(v.breakdown.partiallyOpen).toBe(true);
+  });
+
+  it("★ 대표가 일부 제한이어도 가능한 항목이 있으면 알린다", () => {
+    const h = hospital({
+      liveStatus: null,
+      services: [svc("laceration", "AVAILABLE"), svc("burn", "LIMITED")],
+    });
+    expect(deriveStatusView(h, NOW).breakdown.partiallyOpen).toBe(true);
+  });
+
+  it("대표가 잠시 중단이어도 마찬가지다 — 막혀 보이는 것은 같다", () => {
+    const h = hospital({
+      liveStatus: null,
+      services: [svc("laceration", "AVAILABLE"), svc("burn", "PAUSED")],
+    });
+    expect(deriveStatusView(h, NOW).breakdown.partiallyOpen).toBe(true);
+  });
+
+  it("전부 가능이면 알릴 것이 없다 — 대표가 이미 가능이다", () => {
+    const h = hospital({
+      liveStatus: null,
+      services: [svc("laceration", "AVAILABLE"), svc("burn", "AVAILABLE")],
+    });
+    expect(deriveStatusView(h, NOW).breakdown.partiallyOpen).toBe(false);
+  });
+
+  it("전부 마감이면 알릴 것이 없다", () => {
+    const h = hospital({
+      liveStatus: null,
+      services: [svc("laceration", "CLOSED"), svc("burn", "CLOSED")],
+    });
+    expect(deriveStatusView(h, NOW).breakdown.partiallyOpen).toBe(false);
+  });
+
+  it("★ 대표가 '모름'일 때는 알리지 않는다 — 나머지를 아는 척하게 된다", () => {
+    // 미게시 항목이 있으면 접기 결과가 UNKNOWN 이다.
+    const h = hospital({
+      liveStatus: null,
+      services: [svc("laceration", "AVAILABLE"), svc("burn", null)],
+    });
+    const v = deriveStatusView(h, NOW);
+    expect(v.status.text).toBe("현재 상태 확인 필요");
+    expect(v.breakdown.partiallyOpen).toBe(false);
+  });
+
+  it("만료된 '가능'은 가능으로 세지 않는다", () => {
+    const h = hospital({
+      liveStatus: null,
+      services: [
+        svc("laceration", "AVAILABLE", { validUntil: at(-1) }),
+        svc("burn", "CLOSED"),
+      ],
+    });
+    expect(deriveStatusView(h, NOW).breakdown.partiallyOpen).toBe(false);
+  });
+});
+
+describe("상세 항목 목록 — 그릴 값이 있을 때만", () => {
+  it("★ 전부 같은 상태면 목록을 그리지 않는다", () => {
+    const h = hospital({
+      services: [svc("laceration", "AVAILABLE"), svc("burn", "AVAILABLE")],
+    });
+    expect(deriveStatusView(h, NOW).breakdown.lines).toEqual([]);
+  });
+
+  it("★ 항목이 하나뿐이면 목록을 그리지 않는다", () => {
+    const h = hospital({ services: [svc("laceration", "CLOSED")] });
+    expect(deriveStatusView(h, NOW).breakdown.lines).toEqual([]);
+  });
+
+  it("항목이 없으면 목록을 그리지 않는다", () => {
+    expect(deriveStatusView(hospital({ services: [] }), NOW).breakdown.lines).toEqual([]);
+  });
+
+  it("★ 상태가 갈리면 항목별로 그린다", () => {
+    const h = hospital({
+      services: [svc("laceration", "AVAILABLE"), svc("burn", "CLOSED"), svc("other", null)],
+    });
+    const lines = deriveStatusView(h, NOW).breakdown.lines;
+    expect(lines).toHaveLength(3);
+    expect(lines.map((l) => `${l.label} ${l.statusText}`)).toEqual([
+      "찢어진 상처 가능",
+      "화상 마감",
+      "그 밖의 상처 확인 필요",
+    ]);
+  });
+
+  it("만료된 항목은 '확인 필요'로 그린다", () => {
+    const h = hospital({
+      services: [svc("laceration", "AVAILABLE"), svc("burn", "CLOSED", { validUntil: at(-1) })],
+    });
+    const lines = deriveStatusView(h, NOW).breakdown.lines;
+    expect(lines.find((l) => l.category === "burn")?.statusText).toBe("확인 필요");
   });
 });

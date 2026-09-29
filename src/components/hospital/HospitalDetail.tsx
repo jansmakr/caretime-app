@@ -43,8 +43,17 @@ export function HospitalDetail({
 
   const live = hospital.liveStatus;
   // 카드(목록)와 같은 함수를 쓴다. 같은 병원·같은 now 면 두 화면의 문구가 같아야 한다.
-  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo, urgency, downgraded, noGuidance } =
-    deriveStatusView(hospital, now);
+  const {
+    expired,
+    status,
+    timePlan,
+    verifiedAgo,
+    publicSyncedAgo,
+    urgency,
+    downgraded,
+    noGuidance,
+    breakdown,
+  } = deriveStatusView(hospital, now);
   // 만료됐거나, 만료 전이라도 확인 후 30분이 지나 표시를 내린 경우. 둘 다 상태를 보장하지 못한다.
   const unreliable = expired || downgraded;
   const waiting = describeWaitingForUser(hospital, now);
@@ -137,6 +146,35 @@ export function HospitalDetail({
             <StatusPill tone={status.tone}>{status.text}</StatusPill>
             {timePlan && <span className="text-[13.5px] text-ink-muted">{timePlan}</span>}
           </div>
+
+          {/*
+            항목별 상태. 항목이 하나뿐이거나 전부 같은 상태면 그리지 않는다 —
+            같은 말을 여러 줄로 쓰는 것이고, 읽어야 하는 줄만 늘어난다(원칙 4·10).
+            판정은 deriveServiceBreakdown 이 하고, 여기서는 받은 줄만 그린다.
+
+            문구는 보호자의 말이다(원칙 7). "열상"·"capability" 같은 말을 쓰지 않는다.
+            병원 화면은 같은 항목을 "열상"으로 부른다 — 표가 두 벌인 이유다.
+          */}
+          {breakdown.lines.length > 0 && (
+            <dl className="mt-3 divide-y divide-line rounded-field bg-fill px-4 py-1">
+              {breakdown.lines.map((line) => (
+                <div key={line.category} className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-[15px] text-ink-muted">{line.label}</dt>
+                  <dd
+                    className={`text-[16px] font-bold ${
+                      line.status === "AVAILABLE"
+                        ? "text-confirmed-ink"
+                        : line.status === "UNKNOWN"
+                          ? "text-ink-faint"
+                          : "text-limited-ink"
+                    }`}
+                  >
+                    {line.statusText}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
 
           {/*
             믿을 상태가 없을 때 무엇을 말하는가.

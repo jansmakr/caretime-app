@@ -33,10 +33,8 @@ const CONDITION_TONE: Record<ConditionState, string> = {
 export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date }) {
   const { hospital, relatedCapabilities, conditions, straightLineKm } = match;
   const live = hospital.liveStatus;
-  const { status, timePlan, verifiedAgo, publicSyncedAgo, urgency, noGuidance } = deriveStatusView(
-    hospital,
-    now,
-  );
+  const { status, timePlan, verifiedAgo, publicSyncedAgo, urgency, noGuidance, breakdown } =
+    deriveStatusView(hospital, now);
   const waiting = describeWaitingForUser(hospital, now);
   const incoming = describeIncomingForUser(hospital.incoming?.within30 ?? null);
   const admission = getAdmissionWindow(
@@ -116,6 +114,18 @@ export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date 
             <StatusPill tone={status.tone}>{status.text}</StatusPill>
             {timePlan && <span className="text-[13px] text-ink-muted">{timePlan}</span>}
           </div>
+        )}
+
+        {/*
+          대표가 막혀 보이는데 실제로 가능한 항목이 있다. 한 줄로만 알린다 —
+          여기서 항목을 나열하면 카드가 읽어야 하는 줄이 늘어난다(원칙 4).
+          이 줄이 없으면 보수적 접기가 "여기는 안 된다"로만 읽혀 갈 수 있는 병원을 놓친다.
+          자세한 것은 상세에서 본다.
+        */}
+        {breakdown.partiallyOpen && (
+          <p className="mt-2 text-[14px] font-semibold text-caution-ink">
+            일부 항목만 가능 · 상세에서 확인
+          </p>
         )}
 
         <AdmissionBlock
