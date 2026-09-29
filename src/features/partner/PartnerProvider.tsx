@@ -26,12 +26,14 @@ import {
 import {
   PartnerSetupError,
   SLICE_OF_TABLE,
+  StatusConflictError,
   applyHospitalChange,
   fetchMemberships,
   type Membership,
   loadPartnerState,
   saveSlice,
   type PartnerSlice,
+  type StatusConflict,
 } from "./supabaseBackend";
 import type { HoursSaveError, IncomingVisit, PartnerState } from "./types";
 
@@ -85,6 +87,13 @@ interface PartnerContextValue {
   setLimitReason: (code: LimitReasonCode | null) => void;
   /** 항목 하나만 바꾼다. 나머지는 그대로 두고 대표 상태를 다시 접는다. */
   setServiceStatus: (serviceId: string, status: LiveStatusCode) => void;
+  /**
+   * 다른 사람이 먼저 바꿨을 때의 안내. 화면이 이걸 띄우고 행동 하나를 준다.
+   * 자동으로 다시 읽지 않는다 — 조용히 덮어쓰거나 조용히 버리면 둘 다 사고다.
+   */
+  conflict: StatusConflict | null;
+  /** 사용자가 [최신 상태 보기]를 눌렀을 때. 그때 비로소 서버 값으로 맞춘다. */
+  resolveConflict: () => void;
   saveTodayHours: (input: { closeClock: string; admissionClock: string | null }) => HoursSaveError | null;
   setContactStatus: (status: ContactStatusCode) => void;
   /** 대기 인원 증감. 연타해도 누락되지 않게 이전 값 기준으로 더한다. */
@@ -104,6 +113,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
   const source = isSupabaseConfigured ? "supabase" : "demo";
   const [phase, setPhase] = useState<PartnerPhase>("loading");
   const [notice, setNotice] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<StatusConflict | null>(null);
   const [connection, setConnection] = useState<RealtimeConnection | "off">("off");
   const [hospital, setHospital] = useState<HospitalView | null>(null);
   const [state, setState] = useState<PartnerState | null>(null);
@@ -296,6 +306,12 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [source, hospitalId, reload, replaceState]);
 
+  const resolveConflict = useCallback(() => {
+    setConflict(null);
+    const id = hospitalIdRef.current;
+    if (id) void reload(id, "replace").catch(() => undefined);
+  }, [reload]);
+
   const persist = useCallback(
     async (slices: PartnerSlice[]) => {
       const client = getBrowserSupabase();
@@ -315,6 +331,15 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
             if (settled && latest) replaceState(applyHospitalChange(latest, change, new Date()));
           } catch (e) {
             inflight.current[slice] -= 1;
+            /*
+             * 동시수정은 "저장 실패"가 아니다. 다른 사람이 먼저 바꾼 것이고, 무엇이
+             * 달라졌는지 알려 주면 사용자가 판단할 수 있다. 여기서 자동으로 다시 읽으면
+             * 방금 누른 값이 말없이 사라진다.
+             */
+            if (e instanceof StatusConflictError) {
+              setConflict(e.conflict);
+              return;
+            }
             setNotice(`저장하지 못했습니다. 최신 상태로 다시 불러왔습니다. (${errorText(e)})`);
             const id = hospitalIdRef.current;
             if (id) void reload(id, "replace").catch(() => undefined);
@@ -424,6 +449,8 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       confirmSameAsYesterday: () => apply(confirmSameAsYesterday, ["live", "hours"]),
       setTodayMode: (mode) => apply((s, t) => setTodayMode(s, mode, t), ["live"]),
       setLimitReason: (code) => apply((s, t) => setLimitReason(s, code, t), ["live"]),
+      conflict,
+      resolveConflict,
       setServiceStatus: (serviceId, status) =>
         apply((s, t) => setServiceStatus(s, serviceId, status, t), ["live"]),
       saveTodayHours: saveHours,
@@ -431,7 +458,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       stepWaitingHeadcount: (delta) =>
         apply((s, t) => setWaitingHeadcount(s, (s.waiting.headcount ?? 0) + delta, t), ["waiting"]),
     }),
-    [source, phase, notice, connection, memberships, selectHospital, hospital, state, visits, incoming, now, signIn, signOut, apply, saveHours],
+    [source, phase, notice, connection, memberships, selectHospital, hospital, state, visits, incoming, now, signIn, signOut, apply, saveHours, conflict, resolveConflict],
   );
 
   return <PartnerContext.Provider value={value}>{children}</PartnerContext.Provider>;

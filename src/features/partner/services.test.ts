@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   confirmSameAsYesterday,
+  describeConflict,
   describeExceptions,
   foldPartnerStatuses,
   nextRecheckMinutes,
@@ -27,7 +28,7 @@ function service(
   status: LiveStatusCode = "normal",
   expiresAt: string | null = null,
 ): PartnerServiceStatus {
-  return { serviceId: `svc-${category}`, category, status, expiresAt };
+  return { serviceId: `svc-${category}`, category, status, expiresAt, version: 1 };
 }
 
 function state(over: Partial<PartnerState> = {}): PartnerState {
@@ -62,6 +63,7 @@ function state(over: Partial<PartnerState> = {}): PartnerState {
     contact: { hospitalId: "h_001", status: "available", customNote: null, verifiedAt: at(-60) },
     waiting: { hospitalId: "h_001", level: "normal", headcount: 0, verifiedAt: at(-60) },
     services: [service("laceration"), service("burn"), service("other")],
+    dirtyServiceIds: [],
     yesterday: {
       status: "normal",
       reasonCode: null,
@@ -222,5 +224,55 @@ describe("다시 눌러야 하는 시각 — 가장 이른 것 하나", () => {
   it("전부 지났으면 null 이다", () => {
     const next = state({ services: [service("laceration", "normal", at(-5))] });
     expect(nextRecheckMinutes(next, NOW)).toBeNull();
+  });
+});
+
+describe("저장 대상 — 건드린 항목만", () => {
+  it("★ 주 버튼은 전 항목을 담는다 — 병원 전체에 대한 주장이다", () => {
+    const next = setTodayMode(state(), "difficult", NOW);
+    expect(next.dirtyServiceIds.sort()).toEqual(
+      next.services.map((s) => s.serviceId).sort(),
+    );
+  });
+
+  it("★ 항목 하나를 바꾸면 그 하나만 담는다", () => {
+    const next = setServiceStatus(state(), "svc-burn", "difficult", NOW);
+    expect(next.dirtyServiceIds).toEqual(["svc-burn"]);
+  });
+
+  it("전 항목을 매번 쓰면 서로 다른 항목을 만져도 부딪힌다 — 그래서 좁힌다", () => {
+    // 두 사람이 각자 다른 항목을 바꾼 상태. 저장 대상이 겹치지 않아야 한다.
+    const a = setServiceStatus(state(), "svc-burn", "difficult", NOW);
+    const b = setServiceStatus(state(), "svc-laceration", "difficult", NOW);
+    const overlap = a.dirtyServiceIds.filter((id) => b.dirtyServiceIds.includes(id));
+    expect(overlap).toEqual([]);
+  });
+
+  it("'어제와 동일'은 전 항목을 다시 확정한다", () => {
+    const next = confirmSameAsYesterday(state(), NOW);
+    expect(next.dirtyServiceIds).toHaveLength(3);
+  });
+});
+
+describe("동시수정 안내 문구", () => {
+  it("★ 무엇이 달라졌는지 적는다 — '충돌이 발생했습니다'로 끝내지 않는다", () => {
+    expect(describeConflict([{ category: "burn", status: "difficult" }])).toBe(
+      "다른 분이 방금 화상을(를) 오늘 어려움(으)로 바꿨습니다.",
+    );
+  });
+
+  it("여럿이면 항목 이름을 묶어 알린다", () => {
+    expect(
+      describeConflict([
+        { category: "burn", status: "difficult" },
+        { category: "laceration", status: "normal" },
+      ]),
+    ).toBe("다른 분이 방금 화상 · 열상을(를) 바꿨습니다.");
+  });
+
+  it("병원 화면이므로 병원 말을 쓴다", () => {
+    const text = describeConflict([{ category: "laceration", status: "normal" }]);
+    expect(text).toContain("열상");
+    expect(text).not.toContain("찢어진 상처");
   });
 });

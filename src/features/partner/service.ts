@@ -6,7 +6,7 @@ import type {
   LimitReasonCode,
   LiveStatusCode,
 } from "@/features/hospitals/types";
-import { CATEGORY_LABEL_PARTNER } from "@/features/hospitals/labels";
+import { CATEGORY_LABEL_PARTNER, type CareCategory } from "@/features/hospitals/labels";
 import { FOLD_PRIORITY } from "@/features/hospitals/serviceStatus";
 import { labelForBodyPart, labelForSituation } from "@/features/search-session/types";
 import { formatClock, isExpired } from "@/lib/freshness";
@@ -111,6 +111,21 @@ export function describeExceptions(state: PartnerState): string | null {
   return `${names.join(" · ")}만 ${MODE_TEXT[[...statuses][0]]}`;
 }
 
+/**
+ * 동시수정 안내. "충돌이 발생했습니다"로 끝내지 않는다 —
+ * 무엇이 달라졌는지 보이고, 할 행동 하나를 준다(원칙 1·5·6).
+ * 야간에 당직자 둘이 같은 화면을 보는 일은 흔하다.
+ */
+export function describeConflict(changes: { category: CareCategory; status: LiveStatusCode }[]): string {
+  if (changes.length === 0) return "다른 분이 방금 상태를 바꿨습니다.";
+  if (changes.length === 1) {
+    const [only] = changes;
+    return `다른 분이 방금 ${CATEGORY_LABEL_PARTNER[only.category]}을(를) ${MODE_TEXT[only.status]}(으)로 바꿨습니다.`;
+  }
+  const names = changes.map((c) => CATEGORY_LABEL_PARTNER[c.category]).join(" · ");
+  return `다른 분이 방금 ${names}을(를) 바꿨습니다.`;
+}
+
 const MODE_TEXT: Record<LiveStatusCode, string> = {
   normal: "진료 가능",
   partial: "일부 제한",
@@ -143,7 +158,8 @@ export function setServiceStatus(
   now: Date,
 ): PartnerState {
   const services = state.services.map((s) => (s.serviceId === serviceId ? { ...s, status } : s));
-  return withFoldedStatus(state, services, now);
+  // 건드린 항목은 이것 하나다. 나머지를 같이 쓰면 다른 사람의 편집을 밀어낸다.
+  return { ...withFoldedStatus(state, services, now), dirtyServiceIds: [serviceId] };
 }
 
 /** 항목값에서 대표 상태·버튼 표시를 다시 만든다. 저장되는 실체는 항목값이다. */
@@ -215,6 +231,8 @@ export function confirmSameAsYesterday(state: PartnerState, now: Date): PartnerS
     mode: "same_as_yesterday",
     hours,
     services,
+    // 어제 값으로 전부 다시 확정하는 것이다. 전 항목이 저장 대상이다.
+    dirtyServiceIds: services.map((svc) => svc.serviceId),
     liveStatus: {
       ...state.liveStatus,
       capabilityId: null,
@@ -243,7 +261,9 @@ export function setTodayMode(
     ...state,
     mode,
     // 주 버튼은 항목값을 한꺼번에 세팅한다. 그래서 접힌 상태로도 저장이 끝난다(1탭).
+    // 병원 전체에 대한 주장이므로 전 항목을 저장 대상으로 담는다.
     services: state.services.map((svc) => ({ ...svc, status })),
+    dirtyServiceIds: state.services.map((svc) => svc.serviceId),
     liveStatus: {
       ...state.liveStatus,
       capabilityId: null,

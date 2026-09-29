@@ -19,6 +19,7 @@ import {
   type WaitingStatusRow,
 } from "@/features/hospitals/rows";
 import { representativeLiveStatus } from "@/features/hospitals/serviceStatus";
+import type { CareCategory } from "@/features/hospitals/labels";
 import type { ServiceStatus } from "@/features/p0/status";
 import type {
   HospitalLiveStatus,
@@ -48,6 +49,26 @@ export const SLICE_OF_TABLE: Record<HospitalChange["table"], PartnerSlice> = {
 
 /** 운영자가 계정을 병원에 연결하지 않았거나, 병원 기본정보가 부족해 입력을 받을 수 없는 경우. */
 export class PartnerSetupError extends Error {}
+
+/**
+ * 다른 사람이 먼저 바꿨다.
+ *
+ * 야간에 당직자 둘이 같은 화면을 보는 일은 흔하다. 그때 조용히 덮어쓰거나 조용히
+ * 버리면 둘 다 사고다 — 한쪽은 자기가 누른 값이 반영된 줄 알고, 다른 쪽은 자기 값이
+ * 사라진 줄 모른다. 그래서 무엇이 달라졌는지와 지금 값을 함께 들고 올라간다.
+ * 사용자가 다시 읽지 않아도 되게.
+ */
+export interface StatusConflict {
+  changes: { category: CareCategory; status: LiveStatusCode }[];
+  current: PartnerServiceStatus[];
+}
+
+export class StatusConflictError extends Error {
+  constructor(readonly conflict: StatusConflict) {
+    super("다른 분이 먼저 상태를 바꿨습니다.");
+    this.name = "StatusConflictError";
+  }
+}
 
 export interface Membership {
   hospitalId: string;
@@ -200,6 +221,7 @@ export async function loadPartnerState(
       contact: hospital.contactStatus ?? { hospitalId, status: "available", customNote: null, verifiedAt: never },
       waiting: hospital.waiting ?? { hospitalId, level: "normal", headcount: 0, verifiedAt: never },
       services: current.services,
+      dirtyServiceIds: [],
       yesterday,
     },
   };
@@ -300,6 +322,7 @@ async function readCurrentStatus(
     // 아직 누르지 않은 항목은 "정상"을 기본 선택으로 둔다. 저장되기 전까지는 아무 주장도 아니다.
     status: svc.status === null ? "normal" : TO_LEGACY_STATUS[svc.status],
     expiresAt: svc.validUntil,
+    version: svc.version,
   }));
 
   const rep = representativeLiveStatus(hospitalId, services, now);
@@ -360,30 +383,75 @@ export async function saveSlice(
         );
       }
 
-      const { error } = await client.from("service_statuses").upsert(
-        services.map((svc) => ({
-          hospital_id,
-          service_id: svc.serviceId,
-          status: TO_SERVICE_STATUS[svc.status],
-          wait_bucket: "UNKNOWN",
-          reason_code: state.liveStatus.reasonCode,
-          // 재개 예정 시각은 '일시 중단'에서만 뜻이 있다. 항목마다 따로 본다.
-          reopen_at: svc.status === "paused" ? state.liveStatus.expectedResumeAt : null,
-          /*
-           * 만료는 서버가 정한다(stamp_write → clamp_status_valid_until).
-           * 얼마나 유효한지는 병원이 고르는 값이 아니라 우리 정책이고, 기기 시계를 끼우면
-           * 몇 초 차이로 TTL CHECK 에 걸려 "저장 실패"가 된다.
-           *
-           * 그런데 **빼지 않고 null 을 명시해서 보낸다.** 빼면 upsert 의 SET 목록에서도
-           * 빠져서, 두 번째 누름부터 트리거가 보는 new.valid_until 이 **이전 값**이 된다.
-           * 그러면 다시 눌러도 창이 늘지 않는다 — 50분 전에 눌러 둔 병원이 다시 눌렀을 때
-           * 10분만 유효해진다. 그건 병원이 방금 확인한 사실과 다르다.
-           */
-          valid_until: null,
-        })),
-        { onConflict: "hospital_id,service_id" },
-      );
-      if (error) throw new Error(error.message);
+      /*
+       * 이번에 건드린 항목만 쓴다. 전 항목을 매번 쓰면 당직자 둘이 서로 다른 항목을
+       * 만져도 부딪힌다(state.dirtyServiceIds 주석 참고).
+       */
+      const dirty = new Set(state.dirtyServiceIds);
+      const targets = services.filter((svc) => dirty.has(svc.serviceId));
+
+      const row = (svc: (typeof services)[number]) => ({
+        hospital_id,
+        service_id: svc.serviceId,
+        status: TO_SERVICE_STATUS[svc.status],
+        wait_bucket: "UNKNOWN",
+        reason_code: state.liveStatus.reasonCode,
+        // 재개 예정 시각은 '일시 중단'에서만 뜻이 있다. 항목마다 따로 본다.
+        reopen_at: svc.status === "paused" ? state.liveStatus.expectedResumeAt : null,
+        /*
+         * 만료는 서버가 정한다(stamp_write → clamp_status_valid_until).
+         * 얼마나 유효한지는 병원이 고르는 값이 아니라 우리 정책이고, 기기 시계를 끼우면
+         * 몇 초 차이로 TTL CHECK 에 걸려 "저장 실패"가 된다.
+         *
+         * 그런데 **빼지 않고 null 을 명시해서 보낸다.** 빼면 UPDATE 의 SET 목록에서도
+         * 빠져서, 두 번째 누름부터 트리거가 보는 new.valid_until 이 **이전 값**이 된다.
+         * 그러면 다시 눌러도 창이 늘지 않는다 — 50분 전에 눌러 둔 병원이 다시 눌렀을 때
+         * 10분만 유효해진다. 그건 병원이 방금 확인한 사실과 다르다.
+         */
+        valid_until: null,
+      });
+
+      /*
+       * 비교와 쓰기 사이에 틈을 만들지 않는다.
+       *
+       * "읽어서 version 을 확인하고 같으면 쓴다"는 그 사이에 다른 사람이 끼어든다.
+       * 그래서 조건을 UPDATE 문 안에 넣는다 — `where version = $1`. 맞지 않으면 0행이
+       * 바뀌고, 그게 곧 거절이다. 행이 아직 없으면 INSERT 이고, 그 사이 누가 만들었으면
+       * 기본키 충돌(23505)로 떨어진다. 어느 쪽이든 덮어쓰지 않는다.
+       */
+      const rejected: string[] = [];
+      for (const svc of targets) {
+        if (svc.version === null) {
+          const { error } = await client.from("service_statuses").insert(row(svc));
+          if (error) {
+            if (error.code === "23505") rejected.push(svc.serviceId);
+            else throw new Error(error.message);
+          }
+          continue;
+        }
+
+        const { data, error } = await client
+          .from("service_statuses")
+          .update(row(svc))
+          .eq("hospital_id", hospital_id)
+          .eq("service_id", svc.serviceId)
+          .eq("version", svc.version)
+          .select("service_id");
+        if (error) throw new Error(error.message);
+        if (!data || data.length === 0) rejected.push(svc.serviceId);
+      }
+
+      if (rejected.length > 0) {
+        // 거절된 항목의 **지금 값**을 함께 올려 보낸다. 사용자가 다시 읽지 않아도 되게.
+        const after = await readCurrentStatus(client, hospital_id, now);
+        const rejectedSet = new Set(rejected);
+        throw new StatusConflictError({
+          current: after.services,
+          changes: after.services
+            .filter((svc) => rejectedSet.has(svc.serviceId))
+            .map((svc) => ({ category: svc.category, status: svc.status })),
+        });
+      }
 
       /*
        * 저장된 결과를 다시 읽어 대표 하나로 접어 돌려준다.

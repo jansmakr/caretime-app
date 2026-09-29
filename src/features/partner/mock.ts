@@ -60,10 +60,11 @@ export function createPartnerDemoState(now: Date): PartnerState {
        */
       services: { "svc-laceration": "normal", "svc-burn": "difficult", "svc-other": "normal" },
     },
+    dirtyServiceIds: [],
     services: [
-      { serviceId: "svc-laceration", category: "laceration", status: "normal", expiresAt: null },
-      { serviceId: "svc-burn", category: "burn", status: "normal", expiresAt: null },
-      { serviceId: "svc-other", category: "other", status: "normal", expiresAt: null },
+      { serviceId: "svc-laceration", category: "laceration", status: "normal", expiresAt: null , version: null },
+      { serviceId: "svc-burn", category: "burn", status: "normal", expiresAt: null , version: null },
+      { serviceId: "svc-other", category: "other", status: "normal", expiresAt: null , version: null },
     ],
     liveStatus: {
       hospitalId: id,

@@ -1,6 +1,10 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { loadPartnerState, saveSlice } from "@/features/partner/supabaseBackend";
+import {
+  StatusConflictError,
+  loadPartnerState,
+  saveSlice,
+} from "@/features/partner/supabaseBackend";
 import { requireLocalKeys } from "../vitest.setup";
 
 /**
@@ -80,6 +84,8 @@ async function save(status: "normal" | "partial" | "paused" | "difficult", now =
       ...state,
       liveStatus: { ...state.liveStatus, status },
       services: state.services.map((svc) => ({ ...svc, status })),
+      // 주 버튼은 병원 전체에 대한 주장이라 전 항목이 저장 대상이다.
+      dirtyServiceIds: state.services.map((svc) => svc.serviceId),
     },
     now,
   );
@@ -152,11 +158,12 @@ describe("파트너 쓰기 → service_statuses", () => {
      * 화면은 옛 규칙(최대 24시간)의 만료시각을 들고 있을 수 있고, 만료된 값을 들고
      * 시작하기도 한다. 어느 쪽을 보내도 저장은 성공해야 하고 창은 정책대로여야 한다.
      */
-    const { state } = await loadPartnerState(partner, HOSPITAL, new Date());
     for (const bogus of [
       new Date(Date.now() + 24 * 60 * 60_000).toISOString(), // 너무 먼 미래
       new Date(Date.now() - 60 * 60_000).toISOString(), // 이미 지난 시각
     ]) {
+      // 매번 다시 읽는다. 같은 state 로 두 번 쓰면 두 번째는 낡은 version 이라 거절된다.
+      const { state } = await loadPartnerState(partner, HOSPITAL, new Date());
       await saveSlice(
         partner,
         "live",
@@ -164,6 +171,7 @@ describe("파트너 쓰기 → service_statuses", () => {
           ...state,
           liveStatus: { ...state.liveStatus, status: "normal", expiresAt: bogus },
           services: state.services.map((svc) => ({ ...svc, status: "normal" as const })),
+          dirtyServiceIds: state.services.map((svc) => svc.serviceId),
         },
         new Date(),
       );
@@ -304,5 +312,190 @@ describe("다음 날 — 예외가 DB 를 거쳐 재현된다", () => {
     for (const value of Object.values(state.yesterday.services)) {
       expect(value).toBe("difficult");
     }
+  }, TEST_MS);
+});
+
+/**
+ * 동시수정.
+ *
+ * 야간에 당직자 둘이 같은 화면을 보는 일은 흔하다. 그때 나중에 누른 사람이 앞사람의
+ * 값을 말없이 덮으면, 앞사람은 자기가 누른 값이 살아 있는 줄 안다. 반대로 나중 사람의
+ * 값을 말없이 버리면 그 사람도 눌렀다고 믿는다. 둘 다 사고다.
+ *
+ * 비교는 애플리케이션이 아니라 UPDATE 문 안에서 한다 — `where version = $1`.
+ * 읽고 비교하고 쓰는 사이에는 다른 사람이 끼어든다.
+ */
+describe("동시수정 409", () => {
+  async function load() {
+    return (await loadPartnerState(partner, HOSPITAL, new Date())).state;
+  }
+
+  /** 테스트 계정이 소속돼 있으면서 진료 항목이 둘 이상인 병원. */
+  async function hospitalWithTwoServices(): Promise<string> {
+    const mine = await adminJson<{ hospital_id: string }[]>(
+      `hospital_members?user_id=eq.${userId}&select=hospital_id`,
+    );
+    const counts = await adminJson<{ hospital_id: string }[]>(
+      "hospital_services?select=hospital_id",
+    );
+    const perHospital = new Map<string, number>();
+    for (const row of counts) {
+      perHospital.set(row.hospital_id, (perHospital.get(row.hospital_id) ?? 0) + 1);
+    }
+    const found = mine.find((m) => (perHospital.get(m.hospital_id) ?? 0) > 1);
+    if (!found) {
+      throw new Error(
+        "항목이 둘 이상인 소속 병원이 없습니다. npm run seed:localuser 를 다시 돌려 주세요.",
+      );
+    }
+    return found.hospital_id;
+  }
+
+  /** 주 버튼을 누른 것과 같다 — 전 항목이 저장 대상이다. */
+  function pressAll(state: Awaited<ReturnType<typeof load>>, status: "normal" | "difficult") {
+    return {
+      ...state,
+      liveStatus: { ...state.liveStatus, status },
+      services: state.services.map((svc) => ({ ...svc, status })),
+      dirtyServiceIds: state.services.map((svc) => svc.serviceId),
+    };
+  }
+
+  /** 항목 하나만 바꾼 것과 같다. */
+  function pressOne(
+    state: Awaited<ReturnType<typeof load>>,
+    category: string,
+    status: "normal" | "difficult",
+  ) {
+    const target = state.services.find((svc) => svc.category === category);
+    if (!target) throw new Error(`${category} 항목이 없습니다.`);
+    return {
+      ...state,
+      services: state.services.map((svc) =>
+        svc.serviceId === target.serviceId ? { ...svc, status } : svc,
+      ),
+      dirtyServiceIds: [target.serviceId],
+    };
+  }
+
+  it("★ 같은 version 으로 두 번 쓰면 두 번째가 거절된다", async () => {
+    await save("normal");
+    const shared = await load(); // 두 사람이 같은 화면을 보고 있다
+
+    await saveSlice(partner, "live", pressAll(shared, "difficult"), new Date());
+
+    // 두 번째 사람은 아직 낡은 version 을 들고 있다.
+    await expect(
+      saveSlice(partner, "live", pressAll(shared, "normal"), new Date()),
+    ).rejects.toThrow(StatusConflictError);
+  }, TEST_MS);
+
+  it("★ 거절된 쓰기가 DB 를 바꾸지 않았다", async () => {
+    await save("normal");
+    const shared = await load();
+
+    await saveSlice(partner, "live", pressAll(shared, "difficult"), new Date());
+    const afterFirst = await adminJson<{ service_id: string; status: string; version: number }[]>(
+      `service_statuses?hospital_id=eq.${HOSPITAL}&select=service_id,status,version&order=service_id`,
+    );
+
+    await saveSlice(partner, "live", pressAll(shared, "normal"), new Date()).catch(() => undefined);
+    const afterSecond = await adminJson<{ service_id: string; status: string; version: number }[]>(
+      `service_statuses?hospital_id=eq.${HOSPITAL}&select=service_id,status,version&order=service_id`,
+    );
+
+    // 값도 version 도 그대로다. 거절은 "쓰고 나서 되돌린 것"이 아니라 아예 안 쓴 것이다.
+    expect(afterSecond).toEqual(afterFirst);
+    expect(afterSecond.every((r) => r.status === "CLOSED")).toBe(true);
+  }, TEST_MS);
+
+  it("★ 거절 응답에 현재 값이 들어 있다 — 다시 읽지 않아도 되게", async () => {
+    await save("normal");
+    const shared = await load();
+
+    await saveSlice(partner, "live", pressAll(shared, "difficult"), new Date());
+
+    let thrown: unknown;
+    try {
+      await saveSlice(partner, "live", pressAll(shared, "normal"), new Date());
+    } catch (e) {
+      thrown = e;
+    }
+
+    expect(thrown).toBeInstanceOf(StatusConflictError);
+    const conflict = (thrown as StatusConflictError).conflict;
+
+    expect(conflict.current.length).toBeGreaterThan(0);
+    expect(conflict.current.every((svc) => svc.status === "difficult")).toBe(true);
+    // 무엇이 달라졌는지도 함께 온다. 화면이 "다른 분이 방금 …" 을 적을 수 있다.
+    expect(conflict.changes.length).toBeGreaterThan(0);
+    expect(conflict.changes.every((c) => c.status === "difficult")).toBe(true);
+  }, TEST_MS);
+
+  it("★ 항목별로 독립적이다 — 화상을 바꾼 사람과 봉합을 바꾼 사람이 서로 막지 않는다", async () => {
+    /*
+     * 이게 깨지면 당직자 둘이 서로 다른 항목을 만지면서 계속 튕긴다. 그러면 아무도 안 쓴다.
+     * version 이 행 단위(PK = hospital_id + service_id)이고, 저장이 건드린 항목만 쓰기
+     * 때문에 성립한다. 둘 중 하나라도 어긋나면 이 테스트가 깨진다.
+     */
+    /*
+     * 항목이 둘 이상인 병원이 필요하다. h_001 은 항목이 하나라 이 상황을 만들 수 없다.
+     * 소속 중에서 찾는다 — 소속이 아니면 RLS 가 먼저 막아서 version 을 시험하지 못한다.
+     */
+    const multi = await hospitalWithTwoServices();
+    await fetch(`${REST}/service_statuses?hospital_id=eq.${multi}`, {
+      method: "DELETE",
+      headers: admin,
+    });
+
+    const shared = (await loadPartnerState(partner, multi, new Date())).state;
+    const categories = shared.services.map((svc) => svc.category);
+    expect(categories.length).toBeGreaterThan(1);
+
+    // 두 사람이 같은 화면을 보고 각자 다른 항목을 바꾼다.
+    await saveSlice(partner, "live", pressOne(shared, categories[0], "difficult"), new Date());
+    await saveSlice(partner, "live", pressOne(shared, categories[1], "difficult"), new Date());
+
+    const rows = await adminJson<{ service_id: string; status: string }[]>(
+      `service_statuses?hospital_id=eq.${multi}&select=service_id,status`,
+    );
+    const changed = rows.filter((r) => r.status === "CLOSED");
+    expect(changed).toHaveLength(2); // 둘 다 들어갔다. 아무도 튕기지 않았다.
+
+    await fetch(`${REST}/service_statuses?hospital_id=eq.${multi}`, {
+      method: "DELETE",
+      headers: admin,
+    });
+  }, TEST_MS);
+
+  it("★ 거절 후 다시 읽어서 쓰면 성공한다", async () => {
+    await save("normal");
+    const shared = await load();
+
+    await saveSlice(partner, "live", pressAll(shared, "difficult"), new Date());
+    await saveSlice(partner, "live", pressAll(shared, "normal"), new Date()).catch(() => undefined);
+
+    // 화면의 [최신 상태 보기] 가 하는 일. 다시 읽으면 새 version 을 들고 온다.
+    const fresh = await load();
+    await saveSlice(partner, "live", pressAll(fresh, "normal"), new Date());
+
+    const rows = await adminJson<{ status: string }[]>(
+      `service_statuses?hospital_id=eq.${HOSPITAL}&select=status`,
+    );
+    expect(rows.every((r) => r.status === "AVAILABLE")).toBe(true);
+  }, TEST_MS);
+
+  it("행이 아직 없을 때 두 사람이 동시에 만들면 한쪽이 거절된다", async () => {
+    await fetch(`${REST}/service_statuses?hospital_id=eq.${HOSPITAL}`, {
+      method: "DELETE",
+      headers: admin,
+    });
+    const shared = await load();
+    expect(shared.services.every((svc) => svc.version === null)).toBe(true);
+
+    await saveSlice(partner, "live", pressAll(shared, "difficult"), new Date());
+    await expect(
+      saveSlice(partner, "live", pressAll(shared, "normal"), new Date()),
+    ).rejects.toThrow(StatusConflictError);
   }, TEST_MS);
 });

@@ -8,7 +8,7 @@
  *
  * 만드는 것:
  *   1) .env.local 의 E2E_PARTNER_EMAIL / E2E_PARTNER_PASSWORD 로 auth 사용자 (이메일 확인 처리)
- *   2) hospital_members 행 2개 — h_001(owner) · h_002(staff)
+ *   2) hospital_members 행 3개 — h_001(owner) · h_002(staff) · h_003(staff)
  *      두 곳으로 만드는 이유: PartnerProvider 의 choose_hospital 분기를 실제로 태우기 위해서다.
  *      한 곳이면 그 분기를 지나치므로 검증되지 않는다.
  *
@@ -72,6 +72,12 @@ function requireLocal(url: string): string {
 const MEMBERSHIPS = [
   { hospitalId: "h_001", role: "owner" as const },
   { hospitalId: "h_002", role: "staff" as const },
+  /*
+   * h_003 은 진료 항목이 둘이다(열상 · 화상). 동시수정 테스트가 "항목별로 독립적이다"를
+   * 확인하려면 한 병원 안에 항목이 둘 이상 있어야 한다 — 당직자 둘이 서로 다른 항목을
+   * 만지는 상황을 재현할 수 없으면 그 성질을 검증할 방법이 없다.
+   */
+  { hospitalId: "h_003", role: "staff" as const },
 ];
 
 async function main(): Promise<void> {
@@ -125,7 +131,7 @@ async function main(): Promise<void> {
 
   console.log("");
   console.log(`완료 — 소속 ${upserted.data?.length ?? 0}곳.`);
-  console.log("소속이 2곳이면 /partner 로그인 후 '어느 의료기관으로 들어갈까요?' 화면이 나와야 합니다.");
+  console.log("소속이 여러 곳이면 /partner 로그인 후 '어느 의료기관으로 들어갈까요?' 화면이 나와야 합니다.");
 }
 
 main().catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));

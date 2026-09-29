@@ -32,6 +32,13 @@ export interface PartnerServiceStatus {
   status: LiveStatusCode;
   /** 이 항목의 만료 시각. 아직 누르지 않았으면 null. */
   expiresAt: string | null;
+  /**
+   * 읽은 시점의 version. 아직 행이 없으면 null.
+   *
+   * 저장할 때 이 값을 함께 보내고, DB 는 version 이 다르면 쓰지 않는다.
+   * 비교를 애플리케이션에서 하지 않는다 — 읽고 비교하고 쓰는 사이에 다른 사람이 끼어든다.
+   */
+  version: number | null;
 }
 
 /** 오늘 진료상태 원탭 토글. null 은 "오늘 아직 확인하지 않음". */
@@ -71,6 +78,16 @@ export interface PartnerState {
   waiting: HospitalWaitingStatus;
   /** 항목별 상태. 저장되는 실체다. liveStatus 는 이것을 접은 결과다. */
   services: PartnerServiceStatus[];
+  /**
+   * 이번 동작이 건드린 항목. 저장은 **이것만** 쓴다.
+   *
+   * 전 항목을 매번 쓰면 당직자 둘이 서로 다른 항목을 만져도 부딪힌다. 화상을 바꾼
+   * 사람과 봉합을 바꾼 사람이 서로 튕기면 아무도 이 화면을 안 쓴다.
+   *
+   * 주 3버튼은 병원 전체에 대한 주장이라 전 항목을 담는다. 항목 하나를 바꾸면 그 하나다.
+   * 서버에 저장되는 값이 아니다 — 화면이 들고 있는 "지금 무엇을 저장하려는가"다.
+   */
+  dirtyServiceIds: string[];
   yesterday: YesterdaySnapshot;
 }
 

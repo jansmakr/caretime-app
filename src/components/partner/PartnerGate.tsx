@@ -6,6 +6,7 @@ import { HospitalChooser } from "@/components/partner/HospitalChooser";
 import { PartnerJoin } from "@/components/partner/PartnerJoin";
 import { PartnerLoading } from "@/components/partner/PartnerLoading";
 import { usePartner } from "@/features/partner/PartnerProvider";
+import { describeConflict } from "@/features/partner/service";
 
 /**
  * 파트너 화면 진입 조건.
@@ -31,7 +32,8 @@ const LOGIN_PATH = "/partner/login";
 const PUBLIC_PATHS = new Set(["/partner", LOGIN_PATH]);
 
 export function PartnerGate({ children }: { children: React.ReactNode }) {
-  const { phase, notice, dismissNotice, connection, source, signOut } = usePartner();
+  const { phase, notice, dismissNotice, connection, source, signOut, conflict, resolveConflict } =
+    usePartner();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -90,6 +92,31 @@ export function PartnerGate({ children }: { children: React.ReactNode }) {
           실시간 연결이 끊겼습니다. 다른 기기에서 바꾼 값이 바로 보이지 않을 수 있습니다. 재연결되면 자동으로
           다시 불러옵니다.
         </p>
+      )}
+      {/*
+        동시수정. 야간에 당직자 둘이 같은 화면을 보는 일은 흔하다.
+        "충돌이 발생했습니다"로 끝내지 않는다 — 무엇이 달라졌는지 적고, 할 행동 하나를 준다.
+        자동으로 다시 읽지 않는다. 그러면 방금 누른 값이 말없이 사라진다(원칙 1·5·6).
+      */}
+      {conflict && (
+        <div
+          role="alert"
+          className="mx-4 mt-3 rounded-field bg-caution-soft px-4 py-3.5 text-caution-ink"
+        >
+          <p className="text-[15px] font-bold leading-relaxed">
+            {describeConflict(conflict.changes)}
+          </p>
+          <p className="mt-1 text-[14px] leading-relaxed">
+            내가 누른 값은 저장되지 않았습니다. 최신 상태를 확인하고 다시 눌러 주세요.
+          </p>
+          <button
+            type="button"
+            onClick={resolveConflict}
+            className="mt-3 min-h-[44px] w-full rounded-field bg-caution-ink px-4 text-[16px] font-bold text-white active:scale-[0.99]"
+          >
+            최신 상태 보기
+          </button>
+        </div>
       )}
       {notice && (
         <div role="alert" className="mx-4 mt-3 flex items-start gap-3 rounded-field bg-limited-soft px-3.5 py-2.5">
