@@ -13,7 +13,7 @@ import type {
   LiveStatusCode,
 } from "./types";
 import { DEMO_ORIGIN, distanceKm, estimateTravelMinutes } from "./location";
-import { mergeConservative, representativeLiveStatus } from "./serviceStatus";
+import { representativeLiveStatus } from "./serviceStatus";
 
 /**
  * DB 행 ↔ 도메인 타입 변환.
@@ -211,11 +211,7 @@ export function toServiceStatuses(
   });
 }
 
-/** 병원 전체 상태를 우선하고, 없으면 진료기능별 상태 중 하나를 쓴다. */
-export function pickLiveStatus(rows: LiveStatusRow[]): HospitalLiveStatus | null {
-  const row = rows.find((r) => r.capability_id === null) ?? rows[0];
-  return row ? toLiveStatus(row) : null;
-}
+
 
 /**
  * 오늘 진료시간 = 평소 진료시간(병원 테이블) + 오늘 진료일 행(있으면).
@@ -250,29 +246,6 @@ export function toTodayHours(
 }
 
 // ─── 실시간 변경 적용 (보호자 화면·파트너 화면 공용) ───────────
-
-export function withLiveStatusRow(
-  view: HospitalView,
-  row: LiveStatusRow,
-  now: Date = new Date(),
-): HospitalView {
-  // 병원 전체 상태가 이미 있으면 진료기능별 변경으로 덮어쓰지 않는다.
-  if (row.capability_id !== null && view.liveStatus && view.liveStatus.capabilityId === null) {
-    return view;
-  }
-  /*
-   * 옛 출처의 이벤트도 항목별 접기 결과와 병합한다.
-   * 이벤트 하나가 보수적 판정을 뒤집지 않게 하려는 것 — 화상=마감인 병원에
-   * "전체 정상" 이벤트가 오면 그것만 보고 '진료 가능'으로 바꾸면 안 된다.
-   */
-  return {
-    ...view,
-    liveStatus: mergeConservative(
-      representativeLiveStatus(view.id, view.services, now),
-      toLiveStatus(row),
-    ),
-  };
-}
 
 export function withDailyHoursRow(view: HospitalView, row: DailyHoursRow, now: Date): HospitalView {
   if (!view.hours || row.service_date !== kstServiceDate(now)) return view;
@@ -320,7 +293,6 @@ export function mergeFresher(current: HospitalView, fresh: HospitalView): Hospit
 
 export interface HospitalJoinedRow extends HospitalRow {
   hospital_capabilities: HospitalCapabilityRow[] | null;
-  hospital_live_status: LiveStatusRow[] | null;
   /** 항목 카탈로그(공개 뷰). 상태가 없는 항목도 여기 들어 있다 — 접기의 분모다. */
   hospital_services_public: HospitalServiceRow[] | null;
   /** 만료되지 않은 항목별 상태(공개 뷰). 카탈로그보다 적을 수 있다. */
@@ -369,14 +341,14 @@ export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView 
     capabilities: capabilities.map(toCapability),
     hours: toTodayHours(row, daily, now),
     /*
-     * 대표 상태 = 항목별 접기 결과와 옛 출처(hospital_live_status) 중 더 보수적인 쪽.
-     * 이행 기간 동안 두 출처가 함께 있으므로 병합한다. 어느 한쪽보다 낙관적인 답은 나오지 않는다.
-     * (병합 규칙과 그 예외: features/hospitals/serviceStatus.mergeConservative)
+     * 대표 상태는 항목별 상태를 접은 결과 하나다.
+     *
+     * 옛 출처(hospital_live_status)는 더 읽지 않는다. 병원 쓰기가 service_statuses 로
+     * 옮겨졌기 때문이다(features/partner/supabaseBackend.saveSlice). 두 출처를 보수적으로
+     * 병합하던 이행 코드는 지웠다 — 임시 코드를 오래 두면 영구화된다.
+     * 테이블 자체는 남아 있다(읽기 정책도 그대로). 과거 값을 봐야 할 일이 있으면 그때 읽는다.
      */
-    liveStatus: mergeConservative(
-      representativeLiveStatus(row.id, services, now),
-      pickLiveStatus(row.hospital_live_status ?? []),
-    ),
+    liveStatus: representativeLiveStatus(row.id, services, now),
     contactStatus: contact ? toContact(contact) : null,
     waiting: waiting ? toWaiting(waiting) : null,
     // 내원예정은 5단계(Visit Intent)에서 테이블이 생긴다. 그 전까지 보호자 화면에 표시하지 않는다.

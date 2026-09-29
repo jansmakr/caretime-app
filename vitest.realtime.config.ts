@@ -21,6 +21,15 @@ export default defineConfig({
     ...SHARED,
     include: [REALTIME_TESTS],
     exclude: ["**/node_modules/**", "**/dist/**"],
+    /*
+     * 파일을 하나씩 돌린다.
+     *
+     * 이 묶음은 같은 로컬 DB 의 같은 병원 행을 쓰고 지운다. 병렬로 돌리면 한 파일이
+     * 심은 상태를 다른 파일이 지워서 실패한다 — 실제로 그렇게 깨졌다. 테스트끼리
+     * 병원을 나눠 쓰게 만드는 방법도 있지만, 그러면 어느 병원이 누구 것인지를 사람이
+     * 기억해야 한다. 느린 묶음이라 순차로 돌려도 잃는 것이 없다.
+     */
+    fileParallelism: false,
   },
   resolve: { alias: ALIAS },
 });

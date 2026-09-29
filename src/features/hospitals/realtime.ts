@@ -16,16 +16,26 @@ import type { ContactStatusRow, DailyHoursRow, LiveStatusRow, WaitingStatusRow }
  */
 
 export type HospitalChange =
-  | { table: "hospital_live_status"; row: LiveStatusRow }
+  /**
+   * 대표 상태가 바뀌었다. row 는 **파생물**이다 — 항목별 상태를 접어 옛 모양으로 맞춘
+   * 값이고 어디에도 저장되지 않는다(features/partner/supabaseBackend.readRepresentative).
+   * 이 변종은 파트너 저장 응답으로만 만들어진다. 구독으로는 오지 않는다.
+   */
+  | { table: "service_statuses"; row: LiveStatusRow }
   | { table: "hospital_daily_hours"; row: DailyHoursRow }
   | { table: "hospital_contact_status"; row: ContactStatusRow }
   | { table: "hospital_waiting_status"; row: WaitingStatusRow };
 
 export type RealtimeConnection = "connecting" | "live" | "offline";
 
-/** 행을 실어 보내는 테이블. 변경 내용을 그대로 화면에 반영할 수 있는 것들이다. */
+/**
+ * 행을 실어 보내는 테이블. 변경 내용을 그대로 화면에 반영할 수 있는 것들이다.
+ *
+ * hospital_live_status 는 빠졌다. 병원 쓰기가 service_statuses 로 옮겨져서 이제
+ * 아무도 그 표에 쓰지 않는다 — 구독해도 이벤트가 오지 않는다. 표와 읽기 정책은
+ * DB 에 그대로 남아 있다(비파괴). 대표 상태 변경은 아래 신호 경로로 온다.
+ */
 const ROW_TABLES = [
-  "hospital_live_status",
   "hospital_daily_hours",
   "hospital_contact_status",
   "hospital_waiting_status",
@@ -56,9 +66,19 @@ export function subscribeHospitalChanges(
   onStatus: (status: RealtimeConnection) => void,
   /**
    * 항목별 상태가 바뀌었다는 신호. 받는 쪽은 병원 전체를 다시 읽는다.
-   * 넘기지 않으면 broadcast 채널을 열지 않는다 — 쓰지 않을 구독을 만들지 않는다.
+   * 넘기지 않으면 아무 구독도 열지 않는다 — 쓰지 않을 구독을 만들지 않는다.
    */
   onServiceStatusesChanged?: () => void,
+  /**
+   * 그 신호를 어느 경로로 받는가. 역할에 따라 다르다.
+   *
+   *   "broadcast"         보호자. 원본을 읽을 권한이 없으므로 트리거가 보내는
+   *                       토픽을 듣는다. 승인된 참여 병원만 들을 수 있다.
+   *   "postgres_changes"  병원 계정. 원본 select 정책이 있으므로 표를 직접 구독한다.
+   *                       승인 여부와 무관하게 동작해야 한다 — 승인 전에도 병원은
+   *                       자기 화면을 써야 하고, 여러 기기에서 같이 봐야 한다.
+   */
+  signal: "broadcast" | "postgres_changes" = "broadcast",
 ): () => void {
   let channel = client.channel(`hospital-live:${hospitalId}:${Math.random().toString(36).slice(2, 8)}`);
 
@@ -96,16 +116,30 @@ export function subscribeHospitalChanges(
    * 보내지 않는다. 화면의 연결 표시는 ① 채널만 따른다. ② 가 막힌 병원에서 "연결 끊김"을
    * 그리면 사실과 다르다 — 나머지 정보는 정상적으로 오고 있다.
    */
-  let broadcast: RealtimeChannel | null = null;
-  if (onServiceStatusesChanged) {
-    broadcast = client
+  let signalChannel: RealtimeChannel | null = null;
+  if (onServiceStatusesChanged && signal === "broadcast") {
+    signalChannel = client
       .channel(serviceStatusTopic(hospitalId), { config: { private: true } })
       .on("broadcast", { event: SERVICE_STATUS_EVENT }, () => onServiceStatusesChanged());
-    broadcast.subscribe();
+    signalChannel.subscribe();
+  } else if (onServiceStatusesChanged) {
+    signalChannel = client
+      .channel(`service-statuses:${hospitalId}:${Math.random().toString(36).slice(2, 8)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "service_statuses",
+          filter: `hospital_id=eq.${hospitalId}`,
+        },
+        () => onServiceStatusesChanged(),
+      );
+    signalChannel.subscribe();
   }
 
   return () => {
     void client.removeChannel(channel);
-    if (broadcast) void client.removeChannel(broadcast);
+    if (signalChannel) void client.removeChannel(signalChannel);
   };
 }

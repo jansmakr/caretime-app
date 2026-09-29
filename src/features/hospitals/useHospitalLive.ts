@@ -5,7 +5,7 @@ import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import { useRevisitRefetch } from "@/lib/useRevisitRefetch";
 import { subscribeHospitalChanges, type RealtimeConnection } from "./realtime";
 import { fetchHospitalView } from "./repository";
-import { mergeFresher, withContactRow, withDailyHoursRow, withLiveStatusRow, withWaitingRow } from "./rows";
+import { mergeFresher, withContactRow, withDailyHoursRow, withWaitingRow } from "./rows";
 import type { HospitalView } from "./types";
 
 /** 만료·"N분 전" 재판정 주기. Realtime 이벤트가 없어도 오래된 상태는 시간이 지나면 바뀌어야 한다. */
@@ -74,8 +74,10 @@ export function useHospitalLive(initial: HospitalView, renderedAt: string, enabl
         setNow(t);
         setHospital((h) => {
           switch (change.table) {
-            case "hospital_live_status":
-              return withLiveStatusRow(h, change.row, t);
+            // service_statuses 변경은 행이 아니라 신호로 온다(아래 다섯째 인자).
+            // 한 항목의 값만으로는 대표를 다시 접을 수 없기 때문이다.
+            case "service_statuses":
+              return h;
             case "hospital_daily_hours":
               return withDailyHoursRow(h, change.row, t);
             case "hospital_contact_status":

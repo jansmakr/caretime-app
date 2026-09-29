@@ -163,10 +163,11 @@ describe("행을 싣는 테이블", () => {
       .filter((h) => h.type === "postgres_changes")
       .map((h) => (h.filter as { table: string; filter: string }).table);
 
+    // hospital_live_status 는 없다. 병원 쓰기가 service_statuses 로 옮겨져서
+    // 아무도 그 표에 쓰지 않는다 — 구독해도 이벤트가 오지 않는다.
     expect(tables.sort()).toEqual([
       "hospital_contact_status",
       "hospital_daily_hours",
-      "hospital_live_status",
       "hospital_waiting_status",
     ]);
     for (const h of w.rowChannel.handlers.filter((x) => x.type === "postgres_changes")) {
@@ -174,18 +175,43 @@ describe("행을 싣는 테이블", () => {
     }
   });
 
-  it("★ service_statuses 는 postgres_changes 로 구독하지 않는다 — anon 에게 오지 않는다", () => {
+  it("★ 보호자 경로에서는 service_statuses 를 postgres_changes 로 구독하지 않는다", () => {
     const w = wire();
     const tables = w.rowChannel.handlers
       .filter((h) => h.type === "postgres_changes")
       .map((h) => (h.filter as { table: string }).table);
     expect(tables).not.toContain("service_statuses");
+    // 대신 broadcast 채널이 열린다.
+    expect(w.broadcastChannel?.topic).toBe("hospital:h_001");
+  });
+
+  it("★ 병원 계정 경로는 원본 표를 구독한다 — 승인 전에도 동작해야 한다", () => {
+    const fake = fakeClient();
+    let signals = 0;
+    subscribeHospitalChanges(
+      fake.client,
+      "h_001",
+      () => {},
+      () => {},
+      () => (signals += 1),
+      "postgres_changes",
+    );
+
+    // broadcast 토픽이 아니라 별도 postgres_changes 채널을 연다.
+    const signalChannel = fake.channels.find((c) => c.topic !== fake.channels[0].topic);
+    expect(signalChannel?.topic).not.toBe(serviceStatusTopic("h_001"));
+    const handler = signalChannel?.handlers[0];
+    expect((handler?.filter as { table: string }).table).toBe("service_statuses");
+    expect((handler?.filter as { filter: string }).filter).toBe("hospital_id=eq.h_001");
+
+    handler!.handler({ eventType: "UPDATE", new: {} });
+    expect(signals).toBe(1);
   });
 
   it("DELETE 이벤트는 무시한다 — 삭제 권한이 누구에게도 없다", () => {
     const w = wire();
     const h = w.rowChannel.handlers.find(
-      (x) => (x.filter as { table?: string }).table === "hospital_live_status",
+      (x) => (x.filter as { table?: string }).table === "hospital_contact_status",
     );
     h!.handler({ eventType: "DELETE", new: {} });
     expect(w.changes).toEqual([]);

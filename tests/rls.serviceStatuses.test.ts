@@ -56,12 +56,14 @@ interface StatusRow {
   status: string;
   wait_bucket: string;
   updated_by: string;
-  updated_at: string;
   valid_until: string;
 }
 
 const MIN = 60_000;
 const iso = (offsetMin: number) => new Date(Date.now() + offsetMin * MIN).toISOString();
+
+/** 실제로 만료되기를 기다리는 창. 짧게 두되 테스트가 불안정해지지 않을 만큼은 준다. */
+const SHORT_WINDOW_MS = 1_200;
 
 /** 이 테스트가 만든 행만 지운다. 시드 행은 건드리지 않는다. */
 const created: { hospitalId: string; serviceId: string }[] = [];
@@ -115,18 +117,23 @@ beforeAll(async () => {
       status: "AVAILABLE",
       wait_bucket: "LE30",
       updated_by: userId,
-      updated_at: iso(0),
       valid_until: iso(30),
     },
-    // 만료된 값. TTL CHECK(valid_until <= updated_at + 1h)를 지키면서 과거로 보낸다.
+    /*
+     * 만료된 값.
+     *
+     * 과거로 심을 수 없다 — stamp_write 트리거가 updated_at 을 now() 로 다시 찍고
+     * 지난 만료시각은 기본 창으로 되돌린다. 그게 맞는 동작이라(서버가 시각을 소유한다)
+     * 우회하지 않고, 아주 짧은 창을 요청해 실제로 만료되기를 기다린다.
+     * clamp 는 요청이 기본 창보다 짧으면 존중한다.
+     */
     {
       hospital_id: expired.hospital_id,
       service_id: expired.id,
       status: "AVAILABLE",
       wait_bucket: "LE30",
       updated_by: userId,
-      updated_at: iso(-90),
-      valid_until: iso(-30),
+      valid_until: new Date(Date.now() + SHORT_WINDOW_MS).toISOString(),
     },
   ];
   if (unlisted) {
@@ -137,7 +144,6 @@ beforeAll(async () => {
       status: "AVAILABLE",
       wait_bucket: "LE30",
       updated_by: userId,
-      updated_at: iso(0),
       valid_until: iso(30),
     });
   }
@@ -150,7 +156,10 @@ beforeAll(async () => {
   if (!res.ok) throw new Error(`시드 insert 실패 → HTTP ${res.status} ${await res.text()}`);
 
   for (const r of rows) created.push({ hospitalId: r.hospital_id, serviceId: r.service_id });
-});
+
+  // 짧은 창을 준 행이 실제로 만료되기를 기다린다.
+  await new Promise((r) => setTimeout(r, SHORT_WINDOW_MS + 600));
+}, 20_000);
 
 afterAll(async () => {
   for (const c of created) {

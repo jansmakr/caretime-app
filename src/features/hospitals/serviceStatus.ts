@@ -135,41 +135,6 @@ export function toLegacyLiveStatus(
   };
 }
 
-/**
- * 이행 기간 병합 — 새 출처(항목별 접기)와 옛 출처(hospital_live_status) 중 **더 보수적인 쪽**.
- *
- * 왜 필요한가: 지금은 병원이 아직 hospital_live_status 에 쓴다(파트너 화면 이행은 다음 단계다).
- * 새 출처만 읽으면 그 입력이 보호자 화면에 닿지 않는다 — 이미 동작하던 것이 죽는다.
- * 옛 출처만 읽으면 새 출처를 배선한 의미가 없다.
- *
- * 규칙: 둘 다 값이 있으면 더 보수적인 쪽. 한쪽만 있으면 그쪽. 둘 다 없으면 없음.
- *
- * 그래서 이 병합은 **어느 한쪽보다 낙관적인 답을 만들지 않는다.** 그게 유일한 조건이다.
- *
- * 하나 분명히 해 둘 것: rep 이 null(UNKNOWN)이고 옛 값이 'normal' 이면 'normal' 이 나온다.
- * UNKNOWN 이 AVAILABLE 을 이기는 접기 규칙과 반대로 보이지만, 여기서 null 은
- * "항목 상태를 아직 아무도 안 눌렀다"는 뜻이고 옛 값은 "병원이 직접 눌렀다"는 뜻이다.
- * 병원이 누른 값을 미게시로 덮지 않는다. 이 예외는 이행이 끝나면 사라진다 —
- * 파트너 쓰기가 service_statuses 로 옮겨지면 옛 값이 더 이상 갱신되지 않고,
- * 만료 판정(isExpired)에 걸려 자연히 null 이 된다.
- */
-const LEGACY_RANK: Record<LiveStatusCode, number> = {
-  difficult: 0,
-  paused: 1,
-  partial: 2,
-  normal: 3,
-};
-
-export function mergeConservative(
-  rep: HospitalLiveStatus | null,
-  legacy: HospitalLiveStatus | null,
-): HospitalLiveStatus | null {
-  if (rep === null) return legacy;
-  if (legacy === null) return rep;
-  // 같은 등급이면 새 출처를 쓴다. 이행의 방향이 그쪽이다.
-  return LEGACY_RANK[legacy.status] < LEGACY_RANK[rep.status] ? legacy : rep;
-}
-
 /** 목록 → 기존 화면이 읽는 단일 값. 한 번에 접는다. */
 export function representativeLiveStatus(
   hospitalId: string,

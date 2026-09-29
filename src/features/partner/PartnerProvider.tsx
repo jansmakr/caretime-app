@@ -269,6 +269,20 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
         // 재연결: 끊겨 있던 사이의 변경을 다시 읽는다. 입력 저장 중이면 덮어쓰지 않고 다음 기회로 미룬다.
         if (status === "live" && stateRef.current && !busy()) void load();
       },
+      /*
+       * 항목별 상태가 다른 기기에서 바뀌었다. 행을 받지 않고 전체를 다시 읽는다 —
+       * 대표 상태는 항목 전체를 봐야 접힌다.
+       * 내 저장이 진행 중이면 미룬다. 방금 누른 값을 서버 왕복 중에 덮어쓰지 않게.
+       */
+      () => {
+        if (cancelled || !stateRef.current || busy()) return;
+        void load();
+      },
+      /*
+       * 병원 계정은 원본 표를 구독한다. broadcast 토픽은 승인된 병원만 들을 수 있는데,
+       * 승인 전에도 병원은 자기 화면을 여러 기기에서 같이 봐야 한다.
+       */
+      "postgres_changes",
     );
 
     return () => {

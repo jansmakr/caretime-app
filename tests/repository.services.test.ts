@@ -47,7 +47,19 @@ async function userId(): Promise<string> {
   return id;
 }
 
-async function post(serviceId: string, hospitalId: string, status: string, offsetMin = 0): Promise<void> {
+/**
+ * 병원이 상태를 눌렀다.
+ *
+ * windowMs 를 주면 그만큼만 유효한 값을 심는다. 과거로 심을 수는 없다 —
+ * stamp_write 트리거가 updated_at 을 now() 로 다시 찍는다(서버가 시각을 소유한다).
+ * 만료를 시험할 때는 짧은 창을 주고 실제로 기다린다.
+ */
+async function post(
+  serviceId: string,
+  hospitalId: string,
+  status: string,
+  windowMs = 30 * MIN,
+): Promise<void> {
   const res = await fetch(`${REST}/service_statuses`, {
     method: "POST",
     headers: { ...admin, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
@@ -57,8 +69,7 @@ async function post(serviceId: string, hospitalId: string, status: string, offse
       status,
       wait_bucket: "UNKNOWN",
       updated_by: await userId(),
-      updated_at: iso(offsetMin),
-      valid_until: iso(offsetMin + 30),
+      valid_until: new Date(Date.now() + windowMs).toISOString(),
     }),
   });
   if (!res.ok) throw new Error(`게시 실패 → HTTP ${res.status} ${await res.text()}`);
@@ -172,8 +183,9 @@ describe("접기 규칙이 대표 상태를 지배한다", () => {
     await clearStatuses(multiHospital);
     const before = await view(multiHospital);
 
-    // updated_at 을 90분 전으로 두면 valid_until 은 60분 전 — TTL CHECK 를 지키면서 만료 상태다.
-    for (const item of multiItems) await post(item.id, multiHospital, "AVAILABLE", -90);
+    // 1.2초만 유효한 값을 심고 실제로 만료되기를 기다린다.
+    for (const item of multiItems) await post(item.id, multiHospital, "AVAILABLE", 1_200);
+    await new Promise((r) => setTimeout(r, 1_800));
     const after = await view(multiHospital);
 
     // 만료된 AVAILABLE 이 세 개 있어도 항목 상태는 전부 null 이고 대표도 움직이지 않는다.

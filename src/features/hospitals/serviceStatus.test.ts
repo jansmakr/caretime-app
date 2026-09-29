@@ -3,12 +3,11 @@ import {
   FOLD_PRIORITY,
   effectiveStatusOf,
   foldRepresentative,
-  mergeConservative,
   representativeLiveStatus,
   toLegacyLiveStatus,
 } from "@/features/hospitals/serviceStatus";
 import { describeStatus } from "@/lib/freshness";
-import type { HospitalLiveStatus, HospitalServiceStatus } from "@/features/hospitals/types";
+import type { HospitalServiceStatus } from "@/features/hospitals/types";
 
 /**
  * 접기 규칙. 이건 코드가 아니라 안전 판단이라 테스트로 못박는다.
@@ -220,70 +219,3 @@ describe("기존 화면으로 가는 다리", () => {
   });
 });
 
-describe("이행 기간 병합 — 새 출처 + 옛 출처", () => {
-  const legacy = (status: "normal" | "partial" | "paused" | "difficult"): HospitalLiveStatus => ({
-    hospitalId: "h_001",
-    capabilityId: null,
-    status,
-    reasonCode: null,
-    customReason: null,
-    detailText: null,
-    startsAt: null,
-    expectedResumeAt: null,
-    recheckAt: null,
-    verifiedBy: "hospital",
-    verifiedAt: at(-5),
-    expiresAt: at(30),
-  });
-
-  const rep = (s: "AVAILABLE" | "LIMITED" | "CLOSED" | "PAUSED") =>
-    representativeLiveStatus("h_001", [svc({ status: s })], NOW);
-
-  it("둘 다 없으면 없음", () => {
-    expect(mergeConservative(null, null)).toBeNull();
-  });
-
-  it("한쪽만 있으면 그쪽", () => {
-    expect(mergeConservative(rep("AVAILABLE"), null)?.status).toBe("normal");
-    expect(mergeConservative(null, legacy("difficult"))?.status).toBe("difficult");
-  });
-
-  it("★ 새 출처가 마감이면 옛 정상을 이긴다", () => {
-    expect(mergeConservative(rep("CLOSED"), legacy("normal"))?.status).toBe("difficult");
-  });
-
-  it("★ 옛 출처가 마감이면 새 가능을 이긴다", () => {
-    expect(mergeConservative(rep("AVAILABLE"), legacy("difficult"))?.status).toBe("difficult");
-  });
-
-  it("★ 어느 조합에서도 두 입력보다 낙관적인 답이 나오지 않는다", () => {
-    const rank = { difficult: 0, paused: 1, partial: 2, normal: 3 } as const;
-    const news = ["AVAILABLE", "LIMITED", "PAUSED", "CLOSED"] as const;
-    const olds = ["normal", "partial", "paused", "difficult"] as const;
-    for (const n of news) {
-      for (const o of olds) {
-        const merged = mergeConservative(rep(n), legacy(o));
-        const worst = Math.max(rank[rep(n)!.status], rank[o]);
-        expect(rank[merged!.status]).toBeGreaterThanOrEqual(0);
-        expect(rank[merged!.status]).toBeLessThanOrEqual(worst);
-      }
-    }
-  });
-
-  it("같은 등급이면 새 출처를 쓴다 (이행 방향)", () => {
-    const merged = mergeConservative(rep("AVAILABLE"), legacy("normal"));
-    expect(merged?.capabilityId).toBeNull();
-    expect(merged?.expiresAt).toBe(at(30));
-  });
-
-  it("미게시(UNKNOWN)는 병원이 직접 누른 옛 값을 덮지 않는다 — 의도된 예외", () => {
-    // 항목이 있지만 아무도 안 눌렀다 → rep 은 null. 옛 값이 그대로 보인다.
-    const unposted = representativeLiveStatus(
-      "h_001",
-      [svc({ status: null, validUntil: null, updatedAt: null })],
-      NOW,
-    );
-    expect(unposted).toBeNull();
-    expect(mergeConservative(unposted, legacy("normal"))?.status).toBe("normal");
-  });
-});

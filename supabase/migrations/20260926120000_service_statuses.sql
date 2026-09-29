@@ -155,11 +155,57 @@ create or replace function public.clamp_status_valid_until(
 language sql
 immutable
 as $$
-  select least(
-    p_requested,
-    p_updated_at + case when p_status = 'CLOSED' then interval '12 hours' else interval '60 minutes' end
-  );
+  select case
+    /*
+     * 요청이 없거나 이미 지난 시각이면 **기본 창 전체**를 준다.
+     *
+     * 왜 위(cap)만 자르면 안 되는가: 파트너 화면은 만료된 상태를 들고 시작한다
+     * ("어제 확인한 값이 만료됨" → 다시 눌러 주세요). 그 화면에서 누르면 화면이 들고
+     * 있던 과거 만료시각이 그대로 올라온다. least() 만 하면 과거 값이 남아
+     * valid_until > updated_at CHECK 에 걸리고, 병원은 "저장 실패"를 본다.
+     * 야간 당직자에게 그건 이 도구를 안 쓰는 이유가 된다.
+     *
+     * 지금 누른 것이니 지금부터 기본 창 동안 유효하다. 그게 병원의 뜻이다.
+     */
+    when p_requested is null or p_requested <= p_updated_at then p_updated_at + cap.span
+    /* 더 짧게 요청하면 존중한다. 짧은 쪽은 보수적이라 위험을 만들지 않는다. */
+    else least(p_requested, p_updated_at + cap.span)
+  end
+  from (
+    select case when p_status = 'CLOSED' then interval '12 hours' else interval '60 minutes' end
+  ) as cap(span);
 $$;
+
+/*
+ * 쓰기 시각·작성자·만료를 서버가 찍는다. 클라이언트가 보내지 않는다.
+ *
+ * 왜: valid_until 은 updated_at 기준 CHECK(60분 / CLOSED 12시간) 안에 있어야 한다.
+ * 클라이언트가 두 값을 함께 보내면 기기 시계가 몇 초만 어긋나도 CHECK 에 걸려
+ * 병원이 "저장 실패"를 본다. 야간 당직자에게 그건 곧 이 도구를 안 쓰는 이유가 된다.
+ * 그래서 updated_at 은 now(), 요청된 만료는 clamp 해서 넣는다.
+ *
+ * version 은 UPDATE 마다 1 오른다. 지금 이 값을 읽고 거절하는 코드는 없다 —
+ * compare-and-swap(409)은 별도 턴이다. 그래도 여기서 올려 두는 이유는, 올리지 않으면
+ * 컬럼이 항상 1 이어서 "있는데 거짓인 값"이 되기 때문이다.
+ */
+create function public.stamp_service_status() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.updated_at := now();
+  new.updated_by := coalesce(auth.uid(), new.updated_by);
+  new.valid_until := public.clamp_status_valid_until(new.status, new.updated_at, new.valid_until);
+
+  if tg_op = 'UPDATE' then
+    new.version := old.version + 1;
+  else
+    new.version := 1;
+  end if;
+
+  return new;
+end $$;
+
+create trigger stamp_write before insert or update on public.service_statuses
+  for each row execute function public.stamp_service_status();
 
 -- ── 상태 변경 이력 ──────────────────────────────────────────
 -- 누가·언제·무엇을 바꿨는지. 환자 본문은 담지 않는다. (PRD §7.4 감사 90일)
@@ -174,6 +220,35 @@ create table public.status_events (
   created_at timestamptz not null default now()
 );
 create index status_events_lookup on public.status_events (hospital_id, created_at desc, id desc);
+
+/*
+ * 변경 이력을 서버가 남긴다.
+ *
+ * 왜 지금 필요한가: 파트너 화면의 "어제와 동일"이 이력을 읽는다. 옛 경로는
+ * hospital_update_log(legacy 트리거)를 봤는데, 쓰기가 service_statuses 로 옮겨지면
+ * 그 로그에 새 값이 쌓이지 않는다. 이력이 없으면 "어제와 동일"이 조용히 망가지고,
+ * 그건 병원이 한 번 눌러서 끝내는 유일한 경로다. 그게 막히면 아무도 쓰지 않는다.
+ *
+ * 환자 본문은 담지 않는다. 담을 것도 없다 — 이 표에는 운영 상태만 있다. (PRD §7.4)
+ * actor 는 auth.uid() 다. 서버(service_role)로 넣으면 null 이고, 그것도 사실이다.
+ */
+create function public.log_service_status() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.status_events (hospital_id, service_id, actor_user_id, old_json, new_json, version)
+  values (
+    new.hospital_id,
+    new.service_id,
+    auth.uid(),
+    case when tg_op = 'UPDATE' then to_jsonb(old) - 'updated_by' else null end,
+    to_jsonb(new) - 'updated_by',
+    new.version
+  );
+  return null;
+end $$;
+
+create trigger log_write after insert or update on public.service_statuses
+  for each row execute function public.log_service_status();
 
 -- ============================================================
 -- 시드 이행
