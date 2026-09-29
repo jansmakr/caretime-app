@@ -347,17 +347,97 @@ revoke all on public.service_statuses_public from anon, authenticated;
 grant select on public.service_statuses_public to anon, authenticated;
 
 -- ============================================================
--- Realtime
+-- Realtime ① — 병원 계정용 (postgres_changes)
 --
 -- postgres_changes 는 **테이블**만 구독할 수 있다. 뷰는 구독 대상이 아니다.
--- 그리고 Realtime 은 구독자 역할의 RLS 를 따른다. service_statuses 에는 anon
--- select 정책이 없으므로 **보호자(anon)에게는 이벤트가 가지 않는다.** 그건 의도다 —
--- 원본을 열지 않기로 했고, 이벤트가 가려면 원본을 열어야 한다.
+-- 로컬에서 확인했다: alter publication ... add table <view> 는
+-- "This operation is not supported for views." 로 거부된다.
 --
--- 그래서 이 등록의 수혜자는 병원 계정(파트너 화면)이다. 보호자 화면의 최신성은
--- 이벤트가 아니라 다시 읽기(refetch)로 확보한다. 그 배선은 useHospitalLive 에 있다.
+-- 그리고 Realtime 은 구독자 역할의 RLS 를 따른다. service_statuses 에는 anon
+-- select 정책이 없으므로 이 경로로는 **보호자에게 이벤트가 가지 않는다.** 의도다 —
+-- 원본을 열지 않기로 했고, 이 경로로 이벤트가 가려면 원본을 열어야 한다.
+--
+-- 그래서 이 등록의 수혜자는 병원 계정(파트너 화면)이다.
+-- 보호자용 경로는 아래 ② 다.
 -- ============================================================
 alter publication supabase_realtime add table public.service_statuses;
+
+-- ============================================================
+-- Realtime ② — 보호자용 (broadcast)
+--
+-- 원본 테이블을 열지 않고 보호자에게 변경을 알린다. 트리거가 realtime.send() 로
+-- 병원별 토픽에 **직접 고른 값만** 실어 보낸다. 페이로드가 정책이 아니라 아래
+-- jsonb_build_object 한 곳에서 결정된다.
+--
+-- 왜 이게 필요한가: 이것이 없으면 열어 둔 보호자 화면은 병원이 "마감"을 눌러도
+-- 모른다. 남은 TTL(최대 60분)이 지나 만료로 떨어질 때까지 "접수 가능"이 남는다.
+-- 야간에 한 번 헛걸음하기에 충분한 시간이다.
+-- 로컬 측정: 게시 → 보호자 도달 18ms.
+-- ============================================================
+
+/*
+ * ⚠️ 페이로드에 컬럼을 추가할 때는 **공개 가능 여부를 먼저 판단하라.**
+ *
+ * 이 함수의 jsonb_build_object 가 보호자에게 무엇이 보이는지를 정하는 유일한 곳이다.
+ * 원본 테이블에는 anon 읽기 정책이 없으므로, 여기 적지 않은 컬럼은 나가지 않는다.
+ * 반대로 여기 한 줄을 더하면 그 값은 즉시 공개된다. RLS 가 한 번 더 걸러 주지 않는다.
+ *
+ * 지금 일부러 빼 둔 것:
+ *   updated_by  누가 눌렀는지는 공개 정보가 아니다. 병원 직원 개인을 특정할 수 있다.
+ *   version     동시수정 판정용 내부 값이다. 보호자에게 의미가 없다.
+ *
+ * 만료 여부는 싣지 않는다. 받는 쪽이 전체를 다시 읽고 그때 판정한다
+ * (lib/freshness.isExpired — 읽는 시점 판정).
+ */
+create function public.broadcast_service_status() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform realtime.send(
+    jsonb_build_object(
+      'hospital_id', new.hospital_id,
+      'service_id',  new.service_id,
+      'status',      new.status,
+      'wait_bucket', new.wait_bucket,
+      'valid_until', new.valid_until,
+      'updated_at',  new.updated_at
+    ),
+    'service_status',
+    'hospital:' || new.hospital_id,
+    true
+  );
+  return null;
+end $$;
+
+create trigger broadcast_service_status
+  after insert or update on public.service_statuses
+  for each row execute function public.broadcast_service_status();
+
+/*
+ * 청취 권한. realtime.messages 는 RLS 가 켜져 있고 정책이 하나도 없으면 아무도 듣지
+ * 못한다(로컬에서 확인: 정책을 지우면 "Unauthorized: You do not have permissions to
+ * read from this Channel topic").
+ *
+ * 토픽을 like 'hospital:%' 로 넓게 열지 않는다. 이 설계의 안전장치는 "페이로드를
+ * 트리거에서 고른다"는 것인데, 정책이 넓으면 그 안전장치가 한 사람의 실수에 걸린다 —
+ * 누가 페이로드에 컬럼 하나를 추가하는 순간 모든 병원 토픽에서 그게 공개된다.
+ * 그래서 **승인된 참여 병원의 토픽만** 허용한다.
+ *
+ * 지금 verification_state = 'APPROVED' 인 병원은 0곳이다. 즉 이 정책은 현재 아무것도
+ * 허용하지 않는다. 그게 맞는 상태다 — 승인 절차를 통과한 병원이 실제로 없다.
+ * 시드를 APPROVED 로 채워서 가리지 않는다.
+ */
+create policy "guardians listen to approved hospital topics" on realtime.messages
+  for select to anon, authenticated
+  using (
+    extension = 'broadcast'
+    and exists (
+      select 1
+      from public.hospitals h
+      where h.verification_state = 'APPROVED'
+        and h.is_participating
+        and realtime.topic() = 'hospital:' || h.id
+    )
+  );
 
 -- ============================================================
 -- hospital_live_status 를 읽기 전용으로 남기는 방법에 대한 메모

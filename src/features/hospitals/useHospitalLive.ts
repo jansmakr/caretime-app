@@ -88,10 +88,21 @@ export function useHospitalLive(initial: HospitalView, renderedAt: string, enabl
       (status) => {
         setConnection(status);
         if (status !== "live") return;
+        /*
+         * 구독이 확정된 직후에도 반드시 한 번 다시 읽는다. **지우지 말 것.**
+         *
+         * 이유가 둘이다.
+         *  1) 끊겨 있던 사이의 변경은 이벤트로 오지 않는다.
+         *  2) 콜드 스타트. Realtime 서버는 broadcast 용 replication slot 을 첫 private
+         *     채널 구독 시점에 lazy 하게 만든다. 로컬 검증에서 그 생성과 쓰기가 같은
+         *     밀리초에 겹쳐 **첫 이벤트가 유실됐다.** slot 이 생긴 뒤에는 18ms 에 도달한다.
+         *     즉 구독 성공이 "이 순간 이후의 변경을 전부 받는다"를 보장하지 않는다.
+         *
+         * "구독했는데 왜 또 읽지?"로 보여서 지우면 배포 직후 첫 변경이 조용히 사라진다.
+         */
         refetch();
       },
       // 항목별 상태가 바뀌면 전체를 다시 읽는다. 대표 상태는 항목 전체를 봐야 접힌다.
-      // (지금 anon 은 RLS 때문에 이 신호를 받지 못한다 — 받게 되면 이 배선이 그대로 동작한다.)
       refetch,
     );
 

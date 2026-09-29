@@ -1,15 +1,18 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import type { ContactStatusRow, DailyHoursRow, LiveStatusRow, WaitingStatusRow } from "./rows";
 
 /**
- * 병원 1곳의 병원 직접입력 테이블 변경 구독.
+ * 병원 1곳의 상태 변경 구독. 채널 두 개를 쓴다.
  *
- * Realtime 은 구독자 역할의 RLS 를 따른다. 그래서 테이블마다 도달 범위가 다르다.
- *   hospital_* 4개   → anon·병원 계정 모두 받는다 (공개 읽기 정책이 있다)
- *   service_statuses → **병원 계정만** 받는다. anon 정책을 만들지 않았기 때문이다.
- *                      보호자 화면은 이벤트 대신 다시 읽기로 최신성을 얻는다.
+ * ① postgres_changes — 병원 직접입력 4개 테이블. 행을 그대로 싣는다.
+ *    Realtime 이 구독자 역할의 RLS 를 따르므로 anon·병원 계정 모두 받는다.
  *
- * 구독 자체는 한 곳에서 선언한다. 역할에 따라 오는 것만 달라진다.
+ * ② broadcast — 항목별 상태(service_statuses). 토픽은 `hospital:<id>` 다.
+ *    원본 테이블에는 anon 읽기 정책이 없어서 ① 경로로는 보호자에게 오지 않는다.
+ *    대신 DB 트리거가 고른 값만 이 토픽으로 보낸다(migration 20260926).
+ *    청취 권한은 realtime.messages 의 RLS 가 판정한다 — 승인된 참여 병원의 토픽만.
+ *
+ * 채널이 둘인 이유: 토픽 이름이 정책과 정확히 맞아야 한다. 한 채널은 토픽이 하나다.
  */
 
 export type HospitalChange =
@@ -29,13 +32,18 @@ const ROW_TABLES = [
 ] as const;
 
 /**
- * 항목별 상태 테이블. 행을 싣지 않고 "다시 읽어라"만 알린다.
+ * 항목별 상태 broadcast. 페이로드를 쓰지 않고 "다시 읽어라"로만 쓴다.
  *
- * 왜 행을 안 싣는가: 한 항목의 행만 받아서는 대표 상태를 다시 접을 수 없다.
+ * 왜 페이로드를 안 쓰는가: 한 항목의 값만 받아서는 대표 상태를 다시 접을 수 없다.
  * 접기에는 항목 전체가 필요하다(모르는 항목이 하나라도 있으면 UNKNOWN). 게다가
- * 보호자 경로가 읽는 것은 원본이 아니라 컬럼이 다른 공개 뷰다. 그래서 신호만 준다.
+ * 보호자 경로가 읽는 것은 원본이 아니라 컬럼이 다른 공개 뷰다. 그래서 신호로만 쓴다.
  */
-const SIGNAL_TABLE = "service_statuses";
+export const SERVICE_STATUS_EVENT = "service_status";
+
+/** 트리거가 보내는 토픽과 정책이 검사하는 토픽이 같은 문자열이어야 한다. */
+export function serviceStatusTopic(hospitalId: string): string {
+  return `hospital:${hospitalId}`;
+}
 
 /**
  * onStatus("live") 는 최초 연결·DB 구독 확정·재연결 때마다 불린다(한 번 연결에 두 번 올 수 있다).
@@ -48,8 +56,7 @@ export function subscribeHospitalChanges(
   onStatus: (status: RealtimeConnection) => void,
   /**
    * 항목별 상태가 바뀌었다는 신호. 받는 쪽은 병원 전체를 다시 읽는다.
-   * 넘기지 않으면 그 테이블을 구독하지도 않는다 — 쓰지 않을 구독을 열지 않는다.
-   * anon 은 RLS 때문에 이 신호를 받지 못한다(위 주석 참고).
+   * 넘기지 않으면 broadcast 채널을 열지 않는다 — 쓰지 않을 구독을 만들지 않는다.
    */
   onServiceStatusesChanged?: () => void,
 ): () => void {
@@ -67,14 +74,6 @@ export function subscribeHospitalChanges(
     );
   }
 
-  if (onServiceStatusesChanged) {
-    channel = channel.on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: SIGNAL_TABLE, filter: `hospital_id=eq.${hospitalId}` },
-      () => onServiceStatusesChanged(),
-    );
-  }
-
   // SUBSCRIBED 는 채널 참여 완료일 뿐, DB 변경 구독은 조금 뒤 system 메시지로 확정된다.
   // 그 사이에 난 변경은 이벤트로 오지 않으므로, 확정 시점에도 한 번 더 "live" 를 알려 다시 읽게 한다.
   // (인증 토큰이 바뀌어 서버가 재구독할 때도 같은 메시지가 온다)
@@ -89,7 +88,24 @@ export function subscribeHospitalChanges(
     else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") onStatus("offline");
   });
 
+  /*
+   * 항목별 상태용 broadcast 채널. private 이라 realtime.messages 의 RLS 를 통과해야 한다.
+   *
+   * 구독이 거절되는 것은 정상 상황이다 — 승인되지 않은 병원(verification_state !=
+   * 'APPROVED')의 토픽은 정책이 막는다. 그래서 여기서 실패해도 onStatus 로 "offline" 을
+   * 보내지 않는다. 화면의 연결 표시는 ① 채널만 따른다. ② 가 막힌 병원에서 "연결 끊김"을
+   * 그리면 사실과 다르다 — 나머지 정보는 정상적으로 오고 있다.
+   */
+  let broadcast: RealtimeChannel | null = null;
+  if (onServiceStatusesChanged) {
+    broadcast = client
+      .channel(serviceStatusTopic(hospitalId), { config: { private: true } })
+      .on("broadcast", { event: SERVICE_STATUS_EVENT }, () => onServiceStatusesChanged());
+    broadcast.subscribe();
+  }
+
   return () => {
     void client.removeChannel(channel);
+    if (broadcast) void client.removeChannel(broadcast);
   };
 }
