@@ -275,3 +275,73 @@ describe("30분 규칙은 표시 계층에서만 내린다", () => {
     expect(v.downgraded).toBe(false);
   });
 });
+
+/**
+ * 권할 행동이 없는 상태.
+ *
+ * 믿을 상태도 없고(callOnly) 전화도 어렵다(callDiscouraged). 이때 주 버튼을 억지로
+ * 만들면 그게 거짓이다 — "목록으로"는 사용자를 밀어내기만 하고 답을 주지 않는다.
+ * 그래서 상태 자리에 사실을 적고, 무게가 같은 선택지 둘을 둔다.
+ */
+describe("noGuidance — 권할 행동이 없을 때", () => {
+  const hardToCall = {
+    hospitalId: "h_001",
+    status: "difficult" as const,
+    customNote: null,
+    verifiedAt: at(-5),
+  };
+
+  it("★ 상태가 오래됐고 전화도 어려우면 noGuidance 다", () => {
+    const h = hospital({
+      liveStatus: liveStatus({ verifiedAt: at(-35), expiresAt: at(20) }),
+      contactStatus: hardToCall,
+    });
+    expect(deriveStatusView(h, NOW).noGuidance).toBe(true);
+  });
+
+  it("★ 그때 상태 문구는 '확인 필요'가 아니라 '확인된 정보가 없습니다'다", () => {
+    const h = hospital({
+      liveStatus: liveStatus({ verifiedAt: at(-35), expiresAt: at(20) }),
+      contactStatus: hardToCall,
+    });
+    // "확인 필요"는 사용자가 할 일이 있다는 뜻이다. 전화가 어려우면 할 일이 없다.
+    expect(deriveStatusView(h, NOW).status.text).toBe("확인된 정보가 없습니다");
+  });
+
+  it("상태가 아직 싱싱하면 noGuidance 가 아니다 — 전화는 안 권하지만 답은 있다", () => {
+    const h = hospital({
+      liveStatus: liveStatus({ verifiedAt: at(-5), expiresAt: at(20) }),
+      contactStatus: hardToCall,
+    });
+    const v = deriveStatusView(h, NOW);
+    expect(v.noGuidance).toBe(false);
+    expect(v.status.text).toBe("확인 당시 진료 가능");
+    expect(v.urgency.callDiscouraged).toBe(true);
+  });
+
+  it("전화가 가능하면 오래돼도 noGuidance 가 아니다 — 시킬 일이 있다", () => {
+    const h = hospital({
+      liveStatus: liveStatus({ verifiedAt: at(-35), expiresAt: at(20) }),
+      contactStatus: { ...hardToCall, status: "busy" as const },
+    });
+    const v = deriveStatusView(h, NOW);
+    expect(v.noGuidance).toBe(false);
+    expect(v.status.text).toBe("현재 상태 확인 필요");
+  });
+
+  it("만료 + 전화 어려움도 noGuidance 다", () => {
+    const h = hospital({
+      liveStatus: liveStatus({ verifiedAt: at(-90), expiresAt: at(-1) }),
+      contactStatus: hardToCall,
+    });
+    expect(deriveStatusView(h, NOW).noGuidance).toBe(true);
+  });
+
+  it("여기서도 저장값은 그대로다", () => {
+    const stored = liveStatus({ status: "normal", verifiedAt: at(-35), expiresAt: at(20) });
+    const h = hospital({ liveStatus: stored, contactStatus: hardToCall });
+    deriveStatusView(h, NOW);
+    expect(h.liveStatus).toBe(stored);
+    expect(stored.status).toBe("normal");
+  });
+});

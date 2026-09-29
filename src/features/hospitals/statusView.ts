@@ -85,6 +85,20 @@ export interface StatusView {
    * 화면이 "왜 확인 필요인가"를 구분해야 할 때 본다(만료인가, 오래됐는가).
    */
   downgraded: boolean;
+  /**
+   * 믿을 상태도 없고(callOnly) 전화도 어렵다(callDiscouraged).
+   *
+   * 이 경우 화면은 **주 버튼을 만들지 않는다.** 억지로 하나를 크게 만들면 그게 거짓이다 —
+   * 우리가 권할 수 있는 행동이 실제로 없다. "목록으로"는 사용자를 밀어내기만 하고
+   * 답을 주지 않는다. 돌아가도 같은 문제의 병원이 또 있다.
+   *
+   * 이건 문구 문제가 아니라 정보가 없다는 사실이다. 그래서 그대로 말하고,
+   * 무게가 같은 선택지 둘을 준다. [그래도 전화] — 병원이 어렵다고 했을 뿐
+   * 불가능한 것은 아니다. [다른 곳 보기].
+   *
+   * 응급 여부는 우리가 판단하지 않는다. 119 안내는 이미 있는 것을 그대로 둔다.
+   */
+  noGuidance: boolean;
 }
 
 export function deriveStatusView(hospital: HospitalView, now: Date): StatusView {
@@ -97,11 +111,18 @@ export function deriveStatusView(hospital: HospitalView, now: Date): StatusView 
   // 만료는 아니지만 너무 오래된 경우. 저장값은 그대로 두고 표시만 내린다.
   const downgraded = !expired && urgency.level === "callOnly";
 
+  // 믿을 상태도 없고 전화도 어렵다. 권할 행동이 없는 상태다.
+  const noGuidance = urgency.level === "callOnly" && urgency.callDiscouraged;
+
   // 재개·재확인 예정 문구도 같이 내린다. "확인 필요" 옆의 "21:00 이후 재개 예정"은
   // 서로 어긋나 읽히고, 급한 사람에게 읽을 줄을 하나 더 만든다(원칙 4).
-  const status = downgraded
-    ? ({ tone: "unverified", text: "현재 상태 확인 필요" } as const)
-    : describeStatus(live, now);
+  // 권할 행동이 없을 때는 "확인 필요"(사용자가 할 일이 있다는 뜻)가 아니라
+  // "확인된 정보가 없습니다"(사실)로 적는다. 할 수 없는 일을 시키지 않는다.
+  const status = noGuidance
+    ? ({ tone: "unverified", text: "확인된 정보가 없습니다" } as const)
+    : downgraded
+      ? ({ tone: "unverified", text: "현재 상태 확인 필요" } as const)
+      : describeStatus(live, now);
 
   return {
     expired,
@@ -112,5 +133,6 @@ export function deriveStatusView(hospital: HospitalView, now: Date): StatusView 
     publicSyncedAgo: formatAgo(getFreshness(hospital.publicData.syncedAt, now).minutesAgo),
     urgency,
     downgraded,
+    noGuidance,
   };
 }

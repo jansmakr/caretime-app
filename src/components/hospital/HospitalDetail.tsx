@@ -43,7 +43,7 @@ export function HospitalDetail({
 
   const live = hospital.liveStatus;
   // 카드(목록)와 같은 함수를 쓴다. 같은 병원·같은 now 면 두 화면의 문구가 같아야 한다.
-  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo, urgency, downgraded } =
+  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo, urgency, downgraded, noGuidance } =
     deriveStatusView(hospital, now);
   // 만료됐거나, 만료 전이라도 확인 후 30분이 지나 표시를 내린 경우. 둘 다 상태를 보장하지 못한다.
   const unreliable = expired || downgraded;
@@ -138,11 +138,22 @@ export function HospitalDetail({
             {timePlan && <span className="text-[13.5px] text-ink-muted">{timePlan}</span>}
           </div>
 
-          {unreliable && (
+          {/*
+            믿을 상태가 없을 때 무엇을 말하는가.
+            전화가 가능하면 전화를 시킨다. 전화도 어렵다면 시킬 수 있는 일이 없으므로
+            없다는 사실만 말한다 — "전화로 확인해 주세요"는 그 경우 빈 말이다.
+          */}
+          {noGuidance ? (
             <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
-              마지막 확인 이후 시간이 지나 현재 상태를 보장할 수 없습니다. 방문 전에 전화로
-              확인해 주세요.
+              이 의료기관은 전화 문의가 어렵다고 알려왔습니다.
             </p>
+          ) : (
+            unreliable && (
+              <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
+                마지막 확인 이후 시간이 지나 현재 상태를 보장할 수 없습니다. 방문 전에 전화로
+                확인해 주세요.
+              </p>
+            )
           )}
 
           {live && !unreliable && live.reasonCode && (
@@ -205,20 +216,26 @@ export function HospitalDetail({
 
         {/*
           병원이 "전화문의 어려움"을 켜 두면 전화를 주 버튼으로 올리지 않는다.
-          받지 못하는 번호로 급한 사람을 보내면 시간만 잃는다. 이 규칙은 카드(목록)가
-          이미 지키고 있었고 상세만 어기고 있었다.
-          대신 무엇을 주 행동으로 둘지는 기존 문구 안에서 정한다 — 새 문구를 만들지 않았다.
+          받지 못하는 번호로 급한 사람을 보내면 시간만 잃는다.
+
+          그렇다고 다른 것을 주 버튼으로 올리지도 않는다. "목록으로"를 크게 만들면
+          사용자를 밀어내기만 하고 답을 주지 않는다 — 돌아가도 같은 문제의 병원이 또 있다.
+          우리가 권할 수 있는 행동이 실제로 없을 때 하나를 크게 만드는 것은 거짓이다.
+          그래서 무게가 같은 선택지 둘을 둔다.
+
+          [그래도 전화]가 남아 있는 이유: 병원이 어렵다고 알린 것이고 불가능한 것은 아니다.
+          응급 여부는 우리가 판단하지 않는다. 119 안내는 이미 있는 자리 그대로 둔다.
         */}
         <div className="space-y-2 pt-1">
           {urgency.callDiscouraged ? (
-            <>
-              <Link href="/search" className="ct-primary">
-                목록으로
-              </Link>
-              <a href={`tel:${hospital.publicData.tel}`} className="ct-secondary w-full">
+            <div className="flex gap-2">
+              <a href={`tel:${hospital.publicData.tel}`} className="ct-secondary">
                 그래도 전화
               </a>
-            </>
+              <Link href="/search" className="ct-secondary">
+                다른 곳 보기
+              </Link>
+            </div>
           ) : (
             <>
               <a href={`tel:${hospital.publicData.tel}`} className="ct-primary">

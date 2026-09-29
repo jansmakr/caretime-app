@@ -33,7 +33,10 @@ const CONDITION_TONE: Record<ConditionState, string> = {
 export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date }) {
   const { hospital, relatedCapabilities, conditions, straightLineKm } = match;
   const live = hospital.liveStatus;
-  const { status, timePlan, verifiedAgo, publicSyncedAgo, urgency } = deriveStatusView(hospital, now);
+  const { status, timePlan, verifiedAgo, publicSyncedAgo, urgency, noGuidance } = deriveStatusView(
+    hospital,
+    now,
+  );
   const waiting = describeWaitingForUser(hospital, now);
   const incoming = describeIncomingForUser(hospital.incoming?.within30 ?? null);
   const admission = getAdmissionWindow(
@@ -144,9 +147,14 @@ export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date 
           단, 병원이 "전화문의 어려움"을 켜 두었으면 전화를 권하지 않는다. */}
       {hardToCall ? (
         <>
+          {/*
+            믿을 상태도 없고 전화도 어려우면, 할 수 있는 일을 알려주는 대신 없다는 사실을
+            말한다. "이 화면에서 한 번 더 확인해 주세요"는 확인할 값이 없을 때 빈 말이다.
+          */}
           <p className="mt-3 rounded-field bg-caution-soft px-3.5 py-2.5 text-[13.5px] leading-relaxed text-caution-ink">
-            이 의료기관은 현재 전화문의가 어렵습니다. 출발 전 이 화면에서 상태를 한 번 더 확인해
-            주세요.
+            {noGuidance
+              ? "이 의료기관은 전화 문의가 어렵다고 알려왔습니다."
+              : "이 의료기관은 현재 전화문의가 어렵습니다. 출발 전 이 화면에서 상태를 한 번 더 확인해 주세요."}
           </p>
           <div className="mt-3 flex gap-2">
             <Link href={`/hospital/${hospital.id}`} className="ct-secondary">
