@@ -8,7 +8,7 @@ import {
   describeWaitingForUser,
 } from "@/features/hospitals/service";
 import { straightLineLabel, type ConditionState, type DiscoveryMatch } from "@/features/discovery/match";
-import { describeStatus, describeTimePlan, formatAgo, getFreshness, isExpired } from "@/lib/freshness";
+import { deriveStatusView } from "@/features/hospitals/statusView";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
 import { showArrivalIntent, showOfficialSourceBadge, showTravelEstimate } from "@/lib/demoContent";
@@ -25,15 +25,22 @@ const CONDITION_TONE: Record<ConditionState, string> = {
   mismatch: "bg-limited-soft text-limited-ink",
 };
 
-export function HospitalCard({ match }: { match: DiscoveryMatch }) {
+/**
+ * now 는 필수 인자다. 기본값을 두지 않는다 —
+ * 카드가 스스로 시각을 만들면 목록과 상세가 다른 시각으로 판정한다.
+ * 화면 하나가 now 하나를 만들어 내려보낸다(useHospitalList).
+ */
+export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date }) {
   const { hospital, relatedCapabilities, conditions, straightLineKm } = match;
   const live = hospital.liveStatus;
-  const expired = live ? isExpired(live) : true;
-  const status = describeStatus(live);
-  const timePlan = expired ? null : describeTimePlan(live);
-  const waiting = describeWaitingForUser(hospital);
+  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo } = deriveStatusView(hospital, now);
+  const waiting = describeWaitingForUser(hospital, now);
   const incoming = describeIncomingForUser(hospital.incoming?.within30 ?? null);
-  const admission = getAdmissionWindow(hospital.hours, showTravelEstimate ? hospital.travelMinutes : 0);
+  const admission = getAdmissionWindow(
+    hospital.hours,
+    showTravelEstimate ? hospital.travelMinutes : 0,
+    now,
+  );
   const hardToCall = hospital.contactStatus?.status === "difficult";
   // 연령조건이 맞지 않으면 확실한 정보로 취급하지 않는다. 전화 확인이 먼저다.
   // 조건이 하나라도 미확인·불일치면 전화 확인을 앞으로 끌어올린다.
@@ -92,16 +99,10 @@ export function HospitalCard({ match }: { match: DiscoveryMatch }) {
 
       <div className="mt-4">
         {/* 검증된 기관 제공 근거가 없으면 공식 배지 대신 공공정보만 쓴다. */}
-        {showOfficialSourceBadge && hospital.isParticipating && live ? (
-          <SourceBadge
-            source={live.verifiedBy}
-            verifiedAgo={formatAgo(getFreshness(live.verifiedAt).minutesAgo)}
-          />
+        {showOfficialSourceBadge && hospital.isParticipating && live && verifiedAgo !== null ? (
+          <SourceBadge source={live.verifiedBy} verifiedAgo={verifiedAgo} />
         ) : (
-          <SourceBadge
-            source="public"
-            verifiedAgo={formatAgo(getFreshness(hospital.publicData.syncedAt).minutesAgo)}
-          />
+          <SourceBadge source="public" verifiedAgo={publicSyncedAgo} />
         )}
 
         {/* 정상은 기본값이다. 기본값에 배지를 달면 카드가 무거워진다. */}

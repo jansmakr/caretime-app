@@ -23,6 +23,8 @@ import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
 export default function SearchPage() {
   const { conditions, origin, ready } = useDiscovery();
   const list = useHospitalList();
+  // 구조 분해해서 좁힌다. list.now 로 두면 아래 삼항 안에서 null 이 다시 살아난다.
+  const { now } = list;
 
   const results = useMemo(
     () => matchHospitals(list.hospitals, conditions, origin),
@@ -47,7 +49,12 @@ export default function SearchPage() {
           </p>
         )}
 
-        {list.status === "loading" ? (
+        {/*
+          now 가 아직 없으면(첫 렌더) 카드를 그리지 않는다. 카드의 모든 시간 판정이
+          now 하나에서 나오므로, 사용자의 시계를 알기 전에 그리면 서버에서 굳은 시각으로
+          "N분 전"을 적게 된다. 로딩 표시를 이미 쓰고 있어 화면이 하나 더 생기지는 않는다.
+        */}
+        {list.status === "loading" || now === null ? (
           <div className="space-y-3" aria-busy="true" aria-label="의료기관 정보를 불러오는 중입니다">
             {[0, 1].map((i) => (
               <div key={i} className="ct-card h-56 animate-pulse" />
@@ -82,7 +89,7 @@ export default function SearchPage() {
             </p>
             <div className="space-y-3">
               {results.map((match) => (
-                <HospitalCard key={match.hospital.id} match={match} />
+                <HospitalCard key={match.hospital.id} match={match} now={now} />
               ))}
             </div>
           </>

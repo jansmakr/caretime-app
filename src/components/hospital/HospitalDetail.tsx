@@ -17,13 +17,7 @@ import { CALL_IS_SUREST, NOT_A_BOOKING, VISIT_INTENT_DISCLAIMER } from "@/lib/co
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
 import { ReportFeed } from "@/components/hospital/ReportFeed";
 import { ReportForm } from "@/components/hospital/ReportForm";
-import {
-  describeStatus,
-  describeTimePlan,
-  formatAgo,
-  getFreshness,
-  isExpired,
-} from "@/lib/freshness";
+import { deriveStatusView } from "@/features/hospitals/statusView";
 import { CONTACT_TEXT, REASON_TEXT } from "@/features/hospitals/labels";
 import {
   showArrivalIntent,
@@ -48,9 +42,11 @@ export function HospitalDetail({
   const { hospital, now, connection } = useHospitalLive(initial, renderedAt, realtime);
 
   const live = hospital.liveStatus;
-  const expired = live ? isExpired(live, now) : true;
-  const status = describeStatus(live, now);
-  const timePlan = expired ? null : describeTimePlan(live);
+  // 카드(목록)와 같은 함수를 쓴다. 같은 병원·같은 now 면 두 화면의 문구가 같아야 한다.
+  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo } = deriveStatusView(
+    hospital,
+    now,
+  );
   const waiting = describeWaitingForUser(hospital, now);
   // 이동 시간 추정을 못 믹을 때는 0 을 넣는다. 그러면 마감 판정이 '마감 시각 vs 지금'만 본다.
   const admission = getAdmissionWindow(
@@ -69,7 +65,7 @@ export function HospitalDetail({
         <section className="ct-card p-5">
           <SourceBadge
             source="public"
-            verifiedAgo={formatAgo(getFreshness(hospital.publicData.syncedAt, now).minutesAgo)}
+            verifiedAgo={publicSyncedAgo}
           />
           <dl className="mt-3 space-y-2.5 text-[15px]">
             <Row label="주소">{hospital.publicData.address}</Row>
@@ -132,11 +128,8 @@ export function HospitalDetail({
               <LiveIndicator connection={connection} />
             </h2>
             {/* 검증된 기관 제공 근거가 없으면 공식 배지를 만들지 않는다. (lib/demoContent) */}
-            {showOfficialSourceBadge && live && !expired && (
-              <SourceBadge
-                source={live.verifiedBy}
-                verifiedAgo={formatAgo(getFreshness(live.verifiedAt, now).minutesAgo)}
-              />
+            {showOfficialSourceBadge && live && !expired && verifiedAgo !== null && (
+              <SourceBadge source={live.verifiedBy} verifiedAgo={verifiedAgo} />
             )}
           </div>
 
