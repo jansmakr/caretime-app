@@ -15,8 +15,36 @@
  * DB 가 필요한 테스트는 requireLocalSupabase() 를 직접 불러 "설정되어 있고 로컬인지"까지 본다.
  */
 
+import { readFileSync } from "node:fs";
+
 const LOCAL_HOST = /^(127\.0\.0\.1|localhost|\[::1\])$/;
 const CHECKED_KEYS = ["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"] as const;
+
+/**
+ * .env.local 을 process.env 로 올린다. vitest 는 next 와 달리 이 파일을 자동으로 읽지 않는다.
+ *
+ * 이미 들어 있는 값은 덮지 않는다 — CI 나 셸에서 명시적으로 준 값이 우선이다.
+ * 올린 직후에 아래 가드가 돈다. 즉 "읽어 들이는 코드가 붙으면 그 값도 검사받는다".
+ */
+function loadEnvLocal(): void {
+  let raw: string;
+  try {
+    raw = readFileSync(new URL("./.env.local", import.meta.url), "utf8");
+  } catch {
+    return; // 없으면 그냥 넘어간다. DB 를 안 타는 테스트는 값이 없어도 돈다.
+  }
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    const i = trimmed.indexOf("=");
+    if (i <= 0) continue;
+    const key = trimmed.slice(0, i).trim();
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = trimmed.slice(i + 1).trim();
+  }
+}
+
+loadEnvLocal();
 
 function hostOf(value: string): string | null {
   try {
@@ -62,4 +90,24 @@ export function requireLocalSupabase(): { url: string } {
     throw new Error(`[테스트 가드] 로컬이 아닌 주소입니다 (host=${host ?? "?"}).`);
   }
   return { url: url.trim() };
+}
+
+/**
+ * DB 를 타는 테스트가 쓰는 주소·키 묶음.
+ *
+ * requireLocalSupabase() 의 판정을 먼저 통과해야 키를 돌려준다 — 순서가 중요하다.
+ * 키 값은 어떤 경우에도 오류 문구에 담지 않는다.
+ */
+export function requireLocalKeys(): { url: string; anonKey: string; serviceKey: string } {
+  const { url } = requireLocalSupabase();
+  const anonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "").trim();
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").trim();
+
+  if (anonKey === "" || serviceKey === "") {
+    throw new Error(
+      "[테스트 가드] 로컬 anon / service_role 키가 .env.local 에 없습니다. " +
+        "supabase start 출력의 키를 넣어 주세요. (운영 프로젝트 키를 넣지 마세요)",
+    );
+  }
+  return { url, anonKey, serviceKey };
 }

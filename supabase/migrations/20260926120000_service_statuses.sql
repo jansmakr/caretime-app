@@ -236,8 +236,15 @@ on conflict (hospital_id, service_code) do nothing;
 -- ============================================================
 -- RLS
 --
--- 보호자 공개 읽기는 이 단계에서 열지 않는다. 읽기 경로를 rows.ts 로 옮기는 작업과 함께
--- 별도로 검토한다(지금 열면 검증되지 않은 공식 상태가 화면에 나갈 수 있다).
+-- 보호자 공개 읽기는 만료되지 않은 행에 한해 연다. 쓰기는 서버 전용.
+--
+-- 열되 **원본 테이블을 열지 않는다.** anon 에게는 아래 service_statuses_public 뷰만 준다.
+-- 테이블을 직접 열면 나중에 붙는 컬럼이 자동으로 공개된다. 뷰는 컬럼을 명시하므로
+-- 새 컬럼이 조용히 새어 나가지 않는다.
+--
+-- (이 주석의 앞 판은 "이 단계에서 열지 않는다"였다. 그건 순서 문제였지 정책 판단이 아니었다 —
+--  서비스의 본체가 보호자 화면이고, service_statuses 는 병원이 공개하려고 입력한 값이다.)
+--
 -- 병원 직원은 기존 public.is_hospital_member() 로 판정한다. 새 역할 테이블을 만들지 않는다.
 -- delete 정책은 어느 테이블에도 만들지 않는다.
 -- ============================================================
@@ -264,6 +271,93 @@ create policy "member read status events" on public.status_events
   for select to authenticated using (public.is_hospital_member(hospital_id));
 
 -- status_events 는 트리거·서버만 쓴다. 클라이언트 insert 정책을 주지 않는다.
+
+-- ============================================================
+-- 보호자 공개 읽기 — 뷰로만 내보낸다
+--
+-- anon 정책은 세 테이블 어디에도 만들지 않는다. 대신 컬럼을 좁힌 뷰에 select 만 준다.
+-- 뷰는 소유자(postgres) 권한으로 실행되므로 원본의 RLS 를 거치지 않는다. 그래서
+-- "무엇이 공개되는가"가 정책이 아니라 **뷰의 select 목록**으로 한 곳에 모인다.
+-- posts_public / observation_counts (migration 20260927)와 같은 방식이다.
+--
+-- 내보내지 않는 것:
+--   updated_by  — 누가 눌렀는지는 공개 정보가 아니다. 병원 직원 개인을 특정할 수 있다.
+--   version     — 동시수정 판정용 내부 값이다. 보호자에게 의미가 없다.
+--
+-- 걸러내는 것:
+--   valid_until > now()   만료된 값은 없는 것과 같다. 판정은 읽는 시점에 한다
+--                         (lib/freshness.isExpired 와 같은 규칙 — 크론에 의존하지 않는다).
+--   is_participating      참여를 그만둔 병원이 "접수 가능"을 계속 방송하게 두지 않는다.
+--
+-- posts 의 QUARANTINED/REMOVED 에 해당하는 격리 컬럼은 service_statuses 에 없다.
+-- 없는 컬럼을 이 migration 에서 새로 만들지 않았다 — 이 표는 이용자 글이 아니라
+-- 병원 계정만 쓸 수 있는 공식 입력이고, 운영자 격리 흐름은 아직 설계되지 않았다.
+-- 지금 쓸 수 있는 가장 가까운 사실이 is_participating 이라 그것으로 막았다.
+-- 격리 개념이 필요해지면 그때 컬럼과 정책을 같이 붙인다.
+-- ============================================================
+
+-- 항목 목록(카탈로그). **상태 컬럼이 없다.**
+--
+-- 왜 상태와 따로 내보내는가: 접기 규칙이 "모르는 항목이 하나라도 있으면 UNKNOWN"이다.
+-- 그 판정에는 분모(이 병원에 항목이 몇 개인가)가 필요하다. 상태 뷰는 만료된 행을 숨기므로
+-- 그것만 읽으면 "봉합 가능 + 화상 미게시"인 병원이 "봉합 가능"으로 보인다. 그게 헛걸음이다.
+-- 항목의 존재는 진료기능 정보이고 hospital_capabilities 와 같은 급으로 이미 공개되는 종류다.
+create view public.hospital_services_public as
+  select
+    v.hospital_id,
+    v.id,
+    v.category,
+    v.service_code,
+    v.reported_age_min,
+    v.reported_age_max,
+    v.capability_note,
+    v.profile_verified_at
+  from public.hospital_services v
+  -- 참여 여부는 join 이 아니라 exists 로 본다. hospitals 를 from 에 넣으면
+  -- PostgREST 가 hospitals ↔ 이 뷰 사이에 관계를 두 개(뷰의 join + hospital_services 의 FK)로
+  -- 보고 조인을 거부한다("more than one relationship was found"). exists 는 관계를 만들지 않는다.
+  where exists (
+    select 1 from public.hospitals h where h.id = v.hospital_id and h.is_participating
+  );
+
+revoke all on public.hospital_services_public from anon, authenticated;
+grant select on public.hospital_services_public to anon, authenticated;
+
+-- 한 테이블만 본다. category·service_code 는 위 카탈로그 뷰에서 오므로 여기서 조인하지 않는다.
+-- (조인하면 hospitals 로 가는 경로가 둘이 되어 PostgREST 가 조인을 거부한다.)
+create view public.service_statuses_public as
+  select
+    s.hospital_id,
+    s.service_id,
+    s.status,
+    s.wait_bucket,
+    s.reason_code,
+    s.reopen_at,
+    s.valid_until,
+    s.updated_at
+  from public.service_statuses s
+  where s.valid_until > now()
+    and exists (
+      select 1 from public.hospitals h where h.id = s.hospital_id and h.is_participating
+    );
+
+-- 뷰는 단일 테이블이 아니어도 규칙에 따라 갱신 가능해질 수 있다.
+-- 쓰기 경로가 조용히 생기지 않도록 권한을 먼저 전부 회수하고 select 만 다시 준다.
+revoke all on public.service_statuses_public from anon, authenticated;
+grant select on public.service_statuses_public to anon, authenticated;
+
+-- ============================================================
+-- Realtime
+--
+-- postgres_changes 는 **테이블**만 구독할 수 있다. 뷰는 구독 대상이 아니다.
+-- 그리고 Realtime 은 구독자 역할의 RLS 를 따른다. service_statuses 에는 anon
+-- select 정책이 없으므로 **보호자(anon)에게는 이벤트가 가지 않는다.** 그건 의도다 —
+-- 원본을 열지 않기로 했고, 이벤트가 가려면 원본을 열어야 한다.
+--
+-- 그래서 이 등록의 수혜자는 병원 계정(파트너 화면)이다. 보호자 화면의 최신성은
+-- 이벤트가 아니라 다시 읽기(refetch)로 확보한다. 그 배선은 useHospitalLive 에 있다.
+-- ============================================================
+alter publication supabase_realtime add table public.service_statuses;
 
 -- ============================================================
 -- hospital_live_status 를 읽기 전용으로 남기는 방법에 대한 메모
