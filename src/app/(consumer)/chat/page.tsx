@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { DemoNotice } from "@/components/common/DemoNotice";
 import { ChatRoom } from "@/components/chat/ChatRoom";
+import { fetchFieldReports } from "@/features/chat/repository";
 import { chatFilterFromParams } from "@/features/chat/urlFilter";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createServerSupabase } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "실시간 현장톡 · CareTime",
@@ -25,6 +28,10 @@ export const dynamic = "force-dynamic";
  *
  * 초기 조건은 URL 에서 받되 허용목록을 통과한 값만 쓴다. 잘못된 값은 조용히 버린다.
  * 나이·정확한 위치·개인 건강 조건은 받는 키 자체를 두지 않았다. (urlFilter)
+ *
+ * 글도 여기서 읽어 넘긴다. 클라이언트에서만 읽으면 **처음 그려지는 것은 언제나 빈 방**이고,
+ * 출시 직후처럼 글이 적을 때 그 한 순간이 "아무도 없는 곳"으로 읽힌다.
+ * 조회가 실패해도 화면은 연다 — 목록이 비는 것이 화면 전체가 막히는 것보다 낫다.
  */
 export default async function ChatPage({
   searchParams,
@@ -32,11 +39,19 @@ export default async function ChatPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  const initialMessages = isSupabaseConfigured
+    ? await fetchFieldReports(createServerSupabase()).catch(() => [])
+    : [];
+
   return (
     <>
       <AppHeader title="💬 실시간 현장톡" backHref="/" />
       <DemoNotice />
-      <ChatRoom renderedAt={new Date().toISOString()} initialFilter={chatFilterFromParams(params)} />
+      <ChatRoom
+        renderedAt={new Date().toISOString()}
+        initialFilter={chatFilterFromParams(params)}
+        initialMessages={initialMessages}
+      />
     </>
   );
 }

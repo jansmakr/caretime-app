@@ -6,14 +6,16 @@ import { seedChatMessages } from "./seed";
 import { showDemoReports } from "@/lib/demoContent";
 import { byNewestFirst, filterMessages } from "./service";
 import {
+  connectChat,
   getChatSnapshot,
   getChatSnapshotOnServer,
+  hydrateMessages,
   hydrateNickname,
   remainingCooldownMs,
   subscribeChat,
   toggleReaction,
 } from "./store";
-import { CHAT_COOLDOWN_MS, type ChatFilter, type ChatMessageView } from "./types";
+import { CHAT_COOLDOWN_MS, type ChatFilter, type ChatMessage, type ChatMessageView } from "./types";
 
 /**
  * 현장톡 목록 · 반응 · 쿨다운.
@@ -24,7 +26,12 @@ import { CHAT_COOLDOWN_MS, type ChatFilter, type ChatMessageView } from "./types
  * 필터는 목록에만 적용하고 전체 건수는 따로 돌려준다 — 빈 목록이 "글이 없다"인지
  * "필터에 걸렸다"인지 화면이 구분해서 말할 수 있어야 한다.
  */
-export function useChatRoom(renderedAt: string, filter: ChatFilter) {
+export function useChatRoom(
+  renderedAt: string,
+  filter: ChatFilter,
+  /** 서버가 읽어 온 글. 첫 화면부터 글이 보이게 하려면 이 값이 있어야 한다. */
+  initialMessages: ChatMessage[] = [],
+) {
   const snapshot = useSyncExternalStore(subscribeChat, getChatSnapshot, getChatSnapshotOnServer);
   // 운영에서는 가상 대화를 렌더하지 않는다. 빈 상태를 0건으로 꾸미지 않기 위해 목록만 비운다.
   const seeded = useMemo(
@@ -37,13 +44,24 @@ export function useChatRoom(renderedAt: string, filter: ChatFilter) {
     hydrateNickname();
   }, []);
 
+  /*
+   * 서버가 읽어 온 글을 store 에 올리고 구독을 연다.
+   * hydrate 가 먼저다 — 구독이 먼저 열리면 그 사이 들어온 글을 서버 목록이 덮는다.
+   */
+  useEffect(() => {
+    hydrateMessages(initialMessages);
+    return connectChat();
+    // initialMessages 는 서버 렌더값이라 한 번만 쓴다. 매 렌더마다 다시 올리지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const all = useMemo<ChatMessageView[]>(() => {
-    const merged = [...snapshot.sent, ...seeded].sort(byNewestFirst);
+    const merged = [...snapshot.messages, ...seeded].sort(byNewestFirst);
     return merged.map((message) => {
       const mine = snapshot.myReactions[message.id] ?? [];
       return { ...message, myReactions: mine, reactions: withMyReactions(message.baseReactions, mine) };
     });
-  }, [snapshot.sent, snapshot.myReactions, seeded]);
+  }, [snapshot.messages, snapshot.myReactions, seeded]);
 
   const messages = useMemo(() => filterMessages(all, filter), [all, filter]);
   const react = useCallback((messageId: string, key: Parameters<typeof toggleReaction>[1]) => {

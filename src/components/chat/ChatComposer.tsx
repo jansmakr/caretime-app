@@ -72,7 +72,7 @@ export function ChatComposer({
     setError(null);
   }
 
-  function send() {
+  async function send() {
     const draft = {
       category,
       topic: category === "other" ? topic : null,
@@ -84,10 +84,19 @@ export function ChatComposer({
       setError(result.reason);
       return;
     }
-    if (sendChatMessage(draft) === null) {
-      setError(`잠시 후 다시 보낼 수 있습니다. (${cooldown || COOLDOWN_SECONDS}초)`);
+
+    // 글은 이제 서버에 저장된다. 저장이 끝나기 전에 입력칸을 비우지 않는다 —
+    // 실패했을 때 쓴 내용이 사라지면 다시 쓰게 된다.
+    try {
+      if ((await sendChatMessage(draft)) === null) {
+        setError(`잠시 후 다시 보낼 수 있습니다. (${cooldown || COOLDOWN_SECONDS}초)`);
+        return;
+      }
+    } catch {
+      setError("보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
+
     setBody(chatTemplateText(category));
     setTopic("");
     setError(null);
@@ -186,7 +195,7 @@ export function ChatComposer({
         </p>
       )}
 
-      <button type="button" onClick={send} disabled={cooldown > 0} className="ct-primary mt-4">
+      <button type="button" onClick={() => void send()} disabled={cooldown > 0} className="ct-primary mt-4">
         {cooldown > 0 ? `${cooldown}초 후 보낼 수 있습니다` : "보내기"}
       </button>
     </section>

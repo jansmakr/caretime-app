@@ -15,7 +15,13 @@ import type { ReactionKey } from "@/features/chat/reactions";
 import { formatChatAgo, isFilterActive } from "@/features/chat/service";
 import { buildRoomShareText, buildShareText } from "@/features/chat/share";
 import { useChatRoom } from "@/features/chat/useChatRoom";
-import { EMPTY_FILTER, EMPTY_SCOPE, type ChatFilter, type ChatMessageView } from "@/features/chat/types";
+import {
+  EMPTY_FILTER,
+  EMPTY_SCOPE,
+  type ChatFilter,
+  type ChatMessage,
+  type ChatMessageView,
+} from "@/features/chat/types";
 import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
 import { isFieldTalkSharingLive } from "@/lib/demoContent";
 
@@ -34,15 +40,22 @@ const TICK_MS = 30_000;
 export function ChatRoom({
   renderedAt,
   initialFilter = EMPTY_FILTER,
+  initialMessages = [],
 }: {
   renderedAt: string;
   /** URL 로 들어온 조건. 허용값 검증은 features/chat/urlFilter 가 이미 마쳤다. */
   initialFilter?: ChatFilter;
+  /** 서버가 읽어 온 글. 첫 화면부터 글이 보이게 하려는 것뿐이고 화면 구조는 그대로다. */
+  initialMessages?: ChatMessage[];
 }) {
   const [filter, setFilter] = useState<ChatFilter>(initialFilter);
   const [now, setNow] = useState(() => new Date(renderedAt));
   const list = useHospitalList();
-  const { messages, totalCount, lastSentAt, react } = useChatRoom(renderedAt, filter);
+  const { messages, totalCount, lastSentAt, react } = useChatRoom(
+    renderedAt,
+    filter,
+    initialMessages,
+  );
   const { message: toast, show } = useToast();
 
   useEffect(() => {
