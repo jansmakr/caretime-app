@@ -1,7 +1,10 @@
 import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
-import { createNickname, loadStoredNickname, storeNickname } from "./nickname";
-import { insertFieldReport, insertReaction, subscribeFieldReports } from "./repository";
-import { loadReactorKey } from "./reactor";
+import {
+  fetchGuestNickname,
+  insertFieldReport,
+  insertReaction,
+  subscribeFieldReports,
+} from "./repository";
 import { ZERO_REACTIONS, type ReactionKey } from "./reactions";
 import { normalizeChatDraft } from "./service";
 import { CHAT_COOLDOWN_MS, type ChatDraft, type ChatMessage } from "./types";
@@ -70,23 +73,20 @@ export function getChatSnapshotOnServer(): ChatSnapshot {
 }
 
 /**
- * 이 브라우저의 닉네임. 저장된 것이 있으면 그대로 쓰고, 없으면 만든다.
- * regionHint 는 보호자가 직접 고른 지역일 때만 넘긴다. (→ nickname.ts 의 주석)
- * 브라우저에서만 부른다 — 서버 렌더 중에 만들면 화면마다 다른 닉네임이 찍힌다.
+ * 이 브라우저의 닉네임. **서버가 정한다.**
+ *
+ * 전에는 브라우저가 만들어 localStorage 에 뒀다. 그러면 누구나 바꿀 수 있고, 같은 이름을
+ * 여러 사람이 쓸 수도 있어 "아까 그 사람"이 성립하지 않는다. 이제 게스트 세션(httpOnly
+ * 쿠키)에 묶여 있고, 화면은 표시용으로 받아만 온다.
+ *
+ * 돌려주는 값이 없다. 이름을 알기 전에 글을 쓸 수 있어야 하고(글에 붙는 이름도 서버가
+ * 정한다), 화면은 받아오는 대로 보여 주면 된다.
  */
-export function ensureNickname(regionHint: string | null = null): string {
-  if (snapshot.nickname) return snapshot.nickname;
-  const nickname = loadStoredNickname() ?? createNickname(regionHint);
-  storeNickname(nickname);
-  commit({ nickname });
-  return nickname;
-}
-
-/** 저장된 닉네임을 스냅샷에 올린다. 마운트 직후 한 번 부른다(없으면 만들지 않는다). */
 export function hydrateNickname(): void {
   if (snapshot.nickname) return;
-  const stored = loadStoredNickname();
-  if (stored) commit({ nickname: stored });
+  void fetchGuestNickname().then((nickname) => {
+    if (nickname && !snapshot.nickname) commit({ nickname });
+  });
 }
 
 export function remainingCooldownMs(now: number = Date.now()): number {
@@ -109,8 +109,6 @@ export async function sendChatMessage(
 ): Promise<ChatMessage | null> {
   if (!canSend(now.getTime())) return null;
 
-  const regionHint = draft.scope.sigungu ?? draft.scope.sido ?? null;
-  const handle = ensureNickname(regionHint);
   const normalized = normalizeChatDraft(draft);
 
   /*
@@ -121,7 +119,7 @@ export async function sendChatMessage(
   commit({ lastSentAt: now.getTime() });
 
   try {
-    const saved = await insertFieldReport(getPublicBrowserSupabase(), normalized, handle);
+    const saved = await insertFieldReport(normalized);
     // 구독으로도 같은 글이 돌아온다. id 로 합치므로 두 번 보이지 않는다.
     commit({ messages: mergeMessage(snapshot.messages, saved) });
     return saved;
@@ -197,9 +195,7 @@ export function toggleReaction(messageId: string, key: ReactionKey): void {
    * 실패해도 화면을 되돌리지 않는다. 반응 하나가 안 올라간 것으로 사용자를 붙잡지 않는다.
    */
   if (!pressing) return;
-  void insertReaction(getPublicBrowserSupabase(), messageId, key, loadReactorKey()).catch(
-    () => undefined,
-  );
+  void insertReaction(messageId, key);
 }
 
 export function myReactionsFor(messageId: string): ReactionKey[] {

@@ -5,8 +5,6 @@ import {
   FIELD_REPORT_REMOVED_EVENT,
   FIELD_REPORT_TOPIC,
   fetchFieldReports,
-  insertFieldReport,
-  insertReaction,
   subscribeFieldReports,
   type FieldReportSignal,
 } from "@/features/chat/repository";
@@ -27,6 +25,32 @@ const TEST_MS = 30_000;
 
 let anon: SupabaseClient;
 const created: string[] = [];
+/** 반응 주체. 이제 게스트 세션이다 — 운영자 권한으로 직접 만들어 쓴다. */
+let guestA = "";
+let guestB = "";
+
+async function makeGuest(nickname: string): Promise<string> {
+  const res = await fetch(`${REST}/guest_sessions`, {
+    method: "POST",
+    headers: { ...admin, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      token_hash: `test-${nickname}-${Math.random().toString(36).slice(2)}`,
+      nickname,
+      expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+    }),
+  });
+  if (!res.ok) throw new Error(`세션 생성 실패 → ${res.status} ${await res.text()}`);
+  return ((await res.json()) as { id: string }[])[0].id;
+}
+
+async function react(reportId: string, key: string, guestId: string): Promise<void> {
+  const res = await fetch(`${REST}/field_report_reactions`, {
+    method: "POST",
+    headers: { ...admin, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify({ report_id: reportId, key, guest_id: guestId }),
+  });
+  if (!res.ok) throw new Error(`반응 심기 실패 → ${res.status} ${await res.text()}`);
+}
 
 function draft(over: Partial<ChatDraft> = {}): ChatDraft {
   return {
@@ -38,10 +62,32 @@ function draft(over: Partial<ChatDraft> = {}): ChatDraft {
   };
 }
 
+/**
+ * 글을 심는다. 쓰기는 이제 서버 라우트만 할 수 있으므로(migration 20260930) 여기서는
+ * 운영자 권한으로 직접 넣는다. 이 파일이 보는 것은 읽기·공개 범위·실시간이고,
+ * 쓰기 경로 자체는 tests/guestWrites.realtime.test.ts 가 본다.
+ */
 async function post(over: Partial<ChatDraft> = {}, handle = "야간지킴이") {
-  const saved = await insertFieldReport(anon, draft(over), handle);
-  created.push(saved.id);
-  return saved;
+  const d = draft(over);
+  const id = crypto.randomUUID();
+  const res = await fetch(`${REST}/field_reports`, {
+    method: "POST",
+    headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({
+      id,
+      category: d.category,
+      topic: d.topic,
+      body: d.body,
+      sido: d.scope.sido,
+      sigungu: d.scope.sigungu,
+      hospital_id: d.scope.hospitalId,
+      hospital_name: d.scope.hospitalName,
+      handle,
+    }),
+  });
+  if (!res.ok) throw new Error(`심기 실패 → ${res.status} ${await res.text()}`);
+  created.push(id);
+  return { id, body: d.body };
 }
 
 /** 운영자가 콘솔에서 격리하는 것과 같다. 화면에는 격리 버튼이 아직 없다. */
@@ -54,9 +100,11 @@ async function quarantine(id: string): Promise<void> {
   if (!res.ok) throw new Error(`격리 실패 → ${res.status} ${await res.text()}`);
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   anon = createClient(url, anonKey, { auth: { persistSession: false } });
-});
+  guestA = await makeGuest("테스트가호");
+  guestB = await makeGuest("테스트나호");
+}, TEST_MS);
 
 afterEach(async () => {
   if (created.length === 0) return;
@@ -102,11 +150,7 @@ describe("글이 서버에 남는다", () => {
 
   it("★ 시군구만 있고 시도가 없는 글은 저장되지 않는다 — 어디인지 알 수 없다", async () => {
     await expect(
-      insertFieldReport(
-        anon,
-        draft({ scope: { sido: null, sigungu: "강서구", hospitalId: null, hospitalName: null } }),
-        "야간지킴이",
-      ),
+      post({ scope: { sido: null, sigungu: "강서구", hospitalId: null, hospitalName: null } }),
     ).rejects.toThrow();
   }, TEST_MS);
 });
@@ -136,13 +180,11 @@ describe("공개 범위", () => {
     expect(messages.find((m) => m.id === saved.id)?.body).toBe("고쳐지면 안 되는 글입니다.");
   }, TEST_MS);
 
-  it("★ 글쓴이가 공개 상태를 정할 수 없다", async () => {
-    // 정책이 visibility = 'VISIBLE' 인 행만 받는다. 처음부터 숨긴 글을 만들 수 없다.
+  it("★ anon 은 아예 쓸 수 없다 — insert 정책을 회수했다", async () => {
     const { error } = await anon.from("field_reports").insert({
       category: "laceration",
       body: "몰래 넣는 글",
       handle: "야간지킴이",
-      visibility: "QUARANTINED",
     });
     expect(error?.code).toBe("42501");
   }, TEST_MS);
@@ -151,7 +193,7 @@ describe("공개 범위", () => {
 describe("반응", () => {
   it("★ 누른 반응이 수로 돌아온다", async () => {
     const saved = await post();
-    await insertReaction(anon, saved.id, "low_wait", "reactor-aaaaaaaa");
+    await react(saved.id, "low_wait", guestA);
 
     const messages = await fetchFieldReports(anon);
     expect(messages.find((m) => m.id === saved.id)?.baseReactions.low_wait).toBe(1);
@@ -159,8 +201,8 @@ describe("반응", () => {
 
   it("★ 같은 사람이 두 번 눌러도 하나로 센다", async () => {
     const saved = await post();
-    await insertReaction(anon, saved.id, "low_wait", "reactor-bbbbbbbb");
-    await insertReaction(anon, saved.id, "low_wait", "reactor-bbbbbbbb");
+    await react(saved.id, "low_wait", guestA);
+    await react(saved.id, "low_wait", guestA);
 
     const messages = await fetchFieldReports(anon);
     expect(messages.find((m) => m.id === saved.id)?.baseReactions.low_wait).toBe(1);
@@ -168,8 +210,8 @@ describe("반응", () => {
 
   it("다른 사람이 누르면 는다", async () => {
     const saved = await post();
-    await insertReaction(anon, saved.id, "low_wait", "reactor-cccccccc");
-    await insertReaction(anon, saved.id, "low_wait", "reactor-dddddddd");
+    await react(saved.id, "low_wait", guestA);
+    await react(saved.id, "low_wait", guestB);
 
     const messages = await fetchFieldReports(anon);
     expect(messages.find((m) => m.id === saved.id)?.baseReactions.low_wait).toBe(2);
@@ -177,12 +219,12 @@ describe("반응", () => {
 
   it("★ 누가 눌렀는지는 나가지 않는다", async () => {
     const saved = await post();
-    await insertReaction(anon, saved.id, "low_wait", "reactor-eeeeeeee");
+    await react(saved.id, "low_wait", guestA);
 
     const { data } = await anon.from("field_report_reaction_counts").select("*").eq("report_id", saved.id);
-    expect(Object.keys((data ?? [])[0] ?? {})).not.toContain("reactor_key");
+    expect(Object.keys((data ?? [])[0] ?? {})).not.toContain("guest_id");
     // 원본 표도 닫혀 있다.
-    const raw = await anon.from("field_report_reactions").select("reactor_key");
+    const raw = await anon.from("field_report_reactions").select("guest_id");
     expect(raw.data).toEqual([]);
   }, TEST_MS);
 });

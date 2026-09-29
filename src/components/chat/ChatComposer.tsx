@@ -5,8 +5,8 @@ import type { HospitalView } from "@/features/hospitals/types";
 import { toDirectory } from "@/features/reports/directory";
 import { CHAT_TEMPLATES, chatTemplate, chatTemplateText, shouldReplaceChatBody } from "@/features/chat/templates";
 import { validateChatDraft } from "@/features/chat/service";
-import { ensureNickname, sendChatMessage } from "@/features/chat/store";
-import { COOLDOWN_SECONDS, useCooldownSeconds } from "@/features/chat/useChatRoom";
+import { sendChatMessage } from "@/features/chat/store";
+import { COOLDOWN_SECONDS, useChatNickname, useCooldownSeconds } from "@/features/chat/useChatRoom";
 import {
   CHAT_BODY_MAX,
   CHAT_TOPIC_MAX,
@@ -40,15 +40,14 @@ export function ChatComposer({
   const [topic, setTopic] = useState("");
   const [body, setBody] = useState(() => chatTemplateText("laceration"));
   const [error, setError] = useState<string | null>(null);
-  const [nickname, setNickname] = useState<string | null>(null);
   const cooldown = useCooldownSeconds(lastSentAt);
 
-  // 닉네임은 브라우저에만 있다. 첫 렌더에 넣으면 서버와 달라지므로 마운트 후에 읽는다.
-  useEffect(() => {
-    setNickname(ensureNickname(filter.sigungu ?? filter.sido ?? null));
-    // 지역을 바꿀 때마다 닉네임을 다시 만들지 않는다. 한 번 정해지면 유지한다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  /*
+   * 닉네임은 서버가 정한다(게스트 세션). 화면은 받아와서 보여 주기만 한다.
+   * 아직 못 받았으면 null 이고, 그동안에도 글은 쓸 수 있다 — 글에 붙는 이름도 서버가
+   * 정하므로 화면이 이름을 알아야 보낼 수 있는 것은 아니다.
+   */
+  const nickname = useChatNickname();
 
   const ids = useId();
   const meta = chatTemplate(category);

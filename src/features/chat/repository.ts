@@ -102,43 +102,56 @@ export async function fetchFieldReports(client: SupabaseClient): Promise<ChatMes
 }
 
 /**
- * 글 저장.
+ * 글 저장. **서버 라우트를 거친다.**
  *
- * 공개 기간·표시 상태는 보내지 않는다. 글쓴이가 정할 값이 아니고 DB 의 default 가 정한다.
- * RLS 정책도 그 값들이 손대지 않은 상태여야 통과시킨다.
+ * 예전에는 브라우저가 anon 키로 직접 insert 했다. 그 키는 번들에 들어가는 공개 값이라,
+ * 화면의 쿨다운은 그 키를 들고 직접 POST 하는 사람에게 아무 의미가 없었다.
+ * 이제 DB 의 insert 정책을 회수했고(migration 20260930) 쓰기는 이 경로 하나다.
  *
- * **저장 후 되읽지 않는다.** 되읽으려면 원본 표에 anon select 정책이 있어야 하는데,
- * 그걸 열면 visibility·public_until·version 까지 같이 열린다. 읽기를 뷰로만 내보내기로
- * 한 결정이 거기서 무너진다.
+ * id 는 여기서 만든다. 그것이 곧 멱등성 키다 — 같은 요청이 두 번 가도 서버가 같은 글
+ * 하나를 돌려준다. 모바일에서 응답이 늦어 다시 누르는 일은 흔하다.
  *
- * 그래서 id 는 클라이언트가 만든다. 돌려주는 값은 화면에 바로 보여 줄 **잠정 글**이고,
- * 잠시 뒤 broadcast 로 서버가 확정한 같은 id 의 글이 와서 갈아 끼운다(createdAt 포함).
- * 그 사이에 보이는 시각이 몇 밀리초 다를 수 있다. 화면은 "방금"으로 읽는다.
+ * 닉네임은 서버가 정한다. 화면이 보낸 값을 쓰지 않는다.
  */
-export async function insertFieldReport(
-  client: SupabaseClient,
-  draft: ChatDraft,
-  handle: string,
-  now: Date = new Date(),
-): Promise<ChatMessage> {
+export class RateLimitedError extends Error {
+  constructor(readonly retryAfterSeconds: number) {
+    super("잠시 후 다시 보낼 수 있습니다.");
+    this.name = "RateLimitedError";
+  }
+}
+
+export async function insertFieldReport(draft: ChatDraft, now: Date = new Date()): Promise<ChatMessage> {
   const id = newReportId();
-  const { error } = await client.from("field_reports").insert({
-    id,
-    category: draft.category,
-    topic: draft.topic,
-    body: draft.body,
-    sido: draft.scope.sido,
-    sigungu: draft.scope.sigungu,
-    hospital_id: draft.scope.hospitalId,
-    hospital_name: draft.scope.hospitalName,
-    handle,
+  const response = await fetch("/api/field-reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // 쿠키(세션)가 같이 가야 한다. 같은 출처라 기본값으로도 가지만 뜻을 적어 둔다.
+    credentials: "same-origin",
+    body: JSON.stringify({
+      id,
+      category: draft.category,
+      topic: draft.topic,
+      body: draft.body,
+      sido: draft.scope.sido,
+      sigungu: draft.scope.sigungu,
+      hospitalId: draft.scope.hospitalId,
+      hospitalName: draft.scope.hospitalName,
+    }),
   });
 
-  if (error) throw new Error(`현장톡 저장 실패: ${error.message}`);
+  if (response.status === 429) {
+    const payload = (await response.json().catch(() => ({}))) as { retryAfterSeconds?: number };
+    throw new RateLimitedError(payload.retryAfterSeconds ?? 30);
+  }
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error ?? "저장하지 못했습니다.");
+  }
 
+  const saved = (await response.json()) as { id: string; handle: string; createdAt: string };
   return toChatMessage(
     {
-      id,
+      id: saved.id,
       category: draft.category,
       topic: draft.topic,
       body: draft.body,
@@ -146,8 +159,8 @@ export async function insertFieldReport(
       sigungu: draft.scope.sigungu,
       hospital_id: draft.scope.hospitalId,
       hospital_name: draft.scope.hospitalName,
-      handle,
-      created_at: now.toISOString(),
+      handle: saved.handle,
+      created_at: saved.createdAt || now.toISOString(),
     },
     ZERO_REACTIONS,
     true,
@@ -156,29 +169,33 @@ export async function insertFieldReport(
 
 function newReportId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  // 아주 오래된 환경용. 충돌하면 기본키가 막고 저장이 실패한다 — 조용히 덮어쓰지 않는다.
   return `${Date.now().toString(16)}-0000-4000-8000-${Math.random().toString(16).slice(2, 14)}`;
 }
 
 /**
- * 반응 누르기.
+ * 반응 누르기. 역시 서버 라우트를 거친다.
  *
- * 취소는 아직 서버로 가지 않는다 — 누른 사람을 증명할 방법이 없어서 삭제 정책을 만들지
- * 않았다(migration 주석). 게스트 세션이 생기는 턴에 연다.
- * 같은 사람이 같은 반응을 두 번 눌러도 기본키가 막는다. 그건 오류가 아니다.
+ * 실패해도 던지지 않는다. 반응 하나가 안 올라간 것으로 사용자를 붙잡지 않는다 —
+ * 화면은 이미 눌린 것으로 보이고, 다음에 읽을 때 서버 값으로 맞춰진다.
  */
-export async function insertReaction(
-  client: SupabaseClient,
-  reportId: string,
-  key: ReactionKey,
-  reactorKey: string,
-): Promise<void> {
-  const { error } = await client
-    .from("field_report_reactions")
-    .insert({ report_id: reportId, key, reactor_key: reactorKey });
+export async function insertReaction(reportId: string, key: ReactionKey): Promise<void> {
+  await fetch("/api/field-reports/reactions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ reportId, key }),
+  }).catch(() => undefined);
+}
 
-  // 23505 = 이미 누름. 사용자에게 알릴 일이 아니다.
-  if (error && error.code !== "23505") throw new Error(`반응 저장 실패: ${error.message}`);
+/** 이 브라우저의 닉네임. 서버가 세션을 만들고 정한다. */
+export async function fetchGuestNickname(): Promise<string | null> {
+  try {
+    const response = await fetch("/api/guest", { credentials: "same-origin" });
+    if (!response.ok) return null;
+    return ((await response.json()) as { nickname?: string }).nickname ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export type FieldReportSignal =

@@ -105,3 +105,19 @@ export function useCooldownSeconds(lastSentAt: number | null): number {
 
   return seconds;
 }
+
+/**
+ * 이 브라우저의 표시 이름. 서버가 정한 값을 받아 온다.
+ *
+ * 첫 렌더에서는 null 이다 — 서버 렌더에는 이 브라우저의 세션이 없고, 여기서 값을
+ * 만들면 서버와 브라우저가 달라진다. 마운트 뒤에 채운다.
+ */
+export function useChatNickname(): string | null {
+  const snapshot = useSyncExternalStore(subscribeChat, getChatSnapshot, getChatSnapshotOnServer);
+
+  useEffect(() => {
+    hydrateNickname();
+  }, []);
+
+  return snapshot.nickname;
+}
