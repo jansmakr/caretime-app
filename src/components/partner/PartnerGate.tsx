@@ -17,11 +17,13 @@ import { usePartner } from "@/features/partner/PartnerProvider";
  *                     PRD §1 의 경로표가 /partner 를 '공개'로 두고 있다.
  *  - 그 밖의 /partner/* : 보호 화면이다. 미인증이면 **리다이렉트**한다(화면을 그리지 않는다).
  *
- * 리다이렉트는 클라이언트에서 한다. 현재 파트너 세션은 localStorage 에 있어
- * (lib/supabase/browser.ts storageKey) 서버·미들웨어가 읽을 수 없다.
- * 서버 가드가 필요하면 쿠키 기반 세션(@supabase/ssr)으로 옮겨야 하고, 그건 별도 작업이다.
+ * **실제 차단은 두 곳이 한다.** 페이지가 만들어지기 전에 미들웨어(src/middleware.ts)가
+ * 비인증 요청을 돌려보내고, 데이터 접근은 DB(RLS)가 판정한다.
+ * 이 컴포넌트가 하는 일은 그 사이의 안내다 — 세션이 화면을 쓰는 도중에 끊긴 경우,
+ * 그리고 소속이 여럿일 때의 선택 화면.
  *
- * 실제 차단은 DB(RLS)가 한다. 이 컴포넌트는 헛입력을 막는 안내다.
+ * 그래서 여기의 리다이렉트는 보안 장치가 아니다. 그 역할은 미들웨어로 옮겼다
+ * (파트너 세션이 localStorage 가 아니라 쿠키에 있어 서버가 읽을 수 있다).
  */
 
 const LOGIN_PATH = "/partner/login";

@@ -13,8 +13,12 @@ import { ALIAS, REALTIME_TESTS, SHARED } from "./vitest.config";
  * 그렇다고 지우거나 건너뛰지 않는다. 이 테스트가 보는 것은 "승인되지 않은 병원의
  * 토픽을 보호자가 들을 수 없다"이고, 그건 문서로 대체할 수 없는 성질이다.
  *
- * 전제: supabase start 로 로컬 스택이 떠 있어야 한다. 가드(vitest.setup.ts)가
- * 로컬이 아니면 시작 자체를 막는다.
+ * 전제 둘.
+ *   1) supabase start 로 로컬 스택이 떠 있어야 한다. 가드(vitest.setup.ts)가
+ *      로컬이 아니면 시작 자체를 막는다.
+ *   2) npm run build 가 먼저 돌아 있어야 한다. middleware 테스트가 실제로 서버를 띄워
+ *      응답 **본문**을 본다 — 화면이 가려지는 것과 본문이 없는 것은 다르고, 그 차이를
+ *      확인하려면 빌드된 서버가 필요하다. 없으면 그 이유를 말하고 실패한다.
  */
 export default defineConfig({
   test: {
