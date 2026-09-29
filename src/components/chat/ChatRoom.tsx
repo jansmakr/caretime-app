@@ -41,12 +41,15 @@ export function ChatRoom({
   renderedAt,
   initialFilter = EMPTY_FILTER,
   initialMessages = [],
+  initialLoadFailed = false,
 }: {
   renderedAt: string;
   /** URL 로 들어온 조건. 허용값 검증은 features/chat/urlFilter 가 이미 마쳤다. */
   initialFilter?: ChatFilter;
   /** 서버가 읽어 온 글. 첫 화면부터 글이 보이게 하려는 것뿐이고 화면 구조는 그대로다. */
   initialMessages?: ChatMessage[];
+  /** 서버 조회가 실패했는가. 빈 목록과 같은 말을 하지 않기 위해 따로 받는다. */
+  initialLoadFailed?: boolean;
 }) {
   const [filter, setFilter] = useState<ChatFilter>(initialFilter);
   const [now, setNow] = useState(() => new Date(renderedAt));
@@ -117,10 +120,19 @@ export function ChatRoom({
 
         {messages.length === 0 && (
           <div className="mt-3">
+            {/*
+              세 가지를 구분해서 말한다. 셋 다 "목록이 비어 있다"이지만 사용자가 할 일이 다르다.
+                조회 실패 — 우리 문제다. 다시 시도해야 한다.
+                조건에 걸림 — 조건을 넓히면 보인다.
+                진짜 0건   — 첫 글을 쓰면 된다.
+              하나로 합치면 서버가 죽은 날에도 "아직 글이 없습니다"라고 말하게 된다.
+            */}
             <p className="text-[14.5px] leading-relaxed text-ink-muted">
-              {filtered
-                ? "이 조건에 올라온 글이 아직 없습니다. 위에서 첫 글을 남겨 보세요."
-                : "아직 올라온 글이 없습니다. 지금 상황을 물어보거나 알려 주세요."}
+              {initialLoadFailed && messages.length === 0
+                ? "글을 불러오지 못했습니다. 잠시 후 다시 열어 주세요. 올라온 글이 없다는 뜻은 아닙니다."
+                : filtered
+                  ? "이 조건에 올라온 글이 아직 없습니다. 위에서 첫 글을 남겨 보세요."
+                  : "아직 올라온 글이 없습니다. 지금 상황을 물어보거나 알려 주세요."}
             </p>
             {filtered && (
               <button
@@ -134,9 +146,13 @@ export function ChatRoom({
           </div>
         )}
 
+        {/*
+          이 문구는 "지금 무슨 일이 일어나는가"를 적는 자리다. 사실이 바뀌면 같이 바뀌어야 한다 —
+          글이 서버에 저장되기 시작한 뒤에도 "이 브라우저에만 보관됩니다"가 남아 있었다.
+        */}
         <p className="mt-3 text-[12px] leading-relaxed text-ink-faint">
           {isFieldTalkSharingLive
-            ? "보낸 글은 지금 이 브라우저에만 보관됩니다. 서버 저장·실시간 공유는 아직 연결되지 않았습니다."
+            ? "올린 글은 24시간 동안 공개되고, 다른 분들에게 바로 전달됩니다. 이름·연락처는 저장하지 않습니다."
             : "제보 공유 기능은 준비 중입니다. 목록이 비어 있는 것은 오류가 아니라 아직 올라온 제보가 없다는 뜻입니다."}
         </p>
       </section>

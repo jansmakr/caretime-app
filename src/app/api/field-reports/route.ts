@@ -8,6 +8,7 @@ import {
   type GuestSession,
 } from "@/features/chat/guestSession";
 import { checkRate, isDuplicateBody } from "@/features/p0/limits";
+import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { CHAT_BODY_MAX, CHAT_TOPIC_MAX } from "@/features/chat/types";
 
@@ -118,8 +119,10 @@ export async function POST(request: NextRequest) {
     .limit(200);
 
   const rows = (recent ?? []) as { created_at: string; body: string; hospital_id: string | null }[];
+  const limits = resolveLimits();
   const verdict = checkRate({
     action: "posts",
+    limits,
     recentTimestamps: rows.map((r) => Date.parse(r.created_at)),
     now: Date.now(),
   });
@@ -155,6 +158,7 @@ export async function POST(request: NextRequest) {
         createdAt: Date.parse(r.created_at),
       })),
       now: Date.now(),
+      limits,
     })
   ) {
     return fail(409, "같은 내용을 방금 올렸습니다.", freshToken);

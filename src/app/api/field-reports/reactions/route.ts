@@ -7,6 +7,7 @@ import {
   type GuestSession,
 } from "@/features/chat/guestSession";
 import { checkRate } from "@/features/p0/limits";
+import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 /**
@@ -57,8 +58,10 @@ export async function POST(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(400);
 
+  const limits = resolveLimits();
   const verdict = checkRate({
     action: "reactions",
+    limits,
     recentTimestamps: ((recent ?? []) as { created_at: string }[]).map((r) => Date.parse(r.created_at)),
     now: Date.now(),
   });

@@ -39,9 +39,17 @@ export default async function ChatPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const initialMessages = isSupabaseConfigured
-    ? await fetchFieldReports(createServerSupabase()).catch(() => [])
-    : [];
+  /*
+   * 조회 실패와 "아직 글이 없음"을 구분해서 넘긴다.
+   * 둘을 같게 다루면 서버가 죽은 날에도 화면이 "아직 올라온 글이 없습니다"라고 말한다.
+   * 그건 사실이 아니고, 첫 사용자는 그 말을 믿고 방이 비었다고 생각한다.
+   */
+  const initial = isSupabaseConfigured
+    ? await fetchFieldReports(createServerSupabase()).then(
+        (messages) => ({ messages, failed: false }),
+        () => ({ messages: [], failed: true }),
+      )
+    : { messages: [], failed: false };
 
   return (
     <>
@@ -50,7 +58,8 @@ export default async function ChatPage({
       <ChatRoom
         renderedAt={new Date().toISOString()}
         initialFilter={chatFilterFromParams(params)}
-        initialMessages={initialMessages}
+        initialMessages={initial.messages}
+        initialLoadFailed={initial.failed}
       />
     </>
   );
