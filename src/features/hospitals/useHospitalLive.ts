@@ -33,6 +33,20 @@ export function useHospitalLive(initial: HospitalView, renderedAt: string, enabl
     const client = getPublicBrowserSupabase();
     let cancelled = false;
 
+    /**
+     * 병원 전체를 다시 읽어 합친다. 연결·재연결 때, 그리고 항목별 상태가 바뀔 때 쓴다.
+     * 항목별 변경은 행 하나만으로 대표 상태를 다시 접을 수 없어서 전체를 읽는다.
+     */
+    const refetch = () => {
+      fetchHospitalView(client, initial.id)
+        .then((fresh) => {
+          if (!cancelled && fresh) setHospital((h) => mergeFresher(h, fresh));
+        })
+        .catch(() => {
+          // 다시 읽기에 실패해도 받은 이벤트로 계속 갱신한다. 다음 재연결 때 다시 시도한다.
+        });
+    };
+
     const unsubscribe = subscribeHospitalChanges(
       client,
       initial.id,
@@ -42,7 +56,7 @@ export function useHospitalLive(initial: HospitalView, renderedAt: string, enabl
         setHospital((h) => {
           switch (change.table) {
             case "hospital_live_status":
-              return withLiveStatusRow(h, change.row);
+              return withLiveStatusRow(h, change.row, t);
             case "hospital_daily_hours":
               return withDailyHoursRow(h, change.row, t);
             case "hospital_contact_status":
@@ -55,13 +69,13 @@ export function useHospitalLive(initial: HospitalView, renderedAt: string, enabl
       (status) => {
         setConnection(status);
         if (status !== "live") return;
-        fetchHospitalView(client, initial.id)
-          .then((fresh) => {
-            if (!cancelled && fresh) setHospital((h) => mergeFresher(h, fresh));
-          })
-          .catch(() => {
-            // 다시 읽기에 실패해도 받은 이벤트로 계속 갱신한다. 다음 재연결 때 다시 시도한다.
-          });
+        refetch();
+      },
+      // 항목별 상태가 바뀌면 전체를 다시 읽는다. 대표 상태는 항목 전체를 봐야 접힌다.
+      // (지금 anon 은 RLS 때문에 이 신호를 받지 못한다 — 받게 되면 이 배선이 그대로 동작한다.)
+      () => {
+        setNow(new Date());
+        refetch();
       },
     );
 

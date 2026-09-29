@@ -13,6 +13,7 @@ import type {
   LiveStatusCode,
 } from "./types";
 import { DEMO_ORIGIN, distanceKm, estimateTravelMinutes } from "./location";
+import { mergeConservative, representativeLiveStatus } from "./serviceStatus";
 
 /**
  * DB 행 ↔ 도메인 타입 변환.
@@ -87,11 +88,11 @@ export interface WaitingStatusRow {
 }
 
 /**
- * service_statuses + hospital_services 조인 행. (migration 20260926120000)
+ * 항목별 공식 상태 행. (migration 20260926120000)
  *
- * **아직 조회하지 않는다.** migration 을 적용한 뒤 repository 의 SELECT 에 더한다.
- * 지금 넣어 두는 이유: 접기 규칙 테스트가 이 모양을 전제로 하고, 적용 시점에
- * 타입부터 새로 쓰지 않아도 되게 하려는 것이다.
+ * 보호자 경로는 원본 테이블이 아니라 service_statuses_public 뷰를 읽는다.
+ * 뷰는 만료되지 않은 행만, 참여 병원만, 그리고 updated_by·version 을 뺀 컬럼만 준다.
+ * 그래서 version 이 optional 이다 — 공개 경로에서는 오지 않는다.
  */
 export interface ServiceStatusRow {
   hospital_id: string;
@@ -102,9 +103,15 @@ export interface ServiceStatusRow {
   reopen_at: string | null;
   valid_until: string;
   updated_at: string;
-  version: number;
+  /** 동시수정 CAS 용. 공개 뷰에는 없다. 쓰려면 병원 계정으로 원본을 읽어야 한다. */
+  version?: number;
 }
 
+/**
+ * 항목 카탈로그 행. 상태가 아니라 "이 병원에 이 항목이 있다"는 사실이다.
+ * 원본 hospital_services 와 공개 뷰 hospital_services_public 의 컬럼 이름이 같아
+ * 두 경로가 같은 타입을 쓴다.
+ */
 export interface HospitalServiceRow {
   id: string;
   hospital_id: string;
@@ -114,13 +121,12 @@ export interface HospitalServiceRow {
   reported_age_max: number | null;
   capability_note: string | null;
   profile_verified_at: string | null;
-  /** PostgREST 는 1:1 조인을 객체로, 1:N 을 배열로 준다. 어느 쪽이 와도 받는다. */
-  service_statuses: ServiceStatusRow[] | ServiceStatusRow | null;
 }
 
-export const SERVICE_STATUS_COLUMNS =
-  "hospital_id,service_id,status,wait_bucket,reason_code,reopen_at,valid_until,updated_at,version";
-export const HOSPITAL_SERVICE_COLUMNS =
+/** 공개 뷰가 내보내는 컬럼. version·updated_by 는 없다. */
+export const SERVICE_STATUS_PUBLIC_COLUMNS =
+  "hospital_id,service_id,status,wait_bucket,reason_code,reopen_at,valid_until,updated_at";
+export const HOSPITAL_SERVICE_PUBLIC_COLUMNS =
   "id,hospital_id,category,service_code,reported_age_min,reported_age_max,capability_note,profile_verified_at";
 
 export const LIVE_STATUS_COLUMNS =
@@ -183,9 +189,13 @@ export function toWaiting(row: WaitingStatusRow): HospitalWaitingStatus {
  * 빼면 "항목이 없는 병원"과 "항목은 있는데 아직 안 누른 병원"을 구분할 수 없다.
  * 전자는 접수 개념이 없고, 후자는 눌러 주기를 기다리는 상태다.
  */
-export function toServiceStatuses(rows: HospitalServiceRow[]): HospitalServiceStatus[] {
-  return rows.map((row) => {
-    const status = one(row.service_statuses);
+export function toServiceStatuses(
+  catalog: HospitalServiceRow[],
+  statuses: ServiceStatusRow[],
+): HospitalServiceStatus[] {
+  const byService = new Map(statuses.map((s) => [s.service_id, s]));
+  return catalog.map((row) => {
+    const status = byService.get(row.id) ?? null;
     return {
       serviceId: row.id,
       category: row.category,
@@ -195,7 +205,8 @@ export function toServiceStatuses(rows: HospitalServiceRow[]): HospitalServiceSt
       validUntil: status?.valid_until ?? null,
       updatedAt: status?.updated_at ?? null,
       reopenAt: status?.reopen_at ?? null,
-      version: status?.version ?? 0,
+      // 공개 뷰에는 version 이 없다. 0 같은 거짓 값을 넣지 않고 모른다고 둔다.
+      version: status?.version ?? null,
     };
   });
 }
@@ -240,12 +251,27 @@ export function toTodayHours(
 
 // ─── 실시간 변경 적용 (보호자 화면·파트너 화면 공용) ───────────
 
-export function withLiveStatusRow(view: HospitalView, row: LiveStatusRow): HospitalView {
+export function withLiveStatusRow(
+  view: HospitalView,
+  row: LiveStatusRow,
+  now: Date = new Date(),
+): HospitalView {
   // 병원 전체 상태가 이미 있으면 진료기능별 변경으로 덮어쓰지 않는다.
   if (row.capability_id !== null && view.liveStatus && view.liveStatus.capabilityId === null) {
     return view;
   }
-  return { ...view, liveStatus: toLiveStatus(row) };
+  /*
+   * 옛 출처의 이벤트도 항목별 접기 결과와 병합한다.
+   * 이벤트 하나가 보수적 판정을 뒤집지 않게 하려는 것 — 화상=마감인 병원에
+   * "전체 정상" 이벤트가 오면 그것만 보고 '진료 가능'으로 바꾸면 안 된다.
+   */
+  return {
+    ...view,
+    liveStatus: mergeConservative(
+      representativeLiveStatus(view.id, view.services, now),
+      toLiveStatus(row),
+    ),
+  };
 }
 
 export function withDailyHoursRow(view: HospitalView, row: DailyHoursRow, now: Date): HospitalView {
@@ -295,6 +321,10 @@ export function mergeFresher(current: HospitalView, fresh: HospitalView): Hospit
 export interface HospitalJoinedRow extends HospitalRow {
   hospital_capabilities: HospitalCapabilityRow[] | null;
   hospital_live_status: LiveStatusRow[] | null;
+  /** 항목 카탈로그(공개 뷰). 상태가 없는 항목도 여기 들어 있다 — 접기의 분모다. */
+  hospital_services_public: HospitalServiceRow[] | null;
+  /** 만료되지 않은 항목별 상태(공개 뷰). 카탈로그보다 적을 수 있다. */
+  service_statuses_public: ServiceStatusRow[] | null;
   hospital_daily_hours: DailyHoursRow[] | DailyHoursRow | null;
   hospital_contact_status: ContactStatusRow[] | ContactStatusRow | null;
   hospital_waiting_status: WaitingStatusRow[] | WaitingStatusRow | null;
@@ -315,6 +345,14 @@ export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView 
     ? (row.hospital_daily_hours.find((d) => d.service_date === kstServiceDate(now)) ?? null)
     : row.hospital_daily_hours;
 
+  // 항목별 상태. 카탈로그(항목의 존재)와 상태를 따로 읽어 합친다.
+  // 상태 뷰는 만료된 행을 빼고 주므로, 여기서 status=null 이 된 항목은
+  // "아직 안 누름"과 "눌렀지만 만료됨"을 합친 것이다. 둘 다 결론은 모름이라 같게 다룬다.
+  const services = toServiceStatuses(
+    row.hospital_services_public ?? [],
+    row.service_statuses_public ?? [],
+  );
+
   return {
     id: row.id,
     publicData: {
@@ -330,18 +368,20 @@ export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView 
     travelMinutes: estimateTravelMinutes(km),
     capabilities: capabilities.map(toCapability),
     hours: toTodayHours(row, daily, now),
-    liveStatus: pickLiveStatus(row.hospital_live_status ?? []),
+    /*
+     * 대표 상태 = 항목별 접기 결과와 옛 출처(hospital_live_status) 중 더 보수적인 쪽.
+     * 이행 기간 동안 두 출처가 함께 있으므로 병합한다. 어느 한쪽보다 낙관적인 답은 나오지 않는다.
+     * (병합 규칙과 그 예외: features/hospitals/serviceStatus.mergeConservative)
+     */
+    liveStatus: mergeConservative(
+      representativeLiveStatus(row.id, services, now),
+      pickLiveStatus(row.hospital_live_status ?? []),
+    ),
     contactStatus: contact ? toContact(contact) : null,
     waiting: waiting ? toWaiting(waiting) : null,
     // 내원예정은 5단계(Visit Intent)에서 테이블이 생긴다. 그 전까지 보호자 화면에 표시하지 않는다.
     incoming: null,
-    /*
-     * 항목별 상태. 아직 조회하지 않는다.
-     * service_statuses migration 을 적용한 뒤 repository 의 SELECT 에 조인을 더하고
-     * toServiceStatuses() 로 채운다. 그때 liveStatus 는 이 목록을 접은 대표가 된다.
-     * (접기 규칙: features/hospitals/serviceStatus.ts)
-     */
-    services: [],
+    services,
     isParticipating: row.is_participating,
   };
 }

@@ -153,8 +153,12 @@ export interface HospitalServiceStatus {
   validUntil: string | null;
   updatedAt: string | null;
   reopenAt: string | null;
-  /** 동시 수정 compare-and-swap 용. 화면은 쓰지 않는다. */
-  version: number;
+  /**
+   * 동시 수정 compare-and-swap 용. 화면은 쓰지 않는다.
+   * null = 모름. 보호자 공개 경로(service_statuses_public 뷰)는 이 값을 내보내지 않는다.
+   * CAS 를 하려면 병원 계정으로 원본 테이블을 다시 읽어야 한다.
+   */
+  version: number | null;
 }
 
 /** 화면 조립용 뷰 모델. 각 조각은 출처를 잃지 않은 채로 들어온다. */
