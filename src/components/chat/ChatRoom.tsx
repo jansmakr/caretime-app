@@ -7,6 +7,7 @@ import { SourceBadge } from "@/components/common/SourceBadge";
 import { Toast, useToast } from "@/components/common/Toast";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
+import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
 import { ChatReactions } from "@/components/chat/ChatReactions";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useHospitalList } from "@/features/hospitals/useHospitalList";
@@ -69,28 +70,52 @@ export function ChatRoom({
 
   const filtered = isFilterActive(filter);
 
+  /*
+   * 빈 방. **출시 직후에는 반드시 이 상태다.**
+   *
+   * 아무도 없는 방에 처음 들어온 사람이 글을 쓰게 만드는 것이 이 기능의 전부다.
+   * 그런데 평소 화면을 그대로 두면 고를 것 없는 필터 3개와, 공유할 것 없는 공유 버튼이
+   * 먼저 나온다. 지금 이 화면의 결정은 하나여야 한다 — 첫 글을 쓴다(원칙 1).
+   *
+   * 조건을 걸어서 0건인 것은 여기 해당하지 않는다. 그때는 조건을 넓히면 글이 있고,
+   * 필터를 감추면 그 길을 막는다.
+   */
+  const emptyRoom = !filtered && totalCount === 0 && !initialLoadFailed;
+
   return (
     <main className="space-y-3 px-4 pb-6 pt-3">
       {/* 상단 고정 고지 — 의료기관 현장 상황이 항상 최우선. 접히지 않는다. */}
       <LiveInfoNotice />
 
-      {/* 톡방 전체 공유. 개별 카드에도 같은 버튼이 있다. */}
-      <ShareButton text={buildRoomShareText()} scope={EMPTY_SCOPE} onResult={show} variant="block" />
+      {emptyRoom && <EmptyRoomLead />}
 
-      <ChatFilterBar
-        hospitals={list.hospitals}
-        loading={list.status === "loading"}
-        filter={filter}
-        onChange={setFilter}
-      />
+      {/* 톡방 전체 공유. 공유할 글이 없을 때는 내리지 않는다 — 빈 방을 공유하라고 하지 않는다. */}
+      {!emptyRoom && (
+        <ShareButton text={buildRoomShareText()} scope={EMPTY_SCOPE} onResult={show} variant="block" />
+      )}
+
+      {/* 고를 것이 없으면 조건도 접는다. 첫 글은 지역을 고르지 않고도 쓸 수 있다. */}
+      {!emptyRoom && (
+        <ChatFilterBar
+          hospitals={list.hospitals}
+          loading={list.status === "loading"}
+          filter={filter}
+          onChange={setFilter}
+        />
+      )}
 
       {/*
-        작성 기능은 아직 서버에 저장되지 않는다(브라우저 메모리 전용, 실시간 수신 없음).
-        저장되지 않는 입력을 공유처럼 보이게 하지 않기 위해 운영에서는 작성창을 닫고
-        준비 중으로 안내한다. 읽기는 그대로 둔다.
+        작성 기능이 닫혀 있을 때의 안내. 지금은 열려 있다(lib/demoContent).
+        플래그를 내리면 이쪽이 나온다 — 장애 때 쓰기만 닫는 경로다.
       */}
       {isFieldTalkSharingLive ? (
-        <ChatComposer hospitals={list.hospitals} filter={filter} lastSentAt={lastSentAt} onSent={show} />
+        <ChatComposer
+          hospitals={list.hospitals}
+          filter={filter}
+          lastSentAt={lastSentAt}
+          onSent={show}
+          scopePickerVisible={!emptyRoom}
+        />
       ) : (
         <section className="ct-card p-5">
           <h2 className="ct-section-title">현장 상황 남기기</h2>
@@ -102,6 +127,8 @@ export function ChatRoom({
         </section>
       )}
 
+      {/* 빈 방에서는 "대화 0건"을 그리지 않는다. 위의 안내가 이미 그 말을 하고 있다. */}
+      {!emptyRoom && (
       <section className="ct-card p-5">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="ct-section-title">대화</h2>
@@ -118,7 +145,7 @@ export function ChatRoom({
           ))}
         </ul>
 
-        {messages.length === 0 && (
+        {messages.length === 0 && !emptyRoom && (
           <div className="mt-3">
             {/*
               세 가지를 구분해서 말한다. 셋 다 "목록이 비어 있다"이지만 사용자가 할 일이 다르다.
@@ -156,6 +183,7 @@ export function ChatRoom({
             : "제보 공유 기능은 준비 중입니다. 목록이 비어 있는 것은 오류가 아니라 아직 올라온 제보가 없다는 뜻입니다."}
         </p>
       </section>
+      )}
 
       <p className="px-1 text-[13px] leading-relaxed text-ink-faint">
         {NOT_A_BOOKING} {CALL_IS_SUREST}

@@ -5,10 +5,12 @@ import { useMemo } from "react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { DemoNotice } from "@/components/common/DemoNotice";
 import { ConditionBar } from "@/components/search/ConditionBar";
+import { FieldTalkExit } from "@/components/search/FieldTalkExit";
 import { HospitalCard } from "@/components/search/HospitalCard";
 import { useDiscovery } from "@/features/discovery/DiscoveryProvider";
 import { matchHospitals } from "@/features/discovery/match";
 import { useHospitalList } from "@/features/hospitals/useHospitalList";
+import type { ChatFilter } from "@/features/chat/types";
 import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
 
 /**
@@ -32,6 +34,21 @@ export default function SearchPage() {
   );
 
   const regionChosen = conditions.region.sido !== null || origin.kind === "device";
+
+  /*
+   * 고른 조건을 현장톡으로 그대로 넘긴다. 지역을 고른 사람이 전국 글을 보게 되면
+   * "내 동네 이야기가 없다"로 읽히고, 그건 사실이 아니다.
+   * 나이·진료 상황·자유입력은 넘기지 않는다 — 현장톡은 그 값을 받는 키 자체가 없다.
+   */
+  const chatFilter: ChatFilter = {
+    sido: conditions.region.sido,
+    sigungu: conditions.region.sigungu,
+    hospitalId: null,
+  };
+
+  /** 확인된 상태가 하나도 없다. 목록은 있는데 답이 없는 상태다. */
+  const nothingConfirmed =
+    results.length > 0 && results.every((m) => m.hospital.liveStatus === null);
 
   return (
     <>
@@ -69,14 +86,18 @@ export default function SearchPage() {
             </p>
           </div>
         ) : results.length === 0 ? (
-          <div className="ct-card p-7 text-center">
-            <p className="text-[17px] font-bold">
-              {regionChosen ? "이 지역에는 등록된 의료기관 정보가 없습니다." : "등록된 의료기관 정보가 없습니다."}
-            </p>
-            <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
-              조건을 넓혀 보거나, 위급한 상황이라면 119에 연락하세요.
-            </p>
-          </div>
+          <>
+            <div className="ct-card p-7 text-center">
+              <p className="text-[17px] font-bold">
+                {regionChosen ? "이 지역에는 등록된 의료기관 정보가 없습니다." : "등록된 의료기관 정보가 없습니다."}
+              </p>
+              <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
+                조건을 넓혀 보거나, 위급한 상황이라면 119에 연락하세요.
+              </p>
+            </div>
+            {/* 0건이 막다른 길이 되지 않게. 조건을 그대로 들고 현장톡으로 간다. */}
+            <FieldTalkExit filter={chatFilter} variant="empty" />
+          </>
         ) : (
           <>
             <p className="px-1 text-[13px] leading-relaxed text-ink-faint">
@@ -92,6 +113,13 @@ export default function SearchPage() {
                 <HospitalCard key={match.hospital.id} match={match} now={now} />
               ))}
             </div>
+
+            {/*
+              결과는 있는데 확인된 상태가 하나도 없을 때. 참여 병원이 0곳인 동안 이게
+              기본 화면이고, 보호자가 얻는 답이 "전화해 보세요" 하나로 끝난다.
+              전화를 대신하지 않고, 갈 곳을 하나 더 준다.
+            */}
+            {nothingConfirmed && <FieldTalkExit filter={chatFilter} />}
           </>
         )}
 

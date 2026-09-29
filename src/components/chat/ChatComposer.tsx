@@ -30,11 +30,14 @@ export function ChatComposer({
   filter,
   lastSentAt,
   onSent,
+  scopePickerVisible = true,
 }: {
   hospitals: HospitalView[];
   filter: ChatFilter;
   lastSentAt: number | null;
   onSent: (message: string) => void;
+  /** 조건 고르는 줄이 화면에 있는가. 빈 방에서는 감춰져 있어 안내 문구가 달라진다. */
+  scopePickerVisible?: boolean;
 }) {
   const [category, setCategory] = useState<ChatCategory>("laceration");
   const [topic, setTopic] = useState("");
@@ -179,7 +182,13 @@ export function ChatComposer({
         <span className="font-semibold text-ink-muted">올라갈 위치 </span>
         {scopeLabel}
         <br />
-        위에서 지역·병원을 고르면 그 방으로 올라갑니다.
+        {/*
+          빈 방에서는 조건 고르는 줄을 감춘다(ChatRoom). 그때 "위에서 고르면"은 가리킬
+          곳이 없는 말이 된다. 안내는 화면에 실제로 있는 것만 가리켜야 한다.
+        */}
+        {scopePickerVisible
+          ? "위에서 지역·병원을 고르면 그 방으로 올라갑니다."
+          : "지역을 고르지 않아도 올라갑니다. 어느 병원인지는 글에 적어 주세요."}
         {nickname && (
           <>
             <br />

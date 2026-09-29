@@ -15,6 +15,7 @@ import { useHospitalLive } from "@/features/hospitals/useHospitalLive";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { CALL_IS_SUREST, NOT_A_BOOKING, VISIT_INTENT_DISCLAIMER } from "@/lib/copy";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
+import { FieldTalkExit } from "@/components/search/FieldTalkExit";
 import { ReportFeed } from "@/components/hospital/ReportFeed";
 import { ReportForm } from "@/components/hospital/ReportForm";
 import { deriveStatusView } from "@/features/hospitals/statusView";
@@ -264,6 +265,18 @@ export function HospitalDetail({
           [그래도 전화]가 남아 있는 이유: 병원이 어렵다고 알린 것이고 불가능한 것은 아니다.
           응급 여부는 우리가 판단하지 않는다. 119 안내는 이미 있는 자리 그대로 둔다.
         */}
+        {/*
+          이 병원 이야기를 나누는 곳으로 가는 길.
+          상태가 확인돼 있으면 굳이 내보내지 않는다 — 답이 이미 화면에 있다.
+          확인된 상태가 없을 때만 보인다. 그때가 보호자에게 답이 없는 순간이다.
+        */}
+        {live === null && (
+          <FieldTalkExit
+            filter={{ sido: null, sigungu: null, hospitalId: hospital.id }}
+            variant="default"
+          />
+        )}
+
         <div className="space-y-2 pt-1">
           {urgency.callDiscouraged ? (
             <div className="flex gap-2">
