@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:realtime": "vitest run --config vitest.realtime.config.ts",
     "test:watch": "vitest",
     "seed:localuser": "tsx scripts/seed-local-testuser.ts"
   },
