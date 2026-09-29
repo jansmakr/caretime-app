@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { deriveStatusView } from "@/features/hospitals/statusView";
+import {
+  URGENCY_MINUTES,
+  deriveDisplayUrgency,
+  deriveStatusView,
+} from "@/features/hospitals/statusView";
 import type { HospitalView, HospitalLiveStatus } from "@/features/hospitals/types";
 
 /**
@@ -94,7 +98,9 @@ describe("now 는 인자이고, 하나뿐이다", () => {
     const h = hospital({
       liveStatus: liveStatus({ verifiedAt: "2000-01-01T00:00:00Z", expiresAt: "2000-01-01T01:00:00Z" }),
     });
-    const v = deriveStatusView(h, new Date("2000-01-01T00:30:00Z"));
+    // 5분만 지난 시점을 넘긴다. 30분을 넘기면 강도 변화 규칙이 표시를 내려서
+    // 이 테스트가 보려는 것(인자를 쓰는가)과 섞인다.
+    const v = deriveStatusView(h, new Date("2000-01-01T00:05:00Z"));
     expect(v.expired).toBe(false);
     expect(v.status.text).toBe("확인 당시 진료 가능");
   });
@@ -129,5 +135,143 @@ describe("상태가 없는 병원", () => {
   it("공공데이터 동기화 시각은 상태와 무관하게 항상 나온다", () => {
     const v = deriveStatusView(hospital({ liveStatus: null }), NOW);
     expect(v.publicSyncedAgo).toBe("1일 전");
+  });
+});
+
+/**
+ * 강도 변화. 확인 후 경과에 따라 화면이 행동을 얼마나 세게 미는가.
+ *
+ *   ~10분     normal     지금 그대로
+ *   10~30분   callFirst  전화를 주 버튼으로 승격
+ *   30분~     callOnly   상태를 "확인 필요"로 내리고 전화가 유일한 주 행동
+ *
+ * 경계를 테스트로 고정하는 이유: 10분과 30분은 임의의 값이 아니라 "지연이 남아 있는
+ * 동안 사람을 보호하는 장치"다. 부등호 하나가 뒤집히면 35분 전 값이 '진료 가능'으로
+ * 남는다.
+ */
+describe("deriveDisplayUrgency — 경계값", () => {
+  const withVerifiedAgo = (mins: number) =>
+    hospital({ liveStatus: liveStatus({ verifiedAt: at(-mins), expiresAt: at(30) }) });
+
+  it("경계 상수가 10분·30분이다", () => {
+    expect(URGENCY_MINUTES.callFirst).toBe(10);
+    expect(URGENCY_MINUTES.callOnly).toBe(30);
+  });
+
+  it("9분 → normal", () => {
+    expect(deriveDisplayUrgency(withVerifiedAgo(9), NOW).level).toBe("normal");
+  });
+
+  it("★ 10분 → callFirst (경계는 포함이다)", () => {
+    expect(deriveDisplayUrgency(withVerifiedAgo(10), NOW).level).toBe("callFirst");
+  });
+
+  it("29분 → callFirst", () => {
+    expect(deriveDisplayUrgency(withVerifiedAgo(29), NOW).level).toBe("callFirst");
+  });
+
+  it("★ 30분 → callOnly (경계는 포함이다)", () => {
+    expect(deriveDisplayUrgency(withVerifiedAgo(30), NOW).level).toBe("callOnly");
+  });
+
+  it("31분 → callOnly", () => {
+    expect(deriveDisplayUrgency(withVerifiedAgo(31), NOW).level).toBe("callOnly");
+  });
+
+  it("★ 만료 → callOnly (경과 분이 적어도 만료가 먼저다)", () => {
+    // 1분 전에 확인했지만 만료 시각이 이미 지난 경우.
+    const h = hospital({ liveStatus: liveStatus({ verifiedAt: at(-1), expiresAt: at(-1) }) });
+    expect(deriveDisplayUrgency(h, NOW).level).toBe("callOnly");
+  });
+
+  it("상태가 아예 없으면 callOnly", () => {
+    expect(deriveDisplayUrgency(hospital({ liveStatus: null }), NOW).level).toBe("callOnly");
+  });
+});
+
+describe("전화문의 어려움 — 전화를 주 버튼으로 올리지 않는다", () => {
+  const contact = (status: "available" | "busy" | "difficult") => ({
+    hospitalId: "h_001",
+    status,
+    customNote: null,
+    verifiedAt: at(-5),
+  });
+
+  it("difficult 이면 callDiscouraged 가 켜진다", () => {
+    const h = hospital({ contactStatus: contact("difficult") });
+    expect(deriveDisplayUrgency(h, NOW).callDiscouraged).toBe(true);
+  });
+
+  it("★ 강도가 가장 셀 때도 callDiscouraged 는 따로 남는다 — 화면이 둘을 같이 본다", () => {
+    const h = hospital({
+      liveStatus: liveStatus({ verifiedAt: at(-90), expiresAt: at(-1) }),
+      contactStatus: contact("difficult"),
+    });
+    const u = deriveDisplayUrgency(h, NOW);
+    expect(u.level).toBe("callOnly");
+    expect(u.callDiscouraged).toBe(true);
+  });
+
+  it("통화량 많음·전화문의 가능은 막지 않는다", () => {
+    expect(deriveDisplayUrgency(hospital({ contactStatus: contact("busy") }), NOW).callDiscouraged).toBe(
+      false,
+    );
+    expect(
+      deriveDisplayUrgency(hospital({ contactStatus: contact("available") }), NOW).callDiscouraged,
+    ).toBe(false);
+  });
+
+  it("상태 정보가 없으면 막지 않는다 (없음을 어려움으로 읽지 않는다)", () => {
+    expect(deriveDisplayUrgency(hospital({ contactStatus: null }), NOW).callDiscouraged).toBe(false);
+  });
+});
+
+describe("30분 규칙은 표시 계층에서만 내린다", () => {
+  it("★ 저장된 상태는 그대로다. 내리는 것은 status 문구뿐이다", () => {
+    const stored = liveStatus({ status: "normal", verifiedAt: at(-35), expiresAt: at(20) });
+    const h = hospital({ liveStatus: stored });
+    const v = deriveStatusView(h, NOW);
+
+    expect(v.status.text).toBe("현재 상태 확인 필요");
+    expect(v.downgraded).toBe(true);
+    expect(v.expired).toBe(false); // 실제로 만료된 것은 아니다
+
+    // 원본은 건드리지 않았다. 병원이 누른 값과 저장된 값이 달라지지 않는다.
+    expect(h.liveStatus?.status).toBe("normal");
+    expect(h.liveStatus).toBe(stored);
+    expect(stored.expiresAt).toBe(at(20));
+  });
+
+  it("29분에는 내리지 않는다 — 원래 문구가 그대로 나온다", () => {
+    const h = hospital({ liveStatus: liveStatus({ verifiedAt: at(-29), expiresAt: at(20) }) });
+    const v = deriveStatusView(h, NOW);
+    expect(v.downgraded).toBe(false);
+    expect(v.status.text).toBe("확인 당시 진료 가능");
+  });
+
+  it("내릴 때 예정 문구도 같이 내린다", () => {
+    const h = hospital({
+      liveStatus: liveStatus({
+        status: "paused",
+        expectedResumeAt: at(20),
+        verifiedAt: at(-35),
+        expiresAt: at(20),
+      }),
+    });
+    const v = deriveStatusView(h, NOW);
+    expect(v.timePlan).toBeNull();
+  });
+
+  it("확인시각은 계속 보여줄 수 있다 — 왜 확인 필요인지 설명하는 값이다", () => {
+    const h = hospital({ liveStatus: liveStatus({ verifiedAt: at(-35), expiresAt: at(20) }) });
+    const v = deriveStatusView(h, NOW);
+    expect(v.verifiedAgo).toBe("35분 전");
+  });
+
+  it("만료는 downgraded 가 아니다 — 두 이유를 구분한다", () => {
+    const h = hospital({ liveStatus: liveStatus({ verifiedAt: at(-35), expiresAt: at(-1) }) });
+    const v = deriveStatusView(h, NOW);
+    expect(v.expired).toBe(true);
+    expect(v.downgraded).toBe(false);
   });
 });

@@ -33,7 +33,7 @@ const CONDITION_TONE: Record<ConditionState, string> = {
 export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date }) {
   const { hospital, relatedCapabilities, conditions, straightLineKm } = match;
   const live = hospital.liveStatus;
-  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo } = deriveStatusView(hospital, now);
+  const { status, timePlan, verifiedAgo, publicSyncedAgo, urgency } = deriveStatusView(hospital, now);
   const waiting = describeWaitingForUser(hospital, now);
   const incoming = describeIncomingForUser(hospital.incoming?.within30 ?? null);
   const admission = getAdmissionWindow(
@@ -41,11 +41,13 @@ export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date 
     showTravelEstimate ? hospital.travelMinutes : 0,
     now,
   );
-  const hardToCall = hospital.contactStatus?.status === "difficult";
+  const hardToCall = urgency.callDiscouraged;
   // 연령조건이 맞지 않으면 확실한 정보로 취급하지 않는다. 전화 확인이 먼저다.
   // 조건이 하나라도 미확인·불일치면 전화 확인을 앞으로 끌어올린다.
+  // 확인 후 경과에 따른 강도(urgency)와, 조건·마감 쪽 불확실성을 함께 본다.
+  // 어느 쪽이든 하나라도 걸리면 전화를 앞으로 끌어올린다.
   const uncertain =
-    expired ||
+    urgency.level !== "normal" ||
     conditions.some((c) => c.state !== "confirmed") ||
     ["none", "unknown", "toolate", "closed", "now"].includes(admission.state);
 

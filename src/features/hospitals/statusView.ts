@@ -17,6 +17,52 @@ import type { HospitalView } from "./types";
  * 조용히 동작해서, 지금 고치는 결함이 그대로 되돌아온다.
  */
 
+/**
+ * 확인 후 얼마나 지났는지에 따라 화면이 행동을 얼마나 세게 밀어야 하는가.
+ *
+ * 왜 필요한가: 지연이 남아 있다. 항목별 상태는 anon 에게 Realtime 이 오지 않고,
+ * 화면 복귀 재조회에도 지연 상한이 없다. 그러면 "10분 전 확인"과 "55분 전 확인"이
+ * 화면에서 똑같이 생겨서는 안 된다. 원칙 6 은 문구를 늘리지 말고 버튼의 위치와
+ * 색으로 행동을 바꾸라고 한다.
+ *
+ *   ~10분     normal     지금 그대로
+ *   10~30분   callFirst  전화를 주 버튼으로 승격
+ *   30분~     callOnly   상태를 "확인 필요"로 내리고 전화가 유일한 주 행동
+ *
+ * 30분에서 상태를 내리는 것은 **표시 계층에서만** 한다. 저장된 값도, 병원이 입력한
+ * 값도 고치지 않는다. 그 둘이 달라지면 병원은 자기가 누른 것과 다른 화면을 보게 된다.
+ */
+export type UrgencyLevel = "normal" | "callFirst" | "callOnly";
+
+export interface DisplayUrgency {
+  level: UrgencyLevel;
+  /**
+   * 병원이 "전화문의 어려움"을 켰다. level 이 무엇이든 전화를 주 버튼으로 올리지 않는다.
+   * 기존 규칙이다 — 받지 못하는 번호로 급한 사람을 보내면 시간만 잃는다.
+   */
+  callDiscouraged: boolean;
+}
+
+/** 경계값. 테스트가 이 값을 직접 읽는다. */
+export const URGENCY_MINUTES = { callFirst: 10, callOnly: 30 } as const;
+
+/**
+ * 목록과 상세가 **같은 함수를 쓴다.** 두 화면의 판정이 갈리면 목록에선 전화가
+ * 주 버튼인데 상세에선 아닌 상황이 생긴다.
+ */
+export function deriveDisplayUrgency(hospital: HospitalView, now: Date): DisplayUrgency {
+  const callDiscouraged = hospital.contactStatus?.status === "difficult";
+  const live = hospital.liveStatus;
+
+  // 상태가 없거나 만료면 가장 센 단계다. 만료는 30분 규칙보다 앞선다.
+  if (!live || isExpired(live, now)) return { level: "callOnly", callDiscouraged };
+
+  const minutesAgo = getFreshness(live.verifiedAt, now).minutesAgo;
+  if (minutesAgo >= URGENCY_MINUTES.callOnly) return { level: "callOnly", callDiscouraged };
+  if (minutesAgo >= URGENCY_MINUTES.callFirst) return { level: "callFirst", callDiscouraged };
+  return { level: "normal", callDiscouraged };
+}
+
 export interface StatusView {
   /** 저장된 상태가 읽는 시점에 만료됐는가. 상태가 아예 없으면 true 로 본다. */
   expired: boolean;
@@ -33,6 +79,12 @@ export interface StatusView {
   verifiedAgo: string | null;
   /** 공공데이터 동기화 시각 문구. 병원 직접확인 정보가 없을 때 쓴다. */
   publicSyncedAgo: string;
+  urgency: DisplayUrgency;
+  /**
+   * 만료되지는 않았지만 30분 규칙으로 표시만 "확인 필요"로 내린 경우.
+   * 화면이 "왜 확인 필요인가"를 구분해야 할 때 본다(만료인가, 오래됐는가).
+   */
+  downgraded: boolean;
 }
 
 export function deriveStatusView(hospital: HospitalView, now: Date): StatusView {
@@ -40,13 +92,25 @@ export function deriveStatusView(hospital: HospitalView, now: Date): StatusView 
   const expired = live ? isExpired(live, now) : true;
 
   const verifiedMinutesAgo = live ? getFreshness(live.verifiedAt, now).minutesAgo : null;
+  const urgency = deriveDisplayUrgency(hospital, now);
+
+  // 만료는 아니지만 너무 오래된 경우. 저장값은 그대로 두고 표시만 내린다.
+  const downgraded = !expired && urgency.level === "callOnly";
+
+  // 재개·재확인 예정 문구도 같이 내린다. "확인 필요" 옆의 "21:00 이후 재개 예정"은
+  // 서로 어긋나 읽히고, 급한 사람에게 읽을 줄을 하나 더 만든다(원칙 4).
+  const status = downgraded
+    ? ({ tone: "unverified", text: "현재 상태 확인 필요" } as const)
+    : describeStatus(live, now);
 
   return {
     expired,
-    status: describeStatus(live, now),
-    timePlan: expired ? null : describeTimePlan(live),
+    status,
+    timePlan: expired || downgraded ? null : describeTimePlan(live),
     verifiedMinutesAgo,
     verifiedAgo: verifiedMinutesAgo === null ? null : formatAgo(verifiedMinutesAgo),
     publicSyncedAgo: formatAgo(getFreshness(hospital.publicData.syncedAt, now).minutesAgo),
+    urgency,
+    downgraded,
   };
 }

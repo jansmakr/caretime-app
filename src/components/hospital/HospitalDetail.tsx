@@ -43,10 +43,10 @@ export function HospitalDetail({
 
   const live = hospital.liveStatus;
   // 카드(목록)와 같은 함수를 쓴다. 같은 병원·같은 now 면 두 화면의 문구가 같아야 한다.
-  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo } = deriveStatusView(
-    hospital,
-    now,
-  );
+  const { expired, status, timePlan, verifiedAgo, publicSyncedAgo, urgency, downgraded } =
+    deriveStatusView(hospital, now);
+  // 만료됐거나, 만료 전이라도 확인 후 30분이 지나 표시를 내린 경우. 둘 다 상태를 보장하지 못한다.
+  const unreliable = expired || downgraded;
   const waiting = describeWaitingForUser(hospital, now);
   // 이동 시간 추정을 못 믹을 때는 0 을 넣는다. 그러면 마감 판정이 '마감 시각 vs 지금'만 본다.
   const admission = getAdmissionWindow(
@@ -138,20 +138,20 @@ export function HospitalDetail({
             {timePlan && <span className="text-[13.5px] text-ink-muted">{timePlan}</span>}
           </div>
 
-          {expired && (
+          {unreliable && (
             <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
               마지막 확인 이후 시간이 지나 현재 상태를 보장할 수 없습니다. 방문 전에 전화로
               확인해 주세요.
             </p>
           )}
 
-          {live && !expired && live.reasonCode && (
+          {live && !unreliable && live.reasonCode && (
             <p className="mt-3 text-[15px]">
               <span className="text-ink-faint">사유 </span>
               <span className="font-semibold">{live.customReason ?? REASON_TEXT[live.reasonCode]}</span>
             </p>
           )}
-          {live && !expired && live.detailText && (
+          {live && !unreliable && live.detailText && (
             <p className="mt-1 text-[14.5px] text-ink-muted">{live.detailText}</p>
           )}
 
@@ -203,13 +203,32 @@ export function HospitalDetail({
           </p>
         )}
 
+        {/*
+          병원이 "전화문의 어려움"을 켜 두면 전화를 주 버튼으로 올리지 않는다.
+          받지 못하는 번호로 급한 사람을 보내면 시간만 잃는다. 이 규칙은 카드(목록)가
+          이미 지키고 있었고 상세만 어기고 있었다.
+          대신 무엇을 주 행동으로 둘지는 기존 문구 안에서 정한다 — 새 문구를 만들지 않았다.
+        */}
         <div className="space-y-2 pt-1">
-          <a href={`tel:${hospital.publicData.tel}`} className="ct-primary">
-            전화로 확인하기
-          </a>
-          <Link href="/search" className="ct-secondary w-full">
-            목록으로
-          </Link>
+          {urgency.callDiscouraged ? (
+            <>
+              <Link href="/search" className="ct-primary">
+                목록으로
+              </Link>
+              <a href={`tel:${hospital.publicData.tel}`} className="ct-secondary w-full">
+                그래도 전화
+              </a>
+            </>
+          ) : (
+            <>
+              <a href={`tel:${hospital.publicData.tel}`} className="ct-primary">
+                전화로 확인하기
+              </a>
+              <Link href="/search" className="ct-secondary w-full">
+                목록으로
+              </Link>
+            </>
+          )}
         </div>
         <p className="px-1 text-[13px] leading-relaxed text-ink-faint">
           {NOT_A_BOOKING} {CALL_IS_SUREST}
