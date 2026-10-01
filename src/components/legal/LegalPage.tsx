@@ -1,0 +1,51 @@
+import Link from "next/link";
+import { AppHeader } from "@/components/layout/AppHeader";
+import { LegalBody } from "@/components/legal/LegalBody";
+import { loadLegalDocument, type LegalDocId } from "@/features/legal/documents";
+
+/**
+ * /terms · /privacy 공통 화면.
+ *
+ * 준비되지 않았으면 그렇게 말한다. 빈 문서를 "방침"이라는 제목으로 보여 주면
+ * 읽은 사람은 이것이 방침의 전부라고 믿는다. 그게 가장 나쁜 쪽이다.
+ */
+export function LegalPage({ id, fallbackTitle }: { id: LegalDocId; fallbackTitle: string }) {
+  const document = loadLegalDocument(id);
+  const title = document.title || fallbackTitle;
+
+  return (
+    <>
+      <AppHeader title={title} backHref="/more" />
+      <main className="space-y-3 px-4 pb-6 pt-3">
+        <section className="ct-card p-5">
+          {document.ready ? (
+            <>
+              <p className="text-[13px] font-semibold text-ink-faint">
+                시행일 {document.effectiveDate}
+              </p>
+              <div className="mt-3">
+                <LegalBody document={document} />
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="ct-section-title">준비 중입니다</h2>
+              <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
+                {title} 본문을 준비하고 있습니다. 아직 올리지 않은 문서를 방침으로
+                보여 드리지 않습니다.
+              </p>
+              <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
+                지금 저장하는 항목과 보관 기간은 아래 두 가지뿐입니다. 글은 24시간 공개되고
+                30일 뒤 지워집니다. 이름·연락처·위치는 저장하지 않습니다.
+              </p>
+            </>
+          )}
+        </section>
+
+        <Link href="/" className="ct-secondary w-full">
+          진료정보 찾기로 돌아가기
+        </Link>
+      </main>
+    </>
+  );
+}

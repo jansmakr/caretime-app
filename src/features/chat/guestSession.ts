@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildNickname } from "@/features/p0/nickname";
+import { currentPolicyVersion } from "@/features/legal/version";
 
 /**
  * 비회원 세션. **서버에서만 다룬다.**
@@ -62,6 +63,11 @@ export async function findGuestSession(
  * 전에는 브라우저가 만들어 localStorage 에 뒀다. 그러면 누구나 바꿀 수 있고, 같은
  * 이름을 여러 사람이 쓸 수도 있어 "아까 그 사람"이 성립하지 않는다.
  * 금지어 검사도 서버에서 한 번만 하면 된다(features/p0/nickname).
+ *
+ * policy_version — 지금 시행 중인 약관·방침의 시행일을 함께 적는다. 형식과 왜
+ * 날짜 두 개인지는 features/legal/version.ts 에.
+ * **문서가 준비되기 전에는 null 이다.** 동의할 문서가 없는데 "동의한 버전"을 적으면
+ * 없는 동의를 기록하는 것이다. 본문이 들어오면 그날부터 자동으로 채워진다.
  */
 export async function createGuestSession(
   admin: SupabaseClient,
@@ -71,7 +77,12 @@ export async function createGuestSession(
 
   const { data, error } = await admin
     .from("guest_sessions")
-    .insert({ token_hash: hashToken(token), nickname: buildNickname(), expires_at: expiresAt })
+    .insert({
+      token_hash: hashToken(token),
+      nickname: buildNickname(),
+      expires_at: expiresAt,
+      policy_version: currentPolicyVersion(),
+    })
     .select("id,nickname")
     .single();
 
