@@ -215,6 +215,35 @@ export async function reportFieldReport(reportId: string, reason: ReportReason):
   if (!response.ok) throw new Error("신고를 접수하지 못했습니다.");
 }
 
+/**
+ * 목록에 없는 병원을 알려 달라는 요청.
+ *
+ * 글이 아니다. 공개되지 않고 운영자만 본다. 그래서 돌려받는 값도 없다 —
+ * 접수됐는지만 알면 된다.
+ */
+export async function requestHospital(input: {
+  name: string;
+  sido: string | null;
+  sigungu: string | null;
+  areaHint: string | null;
+}): Promise<void> {
+  const response = await fetch("/api/hospital-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+
+  if (response.status === 429) {
+    const payload = (await response.json().catch(() => ({}))) as { retryAfterSeconds?: number };
+    throw new RateLimitedError(payload.retryAfterSeconds ?? 60);
+  }
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(payload.error ?? "요청을 접수하지 못했습니다.");
+  }
+}
+
 /** 이 브라우저의 닉네임. 서버가 세션을 만들고 정한다. */
 export async function fetchGuestNickname(): Promise<string | null> {
   try {

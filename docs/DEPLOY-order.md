@@ -30,6 +30,7 @@ supabase db diff
 | 4 | **`20260929120000_field_reports.sql`** | 현장톡 글·반응 + broadcast |
 | 5 | **`20260930120000_guest_writes.sql`** | 쓰기를 서버 전용으로 + 게스트 세션 연결 |
 | 6 | `20261001120000_report_autoquarantine.sql` | 신고 → 즉시 격리 |
+| 7 | `20261002120000_hospital_requests.sql` | 목록에 없는 병원 요청 (비공개) |
 
 ### ⚠️ 4와 5는 **쌍이다**
 

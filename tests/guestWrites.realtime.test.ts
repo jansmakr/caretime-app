@@ -85,6 +85,7 @@ async function cleanup(): Promise<void> {
   await fetch(`${REST}/field_reports?body=like.*접수*`, { method: "DELETE", headers: admin });
   await fetch(`${REST}/field_reports?body=like.*테스트*`, { method: "DELETE", headers: admin });
   await fetch(`${REST}/field_reports?body=like.*전화*`, { method: "DELETE", headers: admin });
+  await fetch(`${REST}/hospital_requests?name=like.*테스트*`, { method: "DELETE", headers: admin });
 }
 
 beforeAll(async () => {
@@ -435,5 +436,123 @@ describe("신고 → 자동 격리", () => {
       headers: { apikey: anonKey },
     }).then((r) => r.json() as Promise<unknown[]>);
     expect(visible).toHaveLength(1);
+  }, TEST_MS);
+});
+
+describe("목록에 없는 병원 요청", () => {
+  async function requests(): Promise<{ name: string; guest_id: string; state: string }[]> {
+    return fetch(`${REST}/hospital_requests?select=name,guest_id,state,sido,sigungu,area_hint`, {
+      headers: admin,
+    }).then((r) => r.json() as Promise<{ name: string; guest_id: string; state: string }[]>);
+  }
+
+  it("★ 요청이 저장된다. 글이 아니라 운영자에게 간다", async () => {
+    const browser = new Browser();
+    const res = await browser.post("/api/hospital-requests", {
+      name: "테스트 마곡로뎀소아청소년과",
+      sido: "서울특별시",
+      sigungu: "강서구",
+      areaHint: "마곡동",
+    });
+    expect(res.status).toBe(200);
+    // 응답에 아무 내용도 담지 않는다. 접수됐다는 것만 알린다.
+    expect(await res.json()).toEqual({ ok: true });
+
+    const rows = await requests();
+    const found = rows.find((r) => r.name === "테스트 마곡로뎀소아청소년과");
+    expect(found?.state).toBe("OPEN");
+    expect(found?.guest_id).not.toBeNull();
+  }, TEST_MS);
+
+  it("★ anon 은 요청을 읽을 수 없다 — 글이 아니다", async () => {
+    const { data } = await anon.from("hospital_requests").select("name,area_hint");
+    expect(data).toEqual([]);
+  }, TEST_MS);
+
+  it("★ anon 은 요청을 직접 넣을 수 없다", async () => {
+    const { error } = await anon.from("hospital_requests").insert({
+      name: "직접 넣는 병원",
+      guest_id: crypto.randomUUID(),
+    });
+    expect(error?.code).toBe("42501");
+  }, TEST_MS);
+
+  it("★ 같은 사람이 같은 병원을 두 번 요청해도 한 건이다", async () => {
+    const browser = new Browser();
+    const payload = { name: "테스트 중복요청의원", sido: "서울특별시", sigungu: "강서구" };
+
+    expect((await browser.post("/api/hospital-requests", payload)).status).toBe(200);
+    expect((await browser.post("/api/hospital-requests", payload)).status).toBe(200);
+
+    const rows = (await requests()).filter((r) => r.name === "테스트 중복요청의원");
+    expect(rows).toHaveLength(1);
+  }, TEST_MS);
+
+  it("★ 개인정보가 섞이면 받지 않는다 — 운영자만 보는 값이어도 담지 않는다", async () => {
+    const browser = new Browser();
+    const res = await browser.post("/api/hospital-requests", {
+      name: "테스트 의원",
+      areaHint: "제 번호 010-1234-5678 로 알려주세요",
+    });
+    expect(res.status).toBe(422);
+  }, TEST_MS);
+
+  it("이름이 너무 짧으면 거절한다", async () => {
+    const browser = new Browser();
+    expect((await browser.post("/api/hospital-requests", { name: "가" })).status).toBe(400);
+  }, TEST_MS);
+
+  it("시군구만 있고 시도가 없으면 거절한다", async () => {
+    const browser = new Browser();
+    const res = await browser.post("/api/hospital-requests", {
+      name: "테스트 지역없는의원",
+      sido: null,
+      sigungu: "강서구",
+    });
+    expect(res.status).toBe(400);
+  }, TEST_MS);
+});
+
+describe("병원을 고르지 않은 글 — 요청한 사람이 지금 할 수 있는 것", () => {
+  it("★ hospital_id 없이 글이 올라간다", async () => {
+    const browser = new Browser();
+    const id = crypto.randomUUID();
+    const res = await browser.post("/api/field-reports", {
+      id,
+      category: "other",
+      topic: "문의",
+      body: "테스트 마곡동인데 지금 문 연 소아과 아시는 분 있나요?",
+      sido: "서울특별시",
+      sigungu: "강서구",
+    });
+    expect(res.status).toBe(200);
+
+    const rows = await fetch(`${REST}/field_reports?id=eq.${id}&select=hospital_id,sigungu`, {
+      headers: admin,
+    }).then((r) => r.json() as Promise<{ hospital_id: string | null; sigungu: string }[]>);
+
+    expect(rows[0].hospital_id).toBeNull();
+    expect(rows[0].sigungu).toBe("강서구");
+  }, TEST_MS);
+
+  it("★ 그 글이 공개 목록에 보인다 — 지역 현장톡이 성립한다", async () => {
+    const browser = new Browser();
+    const id = crypto.randomUUID();
+    await browser.post("/api/field-reports", {
+      id,
+      category: "other",
+      topic: "문의",
+      body: "테스트 지역만 적은 글입니다",
+      sido: "서울특별시",
+      sigungu: "강서구",
+    });
+
+    const visible = await fetch(
+      `${REST}/field_reports_public?id=eq.${id}&select=id,hospital_id,sigungu`,
+      { headers: { apikey: anonKey } },
+    ).then((r) => r.json() as Promise<{ hospital_id: string | null }[]>);
+
+    expect(visible).toHaveLength(1);
+    expect(visible[0].hospital_id).toBeNull();
   }, TEST_MS);
 });
