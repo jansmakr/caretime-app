@@ -3,7 +3,13 @@
 import { useEffect, useId, useState } from "react";
 import type { HospitalView } from "@/features/hospitals/types";
 import { toDirectory } from "@/features/reports/directory";
-import { CHAT_TEMPLATES, chatTemplate, chatTemplateText, shouldReplaceChatBody } from "@/features/chat/templates";
+import {
+  CHAT_DEFAULT_CATEGORY,
+  CHAT_TEMPLATES,
+  chatTemplate,
+  chatTemplateText,
+  shouldReplaceChatBody,
+} from "@/features/chat/templates";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
 import { COOLDOWN_SECONDS, useChatNickname, useCooldownSeconds } from "@/features/chat/useChatRoom";
@@ -47,9 +53,9 @@ export function ChatComposer({
    */
   scopeNote?: string;
 }) {
-  const [category, setCategory] = useState<ChatCategory>("laceration");
+  const [category, setCategory] = useState<ChatCategory>(CHAT_DEFAULT_CATEGORY);
   const [topic, setTopic] = useState("");
-  const [body, setBody] = useState(() => chatTemplateText("laceration"));
+  const [body, setBody] = useState(() => chatTemplateText(CHAT_DEFAULT_CATEGORY));
   const [error, setError] = useState<string | null>(null);
   const cooldown = useCooldownSeconds(lastSentAt);
 
@@ -148,14 +154,14 @@ export function ChatComposer({
       {meta.needsTopic && (
         <div className="mt-3">
           <label htmlFor={`${ids}-topic`} className="text-[12.5px] font-semibold text-ink-faint">
-            증상 · 주제 직접 입력
+            주제 (선택)
           </label>
           <input
             id={`${ids}-topic`}
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             maxLength={CHAT_TOPIC_MAX}
-            placeholder="예: 야간 진료, 접수 마감, 주차"
+            placeholder="예: 야간 진료, 접수 마감, 주차 (비워도 됩니다)"
             className="ct-field mt-1 h-12"
           />
         </div>

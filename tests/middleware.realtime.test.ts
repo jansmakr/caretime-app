@@ -99,9 +99,17 @@ describe("비인증 요청", () => {
     expect(res.headers.get("location")).toContain("/partner/login");
   }, TEST_MS);
 
-  it("/partner 입점 안내는 열려 있다 — 병원이 들어올 길이다", async () => {
+  it("★ 1차에는 /partner 가 닫혀 있다 — 참여 병원이 0곳이다", async () => {
+    /*
+     * 전에는 "입점 안내는 열려 있다(200)"를 고정했다. 1차 범위를 좁히면서 병원 화면을
+     * 닫았다(lib/demoContent.showPartnerEntry, docs/LAUNCH-scope.md). 링크만 떼면
+     * 주소를 아는 사람에게는 그대로 열려 있고, 그 화면은 지금 보여 줄 값이 없다.
+     *
+     * 첫 참여 병원이 생겨 플래그를 켜면 이 테스트가 깨진다. 그때 200 으로 되돌리는
+     * 것이 '다시 여는 일'이다 — 플래그만 켜고 테스트를 안 고치면 깨진 채로 남는다.
+     */
     const res = await fetch(`${BASE}/partner`, { redirect: "manual" });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(404);
   }, TEST_MS);
 
   it("보호자 화면은 그대로 열린다", async () => {
@@ -113,15 +121,31 @@ describe("비인증 요청", () => {
 });
 
 describe("로그인 후", () => {
-  it("★ 보호 화면이 정상으로 열린다", async () => {
+  it("★ 미들웨어는 세션을 통과시킨다 — 404 는 권한이 아니라 닫힌 화면이다", async () => {
+    /*
+     * 두 가지를 구분해서 고정한다.
+     *   · 로그인 없이 오면 **리다이렉트**다 (위의 테스트들). 인증 문제다.
+     *   · 로그인하고 와도 **404** 다. 인증은 통과했고 화면 자체가 1차에서 닫혔다.
+     * 둘이 섞이면 "로그인이 안 되는 것"과 "화면이 없는 것"을 구분할 수 없다.
+     */
     const cookie = await signedInCookieHeader();
     const res = await fetch(`${BASE}/partner/capabilities`, {
       headers: { cookie },
       redirect: "manual",
     });
 
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain("<html");
+    expect(res.status).toBe(404);
+    // 로그인 화면으로 돌려보내지 않는다. 인증은 끝났다.
+    expect(res.headers.get("location")).toBeNull();
+
+    /*
+     * 응답 본문에 **병원 값**이 없다. 이 화면의 값은 로그인한 본인의 세션으로
+     * 브라우저에서 읽어 오므로 서버가 그릴 값이 애초에 없다 — 404 본문에 남는 것은
+     * 라벨뿐이다. 그래서 라벨 문자열("진료기능")로는 아무것도 검증되지 않는다.
+     * 비인증 요청에서 본문이 아예 만들어지지 않는 것은 위의 첫 테스트가 고정한다.
+     */
+    const body = await res.text();
+    expect(body).not.toContain("hospital_members");
   }, TEST_MS);
 });
 

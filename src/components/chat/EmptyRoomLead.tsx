@@ -39,12 +39,14 @@ export function EmptyRoomLead() {
         무엇을 쓰면 되는지 예를 든다. 아래 작성창의 템플릿 칩과 같은 종류다 —
         빈 칸을 보고 무엇을 적을지 모르는 것이 실제 장벽이라, 보기를 먼저 보여 준다.
         전부 "본 것"이다. 진단·평가·추천이 들어가지 않는다.
+        증상 이름도 넣지 않는다 — 1차 지역 병원이 보는 것과 어긋나면 보기가 길을
+        잘못 안내한다. 어느 상황에서나 쓸 수 있는 문장만 남겼다.
       */}
       <ul className="mt-4 space-y-2 rounded-field bg-fill px-4 py-3.5">
         {[
           "방금 접수했는데 앞에 3명 대기라고 해요",
-          "지금 봉합 가능한지 물어보신 분 계신가요?",
-          "화상 처치는 오늘 어렵다고 안내받았어요",
+          "지금 접수 되는지 물어보신 분 계신가요?",
+          "오늘은 접수 마감됐다고 안내받았어요",
         ].map((example) => (
           <li key={example} className="text-[15px] leading-relaxed text-ink-muted">
             · {example}

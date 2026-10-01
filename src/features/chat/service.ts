@@ -26,9 +26,12 @@ export function validateChatDraft(draft: ChatDraft): { ok: true } | { ok: false;
   if (draft.body.trim() === "") {
     return { ok: false, reason: "보낼 내용을 입력해 주세요." };
   }
-  if (draft.category === "other" && (draft.topic ?? "").trim() === "") {
-    return { ok: false, reason: "증상이나 주제를 입력해 주세요." };
-  }
+  /*
+   * 주제는 받지만 **요구하지 않는다.**
+   * 전에는 '그 밖의 상황'에서 주제를 필수로 받았다. 그 칩이 기본값이 된 뒤로는
+   * 한 줄 물어보려는 사람이 칸 두 개를 채워야 했고, 그러면 첫 글이 안 올라간다.
+   * 주제는 목록에서 칩으로 보일 뿐이고, 없으면 칩이 하나 줄어드는 것이 전부다.
+   */
   if (isChatTemplateUntouched(draft.body, draft.category)) {
     return { ok: false, reason: "템플릿에 상황을 한 줄 덧붙여 주세요." };
   }

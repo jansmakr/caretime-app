@@ -39,7 +39,7 @@ export type CareCategory = "laceration" | "burn" | "other";
 export const CATEGORY_LABEL_GUARDIAN: Record<CareCategory, string> = {
   laceration: "찢어진 상처",
   burn: "화상",
-  other: "그 밖의 상처",
+  other: "그 밖의 상황",
 };
 
 export const CATEGORY_LABEL_PARTNER: Record<CareCategory, string> = {
