@@ -28,62 +28,44 @@ export interface RetentionRule {
   note: string;
 }
 
-export const RETENTION: Record<string, RetentionRule> = {
-  posts: {
-    subject: "일반 현장 글",
-    publicForMs: 24 * HOUR,
-    purgeAfterMs: 7 * DAY,
-    note: "공개 24시간 후 비공개, 7일 후 본문·세션 연결 삭제",
-  },
-  observations: {
-    subject: "리액션",
-    publicForMs: 15 * 60_000,
-    purgeAfterMs: 24 * HOUR,
-    note: "집계 15분, 원본 24시간. 이후 비식별 일 단위 집계만 남긴다",
-  },
-  guestSessions: {
-    subject: "비회원 세션",
-    publicForMs: null,
-    purgeAfterMs: 7 * DAY,
-    note: "절대 7일. 만료 후 24시간 내 토큰 해시·별칭 제거",
-  },
-  abuseKeys: {
-    subject: "악용 방지 HMAC 키",
-    publicForMs: null,
-    purgeAfterMs: 24 * HOUR,
-    note: "키 회전과 원본 폐기. 영구 지문을 만들지 않는다",
-  },
-  reports: {
-    subject: "신고·조치 증거",
-    publicForMs: null,
-    purgeAfterMs: 30 * DAY,
-    note: "사건 종료 후 30일. 법적 보존이 필요하면 근거·범위·기한을 기록하고 예외 처리",
-  },
-  partnerEvidence: {
-    subject: "기관 인증 첨부",
-    publicForMs: null,
-    purgeAfterMs: 30 * DAY,
-    note: "승인/반려 후 30일. 문서는 삭제하고 확인 결과만 유지",
-  },
-  auditLogs: {
-    subject: "상태·권한 감사 로그",
-    publicForMs: null,
-    purgeAfterMs: 90 * DAY,
-    note: "접근 제한. 환자 본문을 담지 않는다",
-  },
-};
+/**
+ * 보관 기간. **진짜 값은 DB 의 retention_policy 표에 있다.**
+ *
+ * 여기 있는 것은 그 표의 사본이고, 화면·문서에서 읽기 위한 것이다.
+ * 실제 삭제는 public.purge_expired() 가 그 표를 읽어서 한다
+ * (migration 20261004_retention_purge).
+ *
+ * 두 값이 갈라지면 방침에 쓴 숫자와 실제로 지우는 시점이 달라진다 — 그 자체가 위반이다.
+ * 그래서 테스트가 이 상수와 DB 표를 비교한다(tests/retention.realtime.test.ts).
+ * 기간을 바꾸려면 migration 과 이 파일을 함께 고쳐야 한다. 한쪽만 고치면 테스트가 깨진다.
+ */
+export const RETENTION_DAYS = {
+  /** 작성 시각 기준. 공개는 24시간, 그 뒤 신고·이의 처리를 위해 더 둔다. */
+  field_reports: 30,
+  /** 마지막 접속 기준. 지워지면 글의 guest_id 만 끊기고 글은 남는다. */
+  guest_sessions: 30,
+  /** 만료 시각 기준. (PRD 표. 현재 미사용) */
+  observations: 7,
+  /** 접수 시각 기준. 다음 지역 판단 근거. */
+  hospital_requests: 365,
+  /** 접수 시각 기준. 조치 기록도 같은 기간. */
+  reports: 365,
+} as const;
+
+export type RetentionSubject = keyof typeof RETENTION_DAYS;
+
 
 /** 백업에 남아도 되는 최대 기간. 복원 시 삭제 원장을 재적용한다. (PRD §7.4 말미) */
 export const BACKUP_MAX_RESIDUAL_MS = 30 * DAY;
 
-export function publicUntil(subject: keyof typeof RETENTION, createdAt: Date): Date | null {
-  const rule = RETENTION[subject];
-  if (rule.publicForMs === null) return null;
-  return new Date(createdAt.getTime() + rule.publicForMs);
-}
-
-export function purgeAt(subject: keyof typeof RETENTION, createdAt: Date): Date {
-  return new Date(createdAt.getTime() + RETENTION[subject].purgeAfterMs);
+/**
+ * 언제 지워지는가. 화면·문서에서 "N일 후 삭제"를 적을 때 쓴다.
+ *
+ * 실제 삭제는 이 함수가 하지 않는다 — DB 의 purge_expired() 가 한다.
+ * 이것은 그 시점을 사람에게 보여주기 위한 계산이다.
+ */
+export function purgeAt(subject: RetentionSubject, basisAt: Date): Date {
+  return new Date(basisAt.getTime() + RETENTION_DAYS[subject] * DAY);
 }
 
 /**
