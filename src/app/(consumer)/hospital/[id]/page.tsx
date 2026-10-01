@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { HospitalDetail } from "@/components/hospital/HospitalDetail";
+import { readMyPostIds } from "@/features/chat/myPosts";
 import { fetchFieldReports } from "@/features/chat/repository";
 import { fetchHospitalView } from "@/features/hospitals/repository";
 import { getHospital } from "@/features/hospitals/service";
@@ -33,6 +34,9 @@ export default async function HospitalDetailPage({
       )
     : { messages: [], failed: false };
 
+  // 삭제 버튼이 첫 그림부터 붙게 한다. (features/chat/myPosts)
+  const myPostIds = await readMyPostIds();
+
   return (
     <HospitalDetail
       initial={hospital}
@@ -40,6 +44,7 @@ export default async function HospitalDetailPage({
       realtime={isSupabaseConfigured}
       initialMessages={talk.messages}
       messagesLoadFailed={talk.failed}
+      myPostIds={myPostIds}
     />
   );
 }

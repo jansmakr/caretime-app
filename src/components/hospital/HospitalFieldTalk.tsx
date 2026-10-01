@@ -32,6 +32,7 @@ export function HospitalFieldTalk({
   now,
   initialMessages = [],
   initialLoadFailed = false,
+  initialMyPostIds = [],
 }: {
   hospital: HospitalView;
   renderedAt: string;
@@ -40,13 +41,20 @@ export function HospitalFieldTalk({
   initialMessages?: ChatMessage[];
   /** 조회가 실패했는가. 빈 목록과 같은 말을 하지 않기 위해 따로 받는다. */
   initialLoadFailed?: boolean;
+  /** 이 브라우저가 쓴 글의 id. 첫 그림부터 삭제 버튼이 붙게 한다. */
+  initialMyPostIds?: string[];
 }) {
   /*
    * 범위는 이 의료기관으로 고정이다. 지역은 비워 둔다 — 병원이 정해지면 지역은
    * 더 좁힐 것이 없고, 지역을 같이 걸면 글의 지역 값이 비어 있을 때 사라진다.
    */
   const filter: ChatFilter = { sido: null, sigungu: null, hospitalId: hospital.id };
-  const { messages, lastSentAt, react } = useChatRoom(renderedAt, filter, initialMessages);
+  const { messages, lastSentAt, react, remove } = useChatRoom(
+    renderedAt,
+    filter,
+    initialMessages,
+    initialMyPostIds,
+  );
   const { message: toast, show } = useToast();
 
   return (
@@ -73,6 +81,7 @@ export function HospitalFieldTalk({
                 now={now}
                 onReact={react}
                 onShared={show}
+                onRemove={remove}
                 hideHospitalLink
               />
             </li>

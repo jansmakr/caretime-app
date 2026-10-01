@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { SourceBadge } from "@/components/common/SourceBadge";
 import { ChatReactions } from "@/components/chat/ChatReactions";
@@ -19,18 +20,25 @@ import type { ChatMessageView } from "@/features/chat/types";
  * 일이 달라지면 안 된다.
  *
  * now 는 받아서 쓴다. 화면 안에서 '몇 분 전'의 기준 시각이 두 개가 되지 않게 한다.
+ *
+ * 내 글에는 삭제가 붙고 신고가 붙지 않는다. 자기 글을 신고하는 것은 운영자에게 가는
+ * 길이고 본인이 쓸 길이 아니다 — 익명 게시판에서 자기 글을 못 지우면 잘못 쓴 사람에게
+ * 남는 방법이 그것뿐이 된다.
  */
 export function ChatBubble({
   message,
   now,
   onReact,
   onShared,
+  onRemove,
   hideHospitalLink = false,
 }: {
   message: ChatMessageView;
   now: Date;
   onReact: (id: string, key: ReactionKey) => void;
   onShared: (text: string) => void;
+  /** 내 글 지우기. 없으면 삭제 버튼을 그리지 않는다. */
+  onRemove?: (id: string) => Promise<void>;
   /** 이미 그 의료기관 화면에 있는가. 지금 보고 있는 곳으로 가는 링크를 만들지 않는다. */
   hideHospitalLink?: boolean;
 }) {
@@ -80,8 +88,15 @@ export function ChatBubble({
         ) : (
           <span className="flex-1" />
         )}
-        {/* 내 글은 신고하지 않는다. 지우는 경로는 아직 없다 — 그건 별도 작업이다. */}
-        {!message.mine && <ReportButton messageId={message.id} onResult={onShared} />}
+        {/* 내 글은 신고하지 않는다. 대신 지운다. */}
+        {message.mine
+          ? onRemove && (
+              <DeleteButton
+                onConfirm={() => onRemove(message.id)}
+                onFailed={() => onShared("지우지 못했습니다. 잠시 후 다시 시도해 주세요.")}
+              />
+            )
+          : <ReportButton messageId={message.id} onResult={onShared} />}
         <ShareButton
           text={buildShareText(message.scope, message.category)}
           scope={message.scope}
@@ -89,5 +104,64 @@ export function ChatBubble({
         />
       </div>
     </article>
+  );
+}
+
+/**
+ * 삭제 — 두 번 눌러야 지워진다.
+ *
+ * 한 번에 지우면 목록을 스크롤하다 잘못 눌러 글이 사라진다. 되돌릴 수 없는 동작이라
+ * 한 걸음을 둔다. 그렇다고 모달을 띄우지 않는다 — 급한 화면에서 전체를 덮는 창은
+ * 읽는 흐름을 끊고, 지금 확인할 것은 "정말 지울까" 한 줄뿐이다.
+ */
+function DeleteButton({
+  onConfirm,
+  onFailed,
+}: {
+  onConfirm: () => Promise<void>;
+  onFailed: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!asking) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAsking(true)}
+        className="min-h-[44px] shrink-0 px-2 text-[13px] font-semibold text-ink-faint"
+      >
+        삭제
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      <span className="text-[12.5px] text-ink-muted">지울까요?</span>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          onConfirm()
+            .catch(() => {
+              onFailed();
+              setAsking(false);
+            })
+            .finally(() => setBusy(false));
+        }}
+        className="min-h-[44px] px-2 text-[13px] font-bold text-limited-ink"
+      >
+        {busy ? "지우는 중" : "지운다"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setAsking(false)}
+        className="min-h-[44px] px-2 text-[13px] font-semibold text-ink-faint"
+      >
+        취소
+      </button>
+    </span>
   );
 }

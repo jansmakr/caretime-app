@@ -38,6 +38,7 @@ export function HospitalDetail({
   realtime,
   initialMessages = [],
   messagesLoadFailed = false,
+  myPostIds = [],
 }: {
   initial: HospitalView;
   renderedAt: string;
@@ -46,6 +47,8 @@ export function HospitalDetail({
   initialMessages?: ChatMessage[];
   /** 그 조회가 실패했는가. 빈 목록과 다른 말을 해야 한다. */
   messagesLoadFailed?: boolean;
+  /** 이 브라우저가 쓴 글의 id. 첫 그림부터 삭제 버튼이 붙게 한다. */
+  myPostIds?: string[];
 }) {
   const { hospital, now, connection } = useHospitalLive(initial, renderedAt, realtime);
 
@@ -261,6 +264,7 @@ export function HospitalDetail({
           now={now}
           initialMessages={initialMessages}
           initialLoadFailed={messagesLoadFailed}
+          initialMyPostIds={myPostIds}
         />
 
         {/*

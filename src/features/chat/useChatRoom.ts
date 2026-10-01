@@ -7,6 +7,7 @@ import { showDemoReports } from "@/lib/demoContent";
 import { filterMessages, mergeRoomMessages } from "./service";
 import {
   connectChat,
+  deleteMyMessage,
   getChatSnapshot,
   getChatSnapshotOnServer,
   hydrateMessages,
@@ -31,6 +32,11 @@ export function useChatRoom(
   filter: ChatFilter,
   /** 서버가 읽어 온 글. 첫 화면부터 글이 보이게 하려면 이 값이 있어야 한다. */
   initialMessages: ChatMessage[] = [],
+  /**
+   * 서버가 읽어 준 '내 글' id. 이것이 없으면 첫 그림에 삭제 버튼이 없다 —
+   * 공개 뷰가 guest_id 를 내보내지 않으므로 목록만 보고는 알 수 없다.
+   */
+  initialMyPostIds: string[] = [],
 ) {
   const snapshot = useSyncExternalStore(subscribeChat, getChatSnapshot, getChatSnapshotOnServer);
   // 운영에서는 가상 대화를 렌더하지 않는다. 빈 상태를 0건으로 꾸미지 않기 위해 목록만 비운다.
@@ -59,6 +65,9 @@ export function useChatRoom(
    * 합치는 규칙은 service.mergeRoomMessages 에 있다(테스트가 그 함수를 붙든다).
    * 서버가 읽어 온 글이 첫 렌더부터 들어가고, 격리된 글은 되살아나지 않는다.
    */
+  // 서버 렌더값이라 바뀌지 않는다. 매 렌더마다 Set 을 다시 만들지 않는다.
+  const initialMine = useMemo(() => new Set(initialMyPostIds), [initialMyPostIds]);
+
   const all = useMemo<ChatMessageView[]>(() => {
     const merged = mergeRoomMessages({
       stored: snapshot.messages,
@@ -68,15 +77,36 @@ export function useChatRoom(
     });
     return merged.map((message) => {
       const mine = snapshot.myReactions[message.id] ?? [];
-      return { ...message, myReactions: mine, reactions: withMyReactions(message.baseReactions, mine) };
+      return {
+        ...message,
+        // 서버에 물어 받은 '내 글' 표시를 얹는다. 새로고침 뒤에도 삭제 버튼이 남는다.
+        mine:
+          message.mine ||
+          snapshot.mineIds[message.id] === true ||
+          initialMine.has(message.id),
+        myReactions: mine,
+        reactions: withMyReactions(message.baseReactions, mine),
+      };
     });
     // initialMessages 는 서버 렌더값이라 바뀌지 않는다. 의존성에 넣어도 같은 결과다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.messages, snapshot.myReactions, snapshot.removedIds, seeded]);
+  }, [
+    snapshot.messages,
+    snapshot.myReactions,
+    snapshot.mineIds,
+    snapshot.removedIds,
+    seeded,
+    initialMine,
+  ]);
 
   const messages = useMemo(() => filterMessages(all, filter), [all, filter]);
   const react = useCallback((messageId: string, key: Parameters<typeof toggleReaction>[1]) => {
     toggleReaction(messageId, key);
+  }, []);
+
+  /** 내가 쓴 글 지우기. 돌려주는 약속이 깨지면 화면이 알려 준다. */
+  const remove = useCallback(async (messageId: string) => {
+    await deleteMyMessage(messageId);
   }, []);
 
   return {
@@ -85,6 +115,7 @@ export function useChatRoom(
     nickname: snapshot.nickname,
     lastSentAt: snapshot.lastSentAt,
     react,
+    remove,
   };
 }
 

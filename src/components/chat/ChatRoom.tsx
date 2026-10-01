@@ -42,6 +42,7 @@ export function ChatRoom({
   initialFilter = EMPTY_FILTER,
   initialMessages = [],
   initialLoadFailed = false,
+  initialMyPostIds = [],
 }: {
   renderedAt: string;
   /** URL 로 들어온 조건. 허용값 검증은 features/chat/urlFilter 가 이미 마쳤다. */
@@ -50,14 +51,17 @@ export function ChatRoom({
   initialMessages?: ChatMessage[];
   /** 서버 조회가 실패했는가. 빈 목록과 같은 말을 하지 않기 위해 따로 받는다. */
   initialLoadFailed?: boolean;
+  /** 이 브라우저가 쓴 글의 id. 첫 그림부터 삭제 버튼이 붙게 한다. */
+  initialMyPostIds?: string[];
 }) {
   const [filter, setFilter] = useState<ChatFilter>(initialFilter);
   const [now, setNow] = useState(() => new Date(renderedAt));
   const list = useHospitalList();
-  const { messages, totalCount, lastSentAt, react } = useChatRoom(
+  const { messages, totalCount, lastSentAt, react, remove } = useChatRoom(
     renderedAt,
     filter,
     initialMessages,
+    initialMyPostIds,
   );
   const { message: toast, show } = useToast();
 
@@ -132,7 +136,13 @@ export function ChatRoom({
         <ul className="mt-2 divide-y divide-fill">
           {messages.map((message) => (
             <li key={message.id} className="py-3.5 first:pt-1">
-              <ChatBubble message={message} now={now} onReact={react} onShared={show} />
+              <ChatBubble
+                message={message}
+                now={now}
+                onReact={react}
+                onShared={show}
+                onRemove={remove}
+              />
             </li>
           ))}
         </ul>

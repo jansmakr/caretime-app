@@ -1,6 +1,7 @@
 import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import {
-  fetchGuestNickname,
+  deleteFieldReport,
+  fetchGuestInfo,
   insertFieldReport,
   insertReaction,
   subscribeFieldReports,
@@ -39,6 +40,14 @@ export interface ChatSnapshot {
   /** 이번 브라우저의 익명 닉네임. 첫 글을 쓸 때 정해진다. */
   nickname: string | null;
   /**
+   * 이 브라우저가 쓴 글의 id.
+   *
+   * 글에 붙은 `mine` 은 보낸 순간에만 붙는다. 공개 뷰가 guest_id 를 내보내지 않으므로
+   * 새로고침하면 그 표시가 사라지고, 그러면 **자기 글에 삭제 버튼이 없어진다.**
+   * 그래서 서버에 "내가 쓴 글이 무엇인지"를 물어 따로 들고 있는다(/api/guest).
+   */
+  mineIds: Record<string, true>;
+  /**
    * 격리·삭제된 글의 id.
    *
    * 목록에서 지우는 것만으로는 부족하다. 화면은 서버가 렌더한 목록(initialMessages)을
@@ -53,6 +62,7 @@ const SERVER_SNAPSHOT: ChatSnapshot = Object.freeze({
   myReactions: Object.freeze({}) as Record<string, ReactionKey[]>,
   lastSentAt: null,
   nickname: null,
+  mineIds: Object.freeze({}) as Record<string, true>,
   removedIds: Object.freeze({}) as Record<string, true>,
 });
 
@@ -93,8 +103,14 @@ export function getChatSnapshotOnServer(): ChatSnapshot {
  */
 export function hydrateNickname(): void {
   if (snapshot.nickname) return;
-  void fetchGuestNickname().then((nickname) => {
-    if (nickname && !snapshot.nickname) commit({ nickname });
+  void fetchGuestInfo().then((info) => {
+    if (!info) return;
+    const mineIds = { ...snapshot.mineIds };
+    for (const id of info.myPostIds) mineIds[id] = true;
+    commit({
+      nickname: snapshot.nickname ?? info.nickname,
+      mineIds,
+    });
   });
 }
 
@@ -130,7 +146,11 @@ export async function sendChatMessage(
   try {
     const saved = await insertFieldReport(normalized);
     // 구독으로도 같은 글이 돌아온다. id 로 합치므로 두 번 보이지 않는다.
-    commit({ messages: mergeMessage(snapshot.messages, saved) });
+    commit({
+      messages: mergeMessage(snapshot.messages, saved),
+      // 새로고침해도 내 글로 남아야 한다. 서버 조회를 기다리지 않고 지금 표시한다.
+      mineIds: { ...snapshot.mineIds, [saved.id]: true },
+    });
     return saved;
   } catch (e) {
     commit({ lastSentAt: previousSentAt });
@@ -209,6 +229,32 @@ export function toggleReaction(messageId: string, key: ReactionKey): void {
    */
   if (!pressing) return;
   void insertReaction(messageId, key);
+}
+
+/**
+ * 내가 쓴 글 지우기.
+ *
+ * 화면에서 먼저 뺀다. 지우겠다고 눌렀는데 글이 그 자리에 남아 있으면 한 번 더
+ * 누르게 되고, 급한 상황에서 그 1초가 길다. 실패하면 되돌린다.
+ *
+ * 서버가 성공하면 broadcast 로 'removed' 가 돌아와 다른 사람 화면에서도 사라진다.
+ * 여기서 지운 것과 그 신호가 겹쳐도 결과는 같다 — removedIds 가 한 번만 남는다.
+ */
+export async function deleteMyMessage(messageId: string): Promise<void> {
+  const previous = snapshot.messages;
+  const previousRemoved = snapshot.removedIds;
+
+  commit({
+    messages: previous.filter((m) => m.id !== messageId),
+    removedIds: { ...previousRemoved, [messageId]: true },
+  });
+
+  try {
+    await deleteFieldReport(messageId);
+  } catch (e) {
+    commit({ messages: previous, removedIds: previousRemoved });
+    throw e;
+  }
 }
 
 export function myReactionsFor(messageId: string): ReactionKey[] {

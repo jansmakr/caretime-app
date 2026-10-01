@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { DemoNotice } from "@/components/common/DemoNotice";
 import { ChatRoom } from "@/components/chat/ChatRoom";
+import { readMyPostIds } from "@/features/chat/myPosts";
 import { fetchFieldReports } from "@/features/chat/repository";
 import { chatFilterFromParams } from "@/features/chat/urlFilter";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -51,6 +52,12 @@ export default async function ChatPage({
       )
     : { messages: [], failed: false };
 
+  /*
+   * 이 브라우저가 쓴 글이 무엇인지 서버가 읽어 넘긴다. 없으면 첫 그림에 삭제 버튼이
+   * 없다 — 자기 글을 지우러 온 사람에게는 그게 '없는 기능'이다.
+   */
+  const myPostIds = await readMyPostIds();
+
   return (
     <>
       <AppHeader title="💬 실시간 현장톡" backHref="/" />
@@ -60,6 +67,7 @@ export default async function ChatPage({
         initialFilter={chatFilterFromParams(params)}
         initialMessages={initial.messages}
         initialLoadFailed={initial.failed}
+        initialMyPostIds={myPostIds}
       />
     </>
   );

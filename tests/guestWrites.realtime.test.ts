@@ -63,6 +63,15 @@ class Browser {
     return this.cookie;
   }
 
+  async del(path: string): Promise<Response> {
+    const res = await fetch(`${BASE}${path}`, {
+      method: "DELETE",
+      headers: this.cookie ? { cookie: this.cookie } : {},
+    });
+    this.remember(res);
+    return res;
+  }
+
   async writeReport(over: Record<string, unknown> = {}): Promise<Response> {
     return this.post("/api/field-reports", {
       id: uuid(),
@@ -177,13 +186,29 @@ describe("서버 라우트", () => {
     expect(guest?.toLowerCase()).toContain("samesite=lax");
   }, TEST_MS);
 
-  it("★ 응답 본문에 세션 id 가 없다 — 이름만 나간다", async () => {
+  it("★ 응답 본문에 세션 id 가 없다 — 이름과 내 글 id 만 나간다", async () => {
     const browser = new Browser();
     const res = await browser.get("/api/guest");
     const payload = (await res.json()) as Record<string, unknown>;
 
-    expect(Object.keys(payload)).toEqual(["nickname"]);
+    expect(Object.keys(payload).sort()).toEqual(["myPostIds", "nickname"]);
+    // 방금 만든 세션에는 글이 없다. 그래서 어떤 uuid 도 실리지 않는다.
+    expect(payload.myPostIds).toEqual([]);
     expect(JSON.stringify(payload)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+  }, TEST_MS);
+
+  it("★ 글을 쓴 뒤에도 세션 id 는 나가지 않는다 — 실리는 uuid 는 글 id 뿐이다", async () => {
+    /*
+     * 세션 id 가 응답에 실리면 스크립트가 읽을 수 있고, 그 순간 공유 문구·URL·분석
+     * 로그로 새어 나갈 길이 생긴다. 글 id 는 이미 공개 목록에 있는 값이라 다르다.
+     */
+    const browser = new Browser();
+    const id = uuid();
+    await browser.writeReport({ id });
+
+    const payload = (await (await browser.get("/api/guest")).json()) as Record<string, unknown>;
+    const uuids = JSON.stringify(payload).match(/[0-9a-f-]{36}/g) ?? [];
+    expect(uuids).toEqual([id]);
   }, TEST_MS);
 
   it("★ 글쓴이가 이름을 정할 수 없다 — 서버가 붙인다", async () => {
@@ -554,5 +579,109 @@ describe("병원을 고르지 않은 글 — 요청한 사람이 지금 할 수 
 
     expect(visible).toHaveLength(1);
     expect(visible[0].hospital_id).toBeNull();
+  }, TEST_MS);
+});
+
+describe("내가 쓴 글 지우기", () => {
+  /*
+   * 익명 게시판에서 자기 글을 못 지우면 잘못 쓴 사람에게 남는 방법이 자기 글을
+   * 신고하는 것뿐이다. 그래서 삭제를 열었다 — 그리고 **남의 글이 지워지지 않는지**가
+   * 이 묶음의 전부다. 지울 권한을 잘못 주면 아무나 방을 비울 수 있다.
+   */
+
+  async function visibleInPublicList(id: string): Promise<boolean> {
+    const { data } = await anon.from("field_reports_public").select("id").eq("id", id);
+    return (data ?? []).length > 0;
+  }
+
+  it("★ 내 글은 지워지고 공개 목록에서 사라진다", async () => {
+    const me = new Browser();
+    const id = uuid();
+    expect((await me.writeReport({ id })).status).toBe(200);
+    expect(await visibleInPublicList(id)).toBe(true);
+
+    expect((await me.del(`/api/field-reports/${id}`)).status).toBe(200);
+    expect(await visibleInPublicList(id)).toBe(false);
+  }, TEST_MS);
+
+  it("★ 행은 남고 REMOVED 가 된다 — 이미 읽고 있는 사람에게 사라졌다고 알리는 경로다", async () => {
+    /*
+     * broadcast 트리거는 insert·update 에만 걸려 있다. 행을 지우면 아무 신호도 가지
+     * 않아, 보고 있던 사람 화면에 글이 그대로 남는다. 행은 보관 기간 안에 purge 가 지운다.
+     */
+    const me = new Browser();
+    const id = uuid();
+    await me.writeReport({ id });
+    await me.del(`/api/field-reports/${id}`);
+
+    const rows = await fetch(`${REST}/field_reports?id=eq.${id}&select=visibility`, {
+      headers: admin,
+    }).then((r) => r.json() as Promise<{ visibility: string }[]>);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].visibility).toBe("REMOVED");
+  }, TEST_MS);
+
+  it("★ 남의 글은 지워지지 않는다 — 지울 수 있으면 아무나 방을 비운다", async () => {
+    const author = new Browser();
+    const stranger = new Browser();
+    const id = uuid();
+    await author.writeReport({ id });
+
+    // 남이 보면 404 다. 있다/없다를 알려 주지 않는다.
+    expect((await stranger.del(`/api/field-reports/${id}`)).status).toBe(404);
+    expect(await visibleInPublicList(id)).toBe(true);
+  }, TEST_MS);
+
+  it("★ 쿠키가 없으면 지울 수 없다", async () => {
+    const author = new Browser();
+    const id = uuid();
+    await author.writeReport({ id });
+
+    const res = await fetch(`${BASE}/api/field-reports/${id}`, { method: "DELETE" });
+    expect(res.status).toBe(404);
+    expect(await visibleInPublicList(id)).toBe(true);
+  }, TEST_MS);
+
+  it("없는 글을 지우면 404 — 화면은 이것을 성공으로 다룬다(이미 사라진 글)", async () => {
+    const me = new Browser();
+    await me.writeReport();
+    expect((await me.del(`/api/field-reports/${uuid()}`)).status).toBe(404);
+  }, TEST_MS);
+
+  it("글 id 모양이 아니면 404 — 조회하지 않는다", async () => {
+    const me = new Browser();
+    await me.writeReport();
+    expect((await me.del("/api/field-reports/not-a-uuid")).status).toBe(404);
+  }, TEST_MS);
+
+  it("★ 새로고침해도 내 글을 알 수 있다 — 아니면 삭제 버튼이 사라진다", async () => {
+    /*
+     * 공개 뷰는 guest_id 를 내보내지 않는다(그래야 한다). 그래서 화면은 서버에
+     * "내가 쓴 글이 무엇인지"를 물어야 한다. 돌려주는 것은 id 뿐이다.
+     */
+    const me = new Browser();
+    const id = uuid();
+    await me.writeReport({ id });
+
+    const payload = (await (await me.get("/api/guest")).json()) as {
+      nickname?: string;
+      myPostIds?: string[];
+    };
+    expect(payload.myPostIds).toContain(id);
+
+    // 남의 세션에는 그 id 가 없다.
+    const stranger = new Browser();
+    const other = (await (await stranger.get("/api/guest")).json()) as { myPostIds?: string[] };
+    expect(other.myPostIds).toEqual([]);
+  }, TEST_MS);
+
+  it("★ 지운 글은 '내 글 목록'에서도 빠진다 — 지울 것이 없다", async () => {
+    const me = new Browser();
+    const id = uuid();
+    await me.writeReport({ id });
+    await me.del(`/api/field-reports/${id}`);
+
+    const payload = (await (await me.get("/api/guest")).json()) as { myPostIds?: string[] };
+    expect(payload.myPostIds).not.toContain(id);
   }, TEST_MS);
 });

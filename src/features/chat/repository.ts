@@ -256,15 +256,42 @@ export async function requestHospital(input: {
   }
 }
 
-/** 이 브라우저의 닉네임. 서버가 세션을 만들고 정한다. */
-export async function fetchGuestNickname(): Promise<string | null> {
+/**
+ * 이 브라우저의 세션 정보. 서버가 세션을 만들고 닉네임을 정한다.
+ *
+ * 내 글 id 목록도 함께 받는다. 공개 뷰는 guest_id 를 내보내지 않으므로(그래야 한다)
+ * 이것이 없으면 새로고침 뒤에 어느 글이 내 글인지 알 수 없고, 삭제 버튼이 사라진다.
+ */
+export interface GuestInfo {
+  nickname: string | null;
+  myPostIds: string[];
+}
+
+export async function fetchGuestInfo(): Promise<GuestInfo | null> {
   try {
     const response = await fetch("/api/guest", { credentials: "same-origin" });
     if (!response.ok) return null;
-    return ((await response.json()) as { nickname?: string }).nickname ?? null;
+    const payload = (await response.json()) as { nickname?: string; myPostIds?: string[] };
+    return { nickname: payload.nickname ?? null, myPostIds: payload.myPostIds ?? [] };
   } catch {
     return null;
   }
+}
+
+/**
+ * 내가 쓴 글 지우기.
+ *
+ * 404 를 성공으로 본다. 없는 글이거나 이미 지운 글이고, 둘 다 사용자에게는 같은
+ * 결과다("그 글은 없다"). 여기서 실패로 다루면 이미 사라진 글 때문에 빨간 문구를
+ * 보게 된다.
+ */
+export async function deleteFieldReport(id: string): Promise<void> {
+  const response = await fetch(`/api/field-reports/${id}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (response.ok || response.status === 404) return;
+  throw new Error("지우지 못했습니다.");
 }
 
 export type FieldReportSignal =
