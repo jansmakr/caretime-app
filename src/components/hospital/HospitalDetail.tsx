@@ -20,9 +20,11 @@ import { HospitalFieldTalk } from "@/components/hospital/HospitalFieldTalk";
 import { deriveStatusView } from "@/features/hospitals/statusView";
 import { CONTACT_TEXT, REASON_TEXT } from "@/features/hospitals/labels";
 import {
+  showAdmissionHours,
   showArrivalIntent,
   showDemoDistance,
   showOfficialSourceBadge,
+  showServiceBreakdown,
   showTravelEstimate,
 } from "@/lib/demoContent";
 
@@ -100,23 +102,29 @@ export function HospitalDetail({
           </dl>
         </section>
 
-        {/* 오늘 진료시간 — 내원 마감을 종료시각보다 크게 둔다. */}
-        <section className="ct-card p-5">
-          <h2 className="ct-section-title">오늘 진료시간</h2>
-          <AdmissionBlock
-            window={admission}
-            headline={admissionHeadline(admission, hospital.travelMinutes ?? 0, showTravelEstimate)}
-          />
-          {admission.note && (
-            <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">{admission.note}</p>
-          )}
-          {admission.state === "unknown" && (
-            <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">
-              이 의료기관은 내원 마감 시각을 아직 등록하지 않았습니다. 진료 종료 직전에는 접수가
-              어려울 수 있으니 전화로 확인해 주세요.
-            </p>
-          )}
-        </section>
+        {/*
+          오늘 진료시간 — 내원 마감을 종료시각보다 크게 둔다.
+          1차에서는 내린다. 확인된 진료시간이 한 곳도 없어 항상 "정보 없음"이고,
+          읽을 것이 없는 줄이 자리를 차지한다. (lib/demoContent.showAdmissionHours)
+        */}
+        {showAdmissionHours && (
+          <section className="ct-card p-5">
+            <h2 className="ct-section-title">오늘 진료시간</h2>
+            <AdmissionBlock
+              window={admission}
+              headline={admissionHeadline(admission, hospital.travelMinutes ?? 0, showTravelEstimate)}
+            />
+            {admission.note && (
+              <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">{admission.note}</p>
+            )}
+            {admission.state === "unknown" && (
+              <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">
+                이 의료기관은 내원 마감 시각을 아직 등록하지 않았습니다. 진료 종료 직전에는 접수가
+                어려울 수 있으니 전화로 확인해 주세요.
+              </p>
+            )}
+          </section>
+        )}
 
         {/* 계층 ③ — 진료기능. 구조 데이터라 시간에 따라 변하지 않는다. */}
         <section className="ct-card p-5">
@@ -166,8 +174,13 @@ export function HospitalDetail({
 
             문구는 보호자의 말이다(원칙 7). "열상"·"capability" 같은 말을 쓰지 않는다.
             병원 화면은 같은 항목을 "열상"으로 부른다 — 표가 두 벌인 이유다.
+
+            1차에서는 내린다. 이 3분할은 "야간 소아 외상" 설계에서 나왔는데 1차 지역의
+            달빛어린이병원이 실제로 보는 것은 발열·구토·중이염이다. 어긋난 표를 병원별
+            상태로 보여 주면 보호자가 맞지 않는 칸을 읽고 판단한다.
+            판정 규칙(deriveServiceBreakdown)은 그대로다 — 표시만 닫았다.
           */}
-          {breakdown.lines.length > 0 && (
+          {showServiceBreakdown && breakdown.lines.length > 0 && (
             <dl className="mt-3 divide-y divide-line rounded-field bg-fill px-4 py-1">
               {breakdown.lines.map((line) => (
                 <div key={line.category} className="flex items-center justify-between gap-3 py-2.5">

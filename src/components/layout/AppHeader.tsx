@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { EmergencyCallout } from "@/components/common/EmergencyCallout";
 import { PartnerCta } from "@/components/common/PartnerCta";
+import { showPartnerEntry } from "@/lib/demoContent";
 
 export function AppHeader({ title, backHref }: { title?: string; backHref?: string }) {
   return (
@@ -27,9 +28,12 @@ export function AppHeader({ title, backHref }: { title?: string; backHref?: stri
             </Link>
           )}
         </div>
-        {/* 오른쪽 묶음: 참여 CTA → 119. 119 가 항상 가장 바깥(엄지에 가까운 쪽)이다. */}
+        {/*
+          오른쪽 묶음: 참여 CTA → 119. 119 가 항상 가장 바깥(엄지에 가까운 쪽)이다.
+          1차에는 참여 병원이 없어 CTA 를 내린다 — 아무도 들어갈 수 없는 문이다.
+        */}
         <div className="flex shrink-0 items-center gap-2">
-          <PartnerCta />
+          {showPartnerEntry && <PartnerCta />}
           <EmergencyCallout />
         </div>
       </div>

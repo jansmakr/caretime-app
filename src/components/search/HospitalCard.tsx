@@ -11,7 +11,13 @@ import { straightLineLabel, type ConditionState, type DiscoveryMatch } from "@/f
 import { deriveStatusView } from "@/features/hospitals/statusView";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
-import { showArrivalIntent, showOfficialSourceBadge, showTravelEstimate } from "@/lib/demoContent";
+import {
+  showAdmissionHours,
+  showArrivalIntent,
+  showOfficialSourceBadge,
+  showServiceBreakdown,
+  showTravelEstimate,
+} from "@/lib/demoContent";
 
 /**
  * 병원 카드는 11항에 나열된 항목만 보여준다.
@@ -123,16 +129,25 @@ export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date 
           이 줄이 없으면 보수적 접기가 "여기는 안 된다"로만 읽혀 갈 수 있는 병원을 놓친다.
           자세한 것은 상세에서 본다.
         */}
-        {breakdown.partiallyOpen && (
+        {/* 1차에서는 항목별 상태를 내린다. (lib/demoContent.showServiceBreakdown) */}
+        {showServiceBreakdown && breakdown.partiallyOpen && (
           <p className="mt-2 text-[14px] font-semibold text-caution-ink">
             일부 항목만 가능 · 상세에서 확인
           </p>
         )}
 
-        <AdmissionBlock
-          window={admission}
-          headline={admissionHeadline(admission, hospital.travelMinutes ?? 0, showTravelEstimate)}
-        />
+        {/*
+          1차에서는 진료시간을 내린다. 확인된 시간이 한 곳도 없어 모든 카드가 같은
+          "정보 없음"을 그린다. (lib/demoContent.showAdmissionHours)
+          마감 판정은 그대로 계산해 둔다 — 아래 uncertain 이 그 값을 보고 전화를
+          앞으로 끌어올린다. 보여 주지 않는 것과 판정에서 빼는 것은 다른 일이다.
+        */}
+        {showAdmissionHours && (
+          <AdmissionBlock
+            window={admission}
+            headline={admissionHeadline(admission, hospital.travelMinutes ?? 0, showTravelEstimate)}
+          />
+        )}
 
         {(waiting || incoming) && (
           <dl className="mt-3 space-y-1.5 px-1 text-[14.5px]">
