@@ -2,8 +2,7 @@
 
 **사람이 보고 실행하는 문서다.** 명령어를 그대로 복사해 쓸 수 있게 적었다.
 
-지금 migration 5개가 로컬에만 있다. 1차 출시 직전에 올린다 —
-지금 올리면 공공데이터 작업 중에 또 바뀐다.
+지금 migration 9개가 로컬에만 있다. 1차 출시 직전에 올린다.
 
 ## 적용 전 확인
 
@@ -31,6 +30,8 @@ supabase db diff
 | 5 | **`20260930120000_guest_writes.sql`** | 쓰기를 서버 전용으로 + 게스트 세션 연결 |
 | 6 | `20261001120000_report_autoquarantine.sql` | 신고 → 즉시 격리 |
 | 7 | `20261002120000_hospital_requests.sql` | 목록에 없는 병원 요청 (비공개) |
+| 8 | `20261004120000_retention_purge.sql` | 보관 기간 표 + 실제 삭제 + pg_cron 04:00 KST |
+| 9 | `20261005120000_stale_reports_and_purge_health.sql` | 미처리 신고 90일 자동 종결 + 크론 상태 조회 |
 
 ### ⚠️ 4와 5는 **쌍이다**
 
@@ -41,6 +42,14 @@ supabase db diff
   게스트 세션도 없다. anon 키는 브라우저 번들에 들어가는 공개 값이므로, 이 상태로
   배포하면 누구나 제한 없이 글을 넣을 수 있다.
 - **둘 사이에 멈추면 안 된다.** 한 번에 이어서 적용한다.
+
+### 8·9 는 pg_cron 이 필요하다
+
+둘 다 `pg_available_extensions` 를 보고 없으면 **스케줄만 건너뛴다**(함수는 생긴다).
+운영에서 건너뛰어지면 삭제가 돌지 않는다. 적용 후 확인에 그 질의가 있다.
+
+9번은 8번이 만든 `retention_policy` 에 행을 넣으므로 8번 뒤에 와야 한다.
+타임스탬프 순서가 이미 그렇다.
 
 ### `20261001` 은 마지막이다
 
@@ -91,6 +100,18 @@ select tablename, policyname, cmd from pg_policies
 select tgname from pg_trigger where not tgisinternal
    and tgrelid = 'public.reports'::regclass;
 -- → quarantine_on_report
+
+-- 삭제·종결 크론이 등록됐는가. **이것을 건너뛰면 삭제가 안 도는 것을 알 수 없다.**
+select * from public.purge_health();
+-- → purge-expired       | t | 0 19 * * * | ...
+--    close-stale-reports | t | 0 18 * * * | ...
+-- scheduled 가 f 이거나 행이 없으면 pg_cron 이 없는 것이다. 그러면 방침에 적은
+-- 보관 기간이 지켜지지 않는다 — 올린 뒤 바로 본다.
+
+-- 보관 기간 표가 코드와 같은가 (테스트가 보지만 운영에서도 한 번 본다)
+select subject, keep_days from public.retention_policy order by subject;
+-- → field_reports 30 / guest_sessions 30 / hospital_requests 365 /
+--    observations 7 / reports 365 / reports_unreviewed 90
 ```
 
 ## 적용 직후 해야 하는 것
@@ -101,6 +122,8 @@ select tgname from pg_trigger where not tgisinternal
 3. **`NEXT_PUBLIC_FIELD_TALK_LIVE`** 는 기본 켜짐이다. 문제가 생기면 `0` 으로 재배포 없이
    쓰기만 닫을 수 있다.
 4. 제한값을 조이려면 `GUEST_LIMIT_POSTS` 등 (`docs/OPEN-QUESTIONS.md` 2번).
+5. **`select * from public.purge_health();`** 를 다음 날 한 번 더 본다.
+   `last_run_at` 이 비어 있으면 크론이 등록만 되고 돌지 않은 것이다.
 
 ## 되돌리기
 

@@ -28,6 +28,13 @@ async function sql<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** 미처리 신고 자동 종결. 크론이 삭제보다 한 시간 먼저 부른다. */
+async function closeStale(): Promise<number> {
+  const { data, error } = await db.rpc("close_stale_reports", { p_limit: 1000 });
+  if (error) throw new Error(`close_stale_reports 실패: ${error.message}`);
+  return (data ?? 0) as number;
+}
+
 async function purge(): Promise<Record<string, number>> {
   const { data, error } = await db.rpc("purge_expired", { p_limit: 5000 });
   if (error) throw new Error(`purge_expired 실패: ${error.message}`);
@@ -67,14 +74,92 @@ async function makeReport(guestId: string | null, createdDaysAgo: number): Promi
   return ((await res.json()) as { id: string }[])[0].id;
 }
 
+/** 신고 한 건. 글이 없는 id 를 겨냥해도 된다 — 여기서 보는 것은 보관 기간이다. */
+async function makeAbuseReport(input: {
+  state: "OPEN" | "REVIEWING" | "RESOLVED" | "DISMISSED";
+  createdDaysAgo: number;
+  reporter: string;
+  targetId?: string;
+}): Promise<string> {
+  const res = await fetch(`${REST}/reports`, {
+    method: "POST",
+    headers: { ...admin, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      target_type: "post",
+      target_id: input.targetId ?? crypto.randomUUID(),
+      reporter_guest_id: input.reporter,
+      reason: "SPAM",
+      state: input.state,
+      created_at: daysAgo(input.createdDaysAgo),
+    }),
+  });
+  if (!res.ok) throw new Error(`신고 생성 실패 → ${await res.text()}`);
+  return ((await res.json()) as { id: string }[])[0].id;
+}
+
+/** 조치 기록 한 줄. reason_code 로 테스트 행만 골라 지운다. */
+const ACTION_MARK = "retention-test";
+
+async function makeModerationAction(createdDaysAgo: number): Promise<number> {
+  const res = await fetch(`${REST}/moderation_actions`, {
+    method: "POST",
+    headers: { ...admin, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      target_type: "post",
+      target_id: crypto.randomUUID(),
+      action: "QUARANTINE",
+      reason_code: ACTION_MARK,
+      created_at: daysAgo(createdDaysAgo),
+    }),
+  });
+  if (!res.ok) throw new Error(`조치 기록 생성 실패 → ${await res.text()}`);
+  return ((await res.json()) as { id: number }[])[0].id;
+}
+
+/**
+ * 관찰 한 건. 병원과 세션이 실제로 있어야 한다(둘 다 FK).
+ * 병원 id 를 박아 두지 않고 하나 읽어 쓴다 — 시드가 바뀌어도 테스트가 살아 있게.
+ */
+async function someHospitalId(): Promise<string> {
+  const rows = await sql<{ id: string }[]>("hospitals?select=id&limit=1");
+  if (rows.length === 0) throw new Error("병원이 없습니다. npm run seed:localuser 를 먼저 돌려 주세요.");
+  return rows[0].id;
+}
+
+async function makeObservation(input: {
+  guestId: string;
+  hospitalId: string;
+  expiredDaysAgo: number;
+}): Promise<string> {
+  const expiresAt = daysAgo(input.expiredDaysAgo);
+  const res = await fetch(`${REST}/observations`, {
+    method: "POST",
+    headers: { ...admin, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      hospital_id: input.hospitalId,
+      category: "other",
+      guest_id: input.guestId,
+      metric: "queue",
+      value: "3",
+      // ttl 제약: expires_at > observed_at. 관찰은 만료보다 먼저 있었다.
+      observed_at: daysAgo(input.expiredDaysAgo + 1),
+      expires_at: expiresAt,
+    }),
+  });
+  if (!res.ok) throw new Error(`관찰 생성 실패 → ${await res.text()}`);
+  return ((await res.json()) as { id: string }[])[0].id;
+}
+
 beforeAll(() => {
   db = createClient(url, serviceKey, { auth: { persistSession: false } });
 });
 
 afterEach(async () => {
   for (const path of [
+    `moderation_actions?reason_code=eq.${ACTION_MARK}`,
     "field_reports?handle=eq.보관테스트",
     "hospital_requests?name=like.*보관테스트*",
+    // 세션을 지우면 그 세션의 신고·관찰이 함께 지워진다(cascade). 마지막에 둔다.
     "guest_sessions?nickname=eq.보관테스트",
   ]) {
     await fetch(`${REST}/${encodeURI(path)}`, { method: "DELETE", headers: admin });
@@ -231,5 +316,215 @@ describe("권한", () => {
     const anon = createClient(url, anonKey, { auth: { persistSession: false } });
     const { data } = await anon.from("retention_policy").select("subject,keep_days");
     expect(data).toEqual([]);
+  }, TEST_MS);
+});
+
+describe("신고 — 처리가 끝난 것만 지운다", () => {
+  it("★ 처리가 끝난 신고는 기간이 지나면 지워진다", async () => {
+    const reporter = await makeSession();
+    const id = await makeAbuseReport({
+      state: "DISMISSED",
+      createdDaysAgo: RETENTION_DAYS.reports + 1,
+      reporter,
+    });
+
+    await purge();
+
+    expect(await sql<unknown[]>(`reports?id=eq.${id}&select=id`)).toEqual([]);
+  }, TEST_MS);
+
+  it("기간 안의 신고는 남는다 — 반복 신고자 판단에 필요하다", async () => {
+    const reporter = await makeSession();
+    const id = await makeAbuseReport({
+      state: "RESOLVED",
+      createdDaysAgo: RETENTION_DAYS.reports - 1,
+      reporter,
+    });
+
+    await purge();
+
+    expect(await sql<unknown[]>(`reports?id=eq.${id}&select=id`)).toHaveLength(1);
+  }, TEST_MS);
+
+  it("★ 미처리 신고는 삭제만으로는 사라지지 않는다 — 먼저 종결돼야 한다", async () => {
+    /*
+     * 지우는 조건에 state in ('RESOLVED','DISMISSED') 가 걸려 있다. 그래서 아무도
+     * 확인하지 않은 신고는 purge 만으로는 1년이 지나도 남고, 그 신고가 걸린 글까지
+     * 함께 남는다 — 분쟁 중 증거를 지키려고 만든 규칙이 반대로 작동한다.
+     * 그 상한이 close_stale_reports() 다(아래 묶음).
+     */
+    const reporter = await makeSession();
+    const id = await makeAbuseReport({
+      state: "OPEN",
+      createdDaysAgo: RETENTION_DAYS.reports + 30,
+      reporter,
+    });
+
+    await purge();
+    expect(await sql<unknown[]>(`reports?id=eq.${id}&select=id`)).toHaveLength(1);
+
+    // 종결되면 같은 삭제 작업이 지운다.
+    await closeStale();
+    await purge();
+    expect(await sql<unknown[]>(`reports?id=eq.${id}&select=id`)).toEqual([]);
+  }, TEST_MS);
+});
+
+describe("미처리 신고 자동 종결 — 사람이 안 보면 영원히 남는 것을 막는다", () => {
+  it("★ 90일이 지난 미처리 신고는 DISMISSED 가 된다", async () => {
+    const reporter = await makeSession();
+    const id = await makeAbuseReport({
+      state: "OPEN",
+      createdDaysAgo: RETENTION_DAYS.reports_unreviewed + 1,
+      reporter,
+    });
+
+    await closeStale();
+
+    const rows = await sql<{ state: string }[]>(`reports?id=eq.${id}&select=state`);
+    expect(rows[0].state).toBe("DISMISSED");
+  }, TEST_MS);
+
+  it("★ '사람이 안 봐서 닫혔다'가 기록에 남는다 — 검토해서 기각한 것과 구분돼야 한다", async () => {
+    const reporter = await makeSession();
+    const targetId = crypto.randomUUID();
+    const id = await makeAbuseReport({
+      state: "REVIEWING",
+      createdDaysAgo: RETENTION_DAYS.reports_unreviewed + 1,
+      reporter,
+      targetId,
+    });
+
+    await closeStale();
+
+    const actions = await sql<{ action: string; reason_code: string; actor_id: string | null }[]>(
+      `moderation_actions?report_id=eq.${id}&select=action,reason_code,actor_id`,
+    );
+    expect(actions).toHaveLength(1);
+    expect(actions[0].action).toBe("DISMISS");
+    expect(actions[0].reason_code).toBe("auto_dismiss_unreviewed");
+    // 사람이 아니라 규칙이 닫았다. 자동 격리와 같은 방식이다.
+    expect(actions[0].actor_id).toBeNull();
+
+    await fetch(`${REST}/moderation_actions?report_id=eq.${id}`, {
+      method: "DELETE",
+      headers: admin,
+    });
+  }, TEST_MS);
+
+  it("★ 90일 안의 미처리 신고는 건드리지 않는다", async () => {
+    const reporter = await makeSession();
+    const id = await makeAbuseReport({
+      state: "OPEN",
+      createdDaysAgo: RETENTION_DAYS.reports_unreviewed - 1,
+      reporter,
+    });
+
+    await closeStale();
+
+    const rows = await sql<{ state: string }[]>(`reports?id=eq.${id}&select=state`);
+    expect(rows[0].state).toBe("OPEN");
+  }, TEST_MS);
+
+  it("★ 이미 사람이 처리한 신고를 다시 닫지 않는다 — 기록이 부풀면 안 된다", async () => {
+    const reporter = await makeSession();
+    const id = await makeAbuseReport({
+      state: "RESOLVED",
+      createdDaysAgo: RETENTION_DAYS.reports_unreviewed + 10,
+      reporter,
+    });
+
+    await closeStale();
+
+    const rows = await sql<{ state: string }[]>(`reports?id=eq.${id}&select=state`);
+    expect(rows[0].state).toBe("RESOLVED");
+    expect(
+      await sql<unknown[]>(`moderation_actions?report_id=eq.${id}&select=id`),
+    ).toEqual([]);
+  }, TEST_MS);
+
+  it("★ anon 은 신고를 닫을 수 없다 — 닫을 수 있으면 신고를 지우는 버튼이 된다", async () => {
+    const anon = createClient(url, anonKey, { auth: { persistSession: false } });
+    const { error } = await anon.rpc("close_stale_reports", { p_limit: 10 });
+    expect(error).not.toBeNull();
+  }, TEST_MS);
+});
+
+describe("크론이 도는지 들여다본다", () => {
+  it("★ 두 작업이 등록돼 있고 켜져 있다 — 멈추면 증상이 없어서 안 보인다", async () => {
+    /*
+     * 삭제가 멈춰도 화면은 그대로다(공개 여부는 읽는 시점에 판정한다). 그래서 멈춘
+     * 것을 알려 주는 것이 없었다. 운영에서는 select * from public.purge_health();
+     */
+    const { data, error } = await db.rpc("purge_health");
+    if (error) throw new Error(`purge_health 실패: ${error.message}`);
+
+    const rows = (data ?? []) as { job_name: string; scheduled: boolean; schedule: string }[];
+    const byName = Object.fromEntries(rows.map((r) => [r.job_name, r]));
+
+    expect(byName["purge-expired"]?.scheduled).toBe(true);
+    expect(byName["purge-expired"]?.schedule).toBe("0 19 * * *");
+    // 종결이 삭제보다 먼저 돌아야 같은 밤에 '종결 → 삭제'가 이어진다.
+    expect(byName["close-stale-reports"]?.scheduled).toBe(true);
+    expect(byName["close-stale-reports"]?.schedule).toBe("0 18 * * *");
+  }, TEST_MS);
+
+  it("★ anon 은 들여다볼 수 없다", async () => {
+    const anon = createClient(url, anonKey, { auth: { persistSession: false } });
+    const { error } = await anon.rpc("purge_health");
+    expect(error).not.toBeNull();
+  }, TEST_MS);
+});
+
+describe("조치 기록", () => {
+  it("★ 기간이 지난 조치 기록은 지워진다", async () => {
+    const id = await makeModerationAction(RETENTION_DAYS.reports + 1);
+
+    await purge();
+
+    expect(await sql<unknown[]>(`moderation_actions?id=eq.${id}&select=id`)).toEqual([]);
+  }, TEST_MS);
+
+  it("기간 안의 조치 기록은 남는다 — 신고만 남고 무엇을 했는지가 사라지면 기록이 아니다", async () => {
+    const id = await makeModerationAction(RETENTION_DAYS.reports - 1);
+
+    await purge();
+
+    expect(await sql<unknown[]>(`moderation_actions?id=eq.${id}&select=id`)).toHaveLength(1);
+  }, TEST_MS);
+});
+
+describe("관찰 — 지금 0행이지만 1차가 돌면 바로 쌓인다", () => {
+  /*
+   * 쌓인 뒤에 테스트를 쓰는 것보다 지금 쓰는 것이 쉽다. 이 표는 만료 시각을 기준으로
+   * 센다(작성 시각이 아니다) — 15분짜리 집계값이라 만료가 곧 목적의 끝이다.
+   */
+  it("★ 만료 후 기간이 지난 관찰은 지워진다", async () => {
+    const guestId = await makeSession();
+    const hospitalId = await someHospitalId();
+    const id = await makeObservation({
+      guestId,
+      hospitalId,
+      expiredDaysAgo: RETENTION_DAYS.observations + 1,
+    });
+
+    await purge();
+
+    expect(await sql<unknown[]>(`observations?id=eq.${id}&select=id`)).toEqual([]);
+  }, TEST_MS);
+
+  it("★ 만료됐지만 기간 안인 관찰은 남는다 — 공개 중단과 삭제는 다른 일이다", async () => {
+    const guestId = await makeSession();
+    const hospitalId = await someHospitalId();
+    const id = await makeObservation({
+      guestId,
+      hospitalId,
+      expiredDaysAgo: RETENTION_DAYS.observations - 1,
+    });
+
+    await purge();
+
+    // 이미 공개는 끊겼다(expires_at < now()). 그래도 아직 지우지 않는다.
+    expect(await sql<unknown[]>(`observations?id=eq.${id}&select=id`)).toHaveLength(1);
   }, TEST_MS);
 });

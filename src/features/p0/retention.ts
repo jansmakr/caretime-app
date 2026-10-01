@@ -50,6 +50,18 @@ export const RETENTION_DAYS = {
   hospital_requests: 365,
   /** 접수 시각 기준. 조치 기록도 같은 기간. */
   reports: 365,
+  /**
+   * 접수 시각 기준. **삭제 기한이 아니라 자동 종결 기한이다.**
+   *
+   * 90일 동안 사람이 확인하지 않은 신고는 DISMISSED 로 바뀌고
+   * moderation_actions 에 `auto_dismiss_unreviewed` 로 남는다
+   * (migration 20261005, `close_stale_reports()`).
+   *
+   * 왜 필요한가: 지우는 조건에 "처리가 끝난 것만"이 걸려 있어서, 아무도 보지 않은
+   * 신고는 1년이 지나도 남고 그 신고가 걸린 글까지 함께 남는다. 분쟁 중 증거를
+   * 지키려고 만든 규칙이 반대로 작동한다.
+   */
+  reports_unreviewed: 90,
 } as const;
 
 export type RetentionSubject = keyof typeof RETENTION_DAYS;
