@@ -1,15 +1,16 @@
 /**
  * data/manual-hospitals.json 이 가져올 준비가 됐는지 본다. **DB 를 건드리지 않는다.**
  *
- *   npx tsx scripts/check-manual-hospitals.ts
+ *   npm run check:manual-hospitals
  *
- * 왜 검사만 하는 스크립트를 따로 두는가: 아직 스키마가 확정되지 않았다
- * (docs/schema/8a-public-data.draft.sql — sido·sigungu·분류 컬럼이 없다).
- * 지금 가져오기를 만들면 확정 뒤에 다시 쓰게 된다.
+ * 실제로 넣는 것은 npm run import:manual-hospitals 다. 검사를 따로 두는 이유는
+ * 비어 있는 칸을 채우는 동안 DB 를 건드리지 않고 확인하기 위해서다.
  *
- * 그래서 이 단계에서는 **받을 자리가 제대로 채워졌는지**만 확인한다.
- * 비어 있는 칸을 알려 주고, 같은 병원이 두 번 들어 있지 않은지 본다.
- * 좌표·주소는 사람이 확인해서 넣는다 — 내가 찾아 넣으면 틀려도 아무도 모른다.
+ * 반드시 있어야 하는 것: 이름 · 주소 · 전화번호 · 진료시간 · 분류.
+ * **전화번호가 가장 중요하다** — "출발 전 전화 확인"이 이 서비스의 핵심 행동이다.
+ * 좌표는 선택이다(1차에 지도·거리 정렬이 없다).
+ *
+ * 주소·전화는 사람이 확인해서 넣는다 — 내가 찾아 넣으면 틀려도 아무도 모른다.
  */
 
 import { readFileSync } from "node:fs";
@@ -93,8 +94,13 @@ for (const hospital of hospitals) {
         : "address 가 비어 있습니다",
     );
   }
+  /*
+   * 좌표는 **선택이다.** 필요한 곳은 거리순 정렬과 지도인데 1차 현장톡에는 둘 다 없다.
+   * 병원은 고르는 대상일 뿐이고 목록이 세 곳이라 거리를 잴 일이 없다.
+   * 빼먹은 것이 아니라 미룬 것이다 — docs/OPEN-QUESTIONS.md 에 적혀 있다.
+   */
   if (hospital.lat === null || hospital.lng === null) {
-    problems.push("lat/lng 가 비어 있습니다 — 지도에서 주소를 찍어 확인한 값을 넣어 주세요");
+    warnings.push("lat/lng 없음 (1차에서는 선택. 지도·거리 정렬을 붙일 때 필요해집니다)");
   }
   if (normalizePhone(hospital.tel) === null) {
     problems.push("tel 이 없거나 너무 짧습니다 (동명 병원 구분에 씁니다)");

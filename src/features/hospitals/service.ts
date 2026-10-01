@@ -82,7 +82,11 @@ export function searchHospitals(
     };
   })
     .filter((m) => wanted.length === 0 || m.matchedCapabilities.length > 0)
-    .sort((a, b) => a.hospital.distanceKm - b.hospital.distanceKm);
+    /*
+     * 거리순. 좌표가 없는 병원은 뒤로 보낸다 — 거리를 모르는 것을 0km(바로 옆)로
+     * 두면 목록 맨 앞에 선다. 모르는 것이 가장 가까운 것이 되면 안 된다.
+     */
+    .sort((a, b) => (a.hospital.distanceKm ?? Infinity) - (b.hospital.distanceKm ?? Infinity));
 }
 
 export function getHospital(id: string): HospitalView | null {

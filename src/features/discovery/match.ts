@@ -62,8 +62,9 @@ function hasValidCoords(h: HospitalView): boolean {
 
 export function straightLineKmFor(hospital: HospitalView, origin: Origin): number | null {
   if (origin.kind !== "device" || origin.coords === null) return null;
-  if (!hasValidCoords(hospital)) return null;
-  return distanceKm(origin.coords, { lat: hospital.publicData.lat, lng: hospital.publicData.lng });
+  const { lat, lng } = hospital.publicData;
+  if (lat === null || lng === null || !hasValidCoords(hospital)) return null;
+  return distanceKm(origin.coords, { lat, lng });
 }
 
 /** "직선거리 약 1.2km". 이동 시간은 쓰지 않는다. */

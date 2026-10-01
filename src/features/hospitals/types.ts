@@ -123,12 +123,20 @@ export interface IncomingAggregate {
 
 /** 공공데이터에서 온 기본정보. 병원이 수정할 수 없다. */
 export interface PublicHospitalData {
-  hpid: string; // 국립중앙의료원 기관ID
+  /** 국립중앙의료원 기관ID. 손으로 넣은 병원에는 없다. */
+  hpid: string | null;
   name: string;
   address: string;
   tel: string;
-  lat: number;
-  lng: number;
+  /**
+   * 좌표. **1차에서는 선택이다.**
+   *
+   * 필요한 곳은 거리순 정렬과 지도인데 1차 현장톡에는 둘 다 없다. 0,0 으로 채우지
+   * 않는다 — 계산에 들어가면 조용히 틀린 거리가 나온다. 모르는 것은 null 이다.
+   * (지도·거리 정렬을 붙일 때 필요해진다 — docs/OPEN-QUESTIONS.md)
+   */
+  lat: number | null;
+  lng: number | null;
   syncedAt: string;
 }
 
@@ -165,8 +173,14 @@ export interface HospitalServiceStatus {
 export interface HospitalView {
   id: string;
   publicData: PublicHospitalData;
-  distanceKm: number;
-  travelMinutes: number;
+  /**
+   * 고정 데모 출발점 기준 직선거리. 좌표가 없으면 null.
+   *
+   * 사용자 위치가 아니다. 운영 화면에서는 숨긴다(lib/demoContent.showDemoDistance).
+   * 0 으로 채우지 않는다 — 0km 는 "바로 옆"이라는 뜻이 되고 그건 거짓이다.
+   */
+  distanceKm: number | null;
+  travelMinutes: number | null;
   capabilities: HospitalCapability[];
   hours: HospitalHours | null;
   /**

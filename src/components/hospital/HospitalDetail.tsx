@@ -61,7 +61,8 @@ export function HospitalDetail({
   // 이동 시간 추정을 못 믹을 때는 0 을 넣는다. 그러면 마감 판정이 '마감 시각 vs 지금'만 본다.
   const admission = getAdmissionWindow(
     hospital.hours,
-    showTravelEstimate ? hospital.travelMinutes : 0,
+    // 좌표가 없으면 이동시간도 없다. 0 을 넘기면 마감 판정이 '마감 시각 vs 지금'만 본다.
+    showTravelEstimate ? (hospital.travelMinutes ?? 0) : 0,
     now,
   );
 
@@ -80,10 +81,15 @@ export function HospitalDetail({
           <dl className="mt-3 space-y-2.5 text-[15px]">
             <Row label="주소">{hospital.publicData.address}</Row>
             <Row label="전화">{hospital.publicData.tel}</Row>
-            {/* 거리는 고정 데모 출발점 기준이라 '내 주변' 거리가 아니다. 운영에서는 숨긴다. */}
-            {showDemoDistance && (
+            {/*
+              거리는 고정 데모 출발점 기준이라 '내 주변' 거리가 아니다. 운영에서는 숨긴다.
+              좌표가 없는 병원은 이 줄 자체가 없다 — "거리 정보 없음" 같은 빈 줄을 만들지
+              않는다. 없는 것을 자리로 남기면 읽을 줄만 늘어난다(원칙 4).
+            */}
+            {showDemoDistance && hospital.distanceKm !== null && (
               <Row label="거리">
-                {hospital.distanceKm.toFixed(1)}km · 약 {hospital.travelMinutes}분
+                {hospital.distanceKm.toFixed(1)}km
+                {hospital.travelMinutes !== null && ` · 약 ${hospital.travelMinutes}분`}
               </Row>
             )}
           </dl>
@@ -94,7 +100,7 @@ export function HospitalDetail({
           <h2 className="ct-section-title">오늘 진료시간</h2>
           <AdmissionBlock
             window={admission}
-            headline={admissionHeadline(admission, hospital.travelMinutes, showTravelEstimate)}
+            headline={admissionHeadline(admission, hospital.travelMinutes ?? 0, showTravelEstimate)}
           />
           {admission.note && (
             <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">{admission.note}</p>

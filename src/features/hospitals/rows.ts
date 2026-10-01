@@ -27,8 +27,8 @@ export interface HospitalRow {
   name: string;
   address: string;
   tel: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   synced_at: string;
   is_participating: boolean;
   regular_open: string | null; // "09:00:00" (KST)
@@ -309,7 +309,14 @@ function one<T>(v: T[] | T | null): T | null {
 }
 
 export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView {
-  const km = distanceKm(DEMO_ORIGIN, { lat: row.lat, lng: row.lng });
+  /*
+   * 좌표가 없으면 거리를 계산하지 않는다. null 을 넣고 계산하면 NaN 이 되고,
+   * NaN 은 조용히 흘러가서 "NaNkm" 이나 빈 칸으로 나타난다. 모르는 것은 null 이다.
+   */
+  const km =
+    row.lat === null || row.lng === null
+      ? null
+      : distanceKm(DEMO_ORIGIN, { lat: row.lat, lng: row.lng });
   const capabilities = [...(row.hospital_capabilities ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const contact = one(row.hospital_contact_status);
   const waiting = one(row.hospital_waiting_status);
@@ -336,8 +343,8 @@ export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView 
       lng: row.lng,
       syncedAt: row.synced_at,
     },
-    distanceKm: Math.round(km * 10) / 10,
-    travelMinutes: estimateTravelMinutes(km),
+    distanceKm: km === null ? null : Math.round(km * 10) / 10,
+    travelMinutes: km === null ? null : estimateTravelMinutes(km),
     capabilities: capabilities.map(toCapability),
     hours: toTodayHours(row, daily, now),
     /*

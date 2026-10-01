@@ -39,7 +39,8 @@ export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date 
   const incoming = describeIncomingForUser(hospital.incoming?.within30 ?? null);
   const admission = getAdmissionWindow(
     hospital.hours,
-    showTravelEstimate ? hospital.travelMinutes : 0,
+    // 좌표가 없으면 이동시간도 없다. 0 을 넘기면 마감 판정이 '마감 시각 vs 지금'만 본다.
+    showTravelEstimate ? (hospital.travelMinutes ?? 0) : 0,
     now,
   );
   const hardToCall = urgency.callDiscouraged;
@@ -130,7 +131,7 @@ export function HospitalCard({ match, now }: { match: DiscoveryMatch; now: Date 
 
         <AdmissionBlock
           window={admission}
-          headline={admissionHeadline(admission, hospital.travelMinutes, showTravelEstimate)}
+          headline={admissionHeadline(admission, hospital.travelMinutes ?? 0, showTravelEstimate)}
         />
 
         {(waiting || incoming) && (
