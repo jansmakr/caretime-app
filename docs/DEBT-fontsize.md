@@ -47,6 +47,7 @@
 | `src/app/partner/page.tsx` | `text-[13px]` | 31 | 1 |
 | `src/components/chat/ChatComposer.tsx` | `text-[11px]` | 123 | 1 |
 | `src/components/chat/ChatFilterBar.tsx` | `text-[12px]` | 56, 76, 94 | 3 |
+| `src/components/chat/ChatBubble.tsx` | `text-[12.5px]` | 측정 필요 | — |
 | `src/components/chat/ChatRoom.tsx` | `text-[12px]` | 124 | 1 |
 | `src/components/chat/ChatRoom.tsx` | `text-[13px]` | 92, 131, 193 | 3 |
 | `src/components/common/LiveInfoNotice.tsx` | `text-[13px]` | 17 | 1 |
@@ -60,12 +61,6 @@
 | `src/components/home/LiveTalkBanner.tsx` | `text-[13px]` | 74 | 1 |
 | `src/components/hospital/HospitalDetail.tsx` | `text-[12px]` | 242, 253 | 2 |
 | `src/components/hospital/HospitalDetail.tsx` | `text-[13px]` | 207, 221 | 2 |
-| `src/components/hospital/ReportFeed.tsx` | `text-[12px]` | 57, 87 | 2 |
-| `src/components/hospital/ReportFeed.tsx` | `text-[13px]` | 35 | 1 |
-| `src/components/hospital/ReportForm.tsx` | `text-[11px]` | 112 | 1 |
-| `src/components/hospital/ReportForm.tsx` | `text-[13px]` | 178 | 1 |
-| `src/components/hospital/ReportTargetPicker.tsx` | `text-[12px]` | 106, 121, 139, 158, 183, 208 | 6 |
-| `src/components/hospital/ReportTargetPicker.tsx` | `text-[13px]` | 80, 91, 98, 215, 220 | 5 |
 | `src/components/layout/BottomNav.tsx` | `text-[11px]` | 64 | 1 |
 | `src/components/partner/ContactStatusCard.tsx` | `text-[13px]` | 34 | 1 |
 | `src/components/partner/PartnerGate.tsx` | `text-[13px]` | 87, 94, 95 | 3 |
@@ -94,3 +89,15 @@
 3. 12px 이하(31곳)와 13px(52곳)은 성격이 다르다. 12px 이하는 읽기 자체가 어려워
    먼저 올린다. 13px 는 본문 승격(16px) 대상과 보조 라벨 유지 대상을 나눠야 한다.
 4. 끝나면 이 문서를 지우고 원칙 2 의 "미정리 부채" 항목도 지운다.
+
+---
+
+## 2026-10-01 — 표가 조금 어긋났다
+
+병원 상세의 제보 피드·작성 폼(`ReportFeed`·`ReportForm`·`ReportTargetPicker`·
+`WaitingStepper`)을 현장톡으로 합치면서 지웠다. 그 파일들의 줄(14곳)을 표에서 뺐다.
+
+남은 줄 번호는 **그 커밋 이전 기준**이다. 파일이 지워지거나 줄이 밀린 곳이 있어
+일괄 상향 작업을 할 때는 줄 번호를 다시 뽑아야 한다. 숫자를 지금 다시 뽑아 적지
+않은 이유는, 고치지 않을 표를 정확하게 유지하는 일에 시간을 쓰는 것이 이 부채의
+요점이 아니기 때문이다.

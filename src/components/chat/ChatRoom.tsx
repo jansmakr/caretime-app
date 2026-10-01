@@ -3,26 +3,22 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LiveInfoNotice } from "@/components/common/LiveInfoNotice";
-import { SourceBadge } from "@/components/common/SourceBadge";
 import { Toast, useToast } from "@/components/common/Toast";
+import { ChatBubble } from "@/components/chat/ChatBubble";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
+import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
-import { ChatReactions } from "@/components/chat/ChatReactions";
-import { ReportButton } from "@/components/chat/ReportButton";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useHospitalList } from "@/features/hospitals/useHospitalList";
-import { categoryLabel } from "@/features/reports/templates";
-import type { ReactionKey } from "@/features/chat/reactions";
-import { formatChatAgo, isFilterActive } from "@/features/chat/service";
-import { buildRoomShareText, buildShareText } from "@/features/chat/share";
+import { isFilterActive } from "@/features/chat/service";
+import { buildRoomShareText } from "@/features/chat/share";
 import { useChatRoom } from "@/features/chat/useChatRoom";
 import {
   EMPTY_FILTER,
   EMPTY_SCOPE,
   type ChatFilter,
   type ChatMessage,
-  type ChatMessageView,
 } from "@/features/chat/types";
 import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
 import { isFieldTalkSharingLive } from "@/lib/demoContent";
@@ -31,10 +27,12 @@ import { isFieldTalkSharingLive } from "@/lib/demoContent";
 const TICK_MS = 30_000;
 
 /**
- * 실시간 현장톡.
+ * 실시간 현장톡 — 전체 방.
  *
- * 병원 상세의 제보 피드는 "이 병원에 다녀온 기록"이고, 여기는 "지금 묻고 답하는 방"이다.
- * 상세 화면에 묶으면 질문이 병원 1곳에 갇히므로 별도 화면으로 둔다.
+ * 병원 상세는 같은 방을 그 의료기관으로 좁혀 보여 준다(HospitalFieldTalk). 두 화면이
+ * 같은 저장소·같은 목록 컴포넌트(ChatBubble)·같은 작성창(ChatComposer)을 쓴다.
+ * 이 화면만 따로 들고 있는 것은 지역·병원 필터와 방 전체 공유다 — 상세에서는
+ * 범위가 이미 정해져 있어 고를 것이 없다.
  *
  * 첫 렌더의 now 는 서버 시각(renderedAt)을 쓴다. 마운트 후 실제 시각으로 바꿔
  * 상대시각에서 hydration 이 어긋나지 않게 한다. (병원 상세와 같은 방식)
@@ -118,14 +116,7 @@ export function ChatRoom({
           scopePickerVisible={!emptyRoom}
         />
       ) : (
-        <section className="ct-card p-5">
-          <h2 className="ct-section-title">현장 상황 남기기</h2>
-          <p className="mt-2 rounded-field border border-amber-200 bg-amber-50 px-3.5 py-3 text-[13.5px] leading-relaxed text-amber-900">
-            <span className="mr-1.5 font-bold">준비 중</span>
-            제보 작성과 공유 기능을 준비하고 있습니다. 아직 다른 분들에게 전달되지 않아 작성창을
-            열어 두지 않았습니다. 지금 상황은 병원에 전화로 확인해 주세요.
-          </p>
-        </section>
+        <ComposerClosedNotice />
       )}
 
       {/* 빈 방에서는 "대화 0건"을 그리지 않는다. 위의 안내가 이미 그 말을 하고 있다. */}
@@ -195,74 +186,5 @@ export function ChatRoom({
 
       <Toast message={toast} />
     </main>
-  );
-}
-
-function ChatBubble({
-  message,
-  now,
-  onReact,
-  onShared,
-}: {
-  message: ChatMessageView;
-  now: Date;
-  onReact: (id: string, key: ReactionKey) => void;
-  onShared: (text: string) => void;
-}) {
-  const place = [message.scope.hospitalName, message.scope.sigungu ?? message.scope.sido]
-    .filter(Boolean)
-    .join(" · ");
-
-  return (
-    <article>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <span className="ct-chip bg-blue-soft text-blue-deep">{categoryLabel(message.category)}</span>
-        {message.topic && <span className="ct-chip">{message.topic}</span>}
-        {message.mine && (
-          <span className="ct-chip bg-confirmed-soft text-confirmed-ink">내 글</span>
-        )}
-        <span className="ml-auto shrink-0 text-[12.5px] font-medium text-ink-faint">
-          {formatChatAgo(message.createdAt, now)}
-        </span>
-      </div>
-
-      <p className="mt-2 whitespace-pre-line text-[14.5px] leading-relaxed text-ink">{message.body}</p>
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-[12.5px] font-semibold text-ink-muted">{message.handle}</span>
-        {place && <span className="text-[12.5px] text-ink-faint">· {place}</span>}
-      </div>
-      <div className="mt-1.5">
-        {/* 현장톡도 사용자 공유 계층이다. 병원 확인 정보와 같은 배지를 쓰지 않는다. */}
-        <SourceBadge source="user" />
-      </div>
-
-      {/* 원클릭 빠른 반응 — 텍스트 없이 상황을 거든다. */}
-      <ChatReactions
-        counts={message.reactions}
-        mine={message.myReactions}
-        onToggle={(key) => onReact(message.id, key)}
-      />
-
-      <div className="mt-2 flex items-center gap-2">
-        {message.scope.hospitalId ? (
-          <Link
-            href={`/hospital/${message.scope.hospitalId}`}
-            className="flex-1 text-[13px] font-semibold text-blue"
-          >
-            이 의료기관 정보 보기 ›
-          </Link>
-        ) : (
-          <span className="flex-1" />
-        )}
-        {/* 내 글은 신고하지 않는다. 지우는 경로는 아직 없다 — 그건 별도 작업이다. */}
-        {!message.mine && <ReportButton messageId={message.id} onResult={onShared} />}
-        <ShareButton
-          text={buildShareText(message.scope, message.category)}
-          scope={message.scope}
-          onResult={onShared}
-        />
-      </div>
-    </article>
   );
 }

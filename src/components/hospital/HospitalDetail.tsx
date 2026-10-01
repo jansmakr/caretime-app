@@ -10,14 +10,13 @@ import {
   capabilityLabel,
   describeWaitingForUser,
 } from "@/features/hospitals/service";
+import type { ChatMessage } from "@/features/chat/types";
 import type { HospitalView } from "@/features/hospitals/types";
 import { useHospitalLive } from "@/features/hospitals/useHospitalLive";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { CALL_IS_SUREST, NOT_A_BOOKING, VISIT_INTENT_DISCLAIMER } from "@/lib/copy";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
-import { FieldTalkExit } from "@/components/search/FieldTalkExit";
-import { ReportFeed } from "@/components/hospital/ReportFeed";
-import { ReportForm } from "@/components/hospital/ReportForm";
+import { HospitalFieldTalk } from "@/components/hospital/HospitalFieldTalk";
 import { deriveStatusView } from "@/features/hospitals/statusView";
 import { CONTACT_TEXT, REASON_TEXT } from "@/features/hospitals/labels";
 import {
@@ -35,10 +34,16 @@ export function HospitalDetail({
   initial,
   renderedAt,
   realtime,
+  initialMessages = [],
+  messagesLoadFailed = false,
 }: {
   initial: HospitalView;
   renderedAt: string;
   realtime: boolean;
+  /** 서버가 읽어 온 이 의료기관의 현장톡 글. 첫 화면부터 보이게 한다. */
+  initialMessages?: ChatMessage[];
+  /** 그 조회가 실패했는가. 빈 목록과 다른 말을 해야 한다. */
+  messagesLoadFailed?: boolean;
 }) {
   const { hospital, now, connection } = useHospitalLive(initial, renderedAt, realtime);
 
@@ -229,10 +234,21 @@ export function HospitalDetail({
           )}
         </section>
 
-        {/* 계층 ⑤ — 보호자 실시간 제보. 병원 직접확인 카드와 다른 카드로 둔다.
-            읽는 자리(피드)와 쓰는 자리(폼) 양쪽에 유의사항 배너가 고정으로 붙는다. */}
-        <ReportFeed hospital={hospital} renderedAt={renderedAt} now={now} />
-        <ReportForm hospital={hospital} />
+        {/*
+          계층 ⑤ — 보호자 현장톡. 병원 직접확인 카드와 다른 카드로 둔다. 출처가 다른
+          정보를 한 면에 얹으면 보호자는 둘을 구분하지 못한다(기획안 12항).
+
+          여기 있던 "실시간 제보"는 /chat 과 다른 저장소를 썼고 브라우저에만 남았다.
+          이제 같은 방을 이 의료기관으로 좁혀 보여 준다 — 어디에 썼느냐로 글이 남는지가
+          갈리지 않는다. (HospitalFieldTalk 주석)
+        */}
+        <HospitalFieldTalk
+          hospital={hospital}
+          renderedAt={renderedAt}
+          now={now}
+          initialMessages={initialMessages}
+          initialLoadFailed={messagesLoadFailed}
+        />
 
         {/*
           계층 ⑥ — 도착 예정 알리기. 후속 개발이라 사용자 흐름에서 빼 둔다.
@@ -272,17 +288,10 @@ export function HospitalDetail({
           응급 여부는 우리가 판단하지 않는다. 119 안내는 이미 있는 자리 그대로 둔다.
         */}
         {/*
-          이 병원 이야기를 나누는 곳으로 가는 길.
-          상태가 확인돼 있으면 굳이 내보내지 않는다 — 답이 이미 화면에 있다.
-          확인된 상태가 없을 때만 보인다. 그때가 보호자에게 답이 없는 순간이다.
+          전에는 여기서 /chat?hospitalId= 으로 내보냈다. 이제 그 방이 이 화면 안에
+          있으므로 같은 방으로 가는 문을 두 개 두지 않는다 — 눌러도 방금 읽은 글이
+          다시 나온다. 다른 지역·병원으로 가는 길은 현장톡 카드 안에 있다.
         */}
-        {live === null && (
-          <FieldTalkExit
-            filter={{ sido: null, sigungu: null, hospitalId: hospital.id }}
-            variant="default"
-          />
-        )}
-
         <div className="space-y-2 pt-1">
           {urgency.callDiscouraged ? (
             <div className="flex gap-2">

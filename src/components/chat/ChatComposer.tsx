@@ -31,6 +31,7 @@ export function ChatComposer({
   lastSentAt,
   onSent,
   scopePickerVisible = true,
+  scopeNote,
 }: {
   hospitals: HospitalView[];
   filter: ChatFilter;
@@ -38,6 +39,13 @@ export function ChatComposer({
   onSent: (message: string) => void;
   /** 조건 고르는 줄이 화면에 있는가. 빈 방에서는 감춰져 있어 안내 문구가 달라진다. */
   scopePickerVisible?: boolean;
+  /**
+   * 어디로 올라가는지 설명하는 한 줄. 넘기면 이 문구를 쓴다.
+   *
+   * 병원 상세에서는 범위가 그 병원으로 고정돼 있어 고를 것이 없다 — 그때 "위에서
+   * 고르면"도, "지역을 고르지 않아도"도 둘 다 사실이 아니다. 화면에 있는 것만 가리킨다.
+   */
+  scopeNote?: string;
 }) {
   const [category, setCategory] = useState<ChatCategory>("laceration");
   const [topic, setTopic] = useState("");
@@ -186,9 +194,10 @@ export function ChatComposer({
           빈 방에서는 조건 고르는 줄을 감춘다(ChatRoom). 그때 "위에서 고르면"은 가리킬
           곳이 없는 말이 된다. 안내는 화면에 실제로 있는 것만 가리켜야 한다.
         */}
-        {scopePickerVisible
-          ? "위에서 지역·병원을 고르면 그 방으로 올라갑니다."
-          : "지역을 고르지 않아도 올라갑니다. 어느 병원인지는 글에 적어 주세요."}
+        {scopeNote ??
+          (scopePickerVisible
+            ? "위에서 지역·병원을 고르면 그 방으로 올라갑니다."
+            : "지역을 고르지 않아도 올라갑니다. 어느 병원인지는 글에 적어 주세요.")}
         {nickname && (
           <>
             <br />

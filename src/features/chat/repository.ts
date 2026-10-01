@@ -82,13 +82,25 @@ export function groupReactions(rows: ReactionCountRow[]): Record<string, Reactio
  * 서버 렌더에서도 부른다. 그래야 첫 화면부터 글이 보인다 — 클라이언트에서만 읽으면
  * 처음 그려지는 것은 언제나 빈 방이고, 그건 출시 직후에 특히 나쁘다.
  */
-export async function fetchFieldReports(client: SupabaseClient): Promise<ChatMessage[]> {
+export async function fetchFieldReports(
+  client: SupabaseClient,
+  /**
+   * 한 의료기관 이야기만 읽을 때 쓴다. 병원 상세가 이 경로로 읽는다 —
+   * 최신 100건을 받아 화면에서 걸러내면 그 100건 안에 그 병원 글이 없을 수 있다.
+   * 조건을 거는 곳은 여기 한 곳이다(DB). 화면에서 또 거르지만, 그건 실시간으로
+   * 들어오는 글을 좁히기 위한 것이고 첫 화면의 범위는 여기서 정해진다.
+   */
+  options: { hospitalId?: string } = {},
+): Promise<ChatMessage[]> {
+  let query = client
+    .from("field_reports_public")
+    .select(REPORT_COLUMNS)
+    .order("created_at", { ascending: false })
+    .limit(FIELD_REPORT_PAGE);
+  if (options.hospitalId) query = query.eq("hospital_id", options.hospitalId);
+
   const [reports, counts] = await Promise.all([
-    client
-      .from("field_reports_public")
-      .select(REPORT_COLUMNS)
-      .order("created_at", { ascending: false })
-      .limit(FIELD_REPORT_PAGE),
+    query,
     client.from("field_report_reaction_counts").select("report_id,key,count"),
   ]);
 
