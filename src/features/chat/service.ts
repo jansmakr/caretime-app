@@ -78,3 +78,31 @@ export function describeFilter(
 export function byNewestFirst(a: ChatMessage, b: ChatMessage): number {
   return Date.parse(b.createdAt) - Date.parse(a.createdAt);
 }
+
+/**
+ * 화면에 그릴 목록을 만든다.
+ *
+ * 세 곳에서 온 글을 합친다 — 서버가 렌더한 것(initial), 보관소에 있는 것(stored),
+ * 데모 시드(seeded). 서버 목록을 **첫 렌더부터** 넣는 것이 중요하다. 마운트 뒤에만
+ * 넣으면 서버가 보낸 HTML 이 항상 0건이고, 글이 적은 출시 직후에 첫 그림이
+ * "아무 말도 없는 방"이 된다.
+ *
+ * 규칙 둘:
+ *   · 같은 id 면 **보관소 쪽이 이긴다.** '내 글' 표시처럼 서버가 모르는 값이 거기 있다.
+ *   · 격리·삭제된 id 는 뺀다. 서버 목록에 남아 있어도 되살리지 않는다 —
+ *     신고로 내린 글이 되살아나는 쪽이 훨씬 나쁘다.
+ */
+export function mergeRoomMessages(parts: {
+  stored: ChatMessage[];
+  initial: ChatMessage[];
+  seeded: ChatMessage[];
+  removedIds: Record<string, true>;
+}): ChatMessage[] {
+  const byId = new Map<string, ChatMessage>();
+  // 뒤에 넣는 쪽이 이긴다. 그래서 stored 를 initial 보다 뒤에 둔다.
+  for (const message of [...parts.initial, ...parts.seeded, ...parts.stored]) {
+    if (parts.removedIds[message.id]) continue;
+    byId.set(message.id, message);
+  }
+  return [...byId.values()].sort(byNewestFirst);
+}

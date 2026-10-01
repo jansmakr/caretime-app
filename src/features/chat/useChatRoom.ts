@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { withMyReactions } from "./reactions";
 import { seedChatMessages } from "./seed";
 import { showDemoReports } from "@/lib/demoContent";
-import { byNewestFirst, filterMessages } from "./service";
+import { filterMessages, mergeRoomMessages } from "./service";
 import {
   connectChat,
   getChatSnapshot,
@@ -55,13 +55,24 @@ export function useChatRoom(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /*
+   * 합치는 규칙은 service.mergeRoomMessages 에 있다(테스트가 그 함수를 붙든다).
+   * 서버가 읽어 온 글이 첫 렌더부터 들어가고, 격리된 글은 되살아나지 않는다.
+   */
   const all = useMemo<ChatMessageView[]>(() => {
-    const merged = [...snapshot.messages, ...seeded].sort(byNewestFirst);
+    const merged = mergeRoomMessages({
+      stored: snapshot.messages,
+      initial: initialMessages,
+      seeded,
+      removedIds: snapshot.removedIds,
+    });
     return merged.map((message) => {
       const mine = snapshot.myReactions[message.id] ?? [];
       return { ...message, myReactions: mine, reactions: withMyReactions(message.baseReactions, mine) };
     });
-  }, [snapshot.messages, snapshot.myReactions, seeded]);
+    // initialMessages 는 서버 렌더값이라 바뀌지 않는다. 의존성에 넣어도 같은 결과다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshot.messages, snapshot.myReactions, snapshot.removedIds, seeded]);
 
   const messages = useMemo(() => filterMessages(all, filter), [all, filter]);
   const react = useCallback((messageId: string, key: Parameters<typeof toggleReaction>[1]) => {

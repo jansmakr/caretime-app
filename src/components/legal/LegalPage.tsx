@@ -34,9 +34,14 @@ export function LegalPage({ id, fallbackTitle }: { id: LegalDocId; fallbackTitle
                 {title} 본문을 준비하고 있습니다. 아직 올리지 않은 문서를 방침으로
                 보여 드리지 않습니다.
               </p>
+              {/*
+                문서가 없는 동안에도 이것만은 적는다. 보관 기간은 docs/DATA-INVENTORY.md
+                와 DB 의 retention_policy 표에서 온 값이다 — 여기 숫자를 손으로 바꾸면
+                방침과 실제가 갈라진다.
+              */}
               <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
-                지금 저장하는 항목과 보관 기간은 아래 두 가지뿐입니다. 글은 24시간 공개되고
-                30일 뒤 지워집니다. 이름·연락처·위치는 저장하지 않습니다.
+                지금 저장하는 것은 글 내용과 서버가 만든 별명뿐입니다. 글은 24시간 동안
+                공개되고 30일 뒤 지워집니다. 이름·연락처·위치는 저장하지 않습니다.
               </p>
             </>
           )}

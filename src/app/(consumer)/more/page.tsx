@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LEGAL_DOC_PATH, loadLegalDocument } from "@/features/legal/documents";
+import { showPartnerEntry } from "@/lib/demoContent";
 
 /** 방침 파일을 읽으므로 정적 생성하지 않는다. */
 export const dynamic = "force-dynamic";
@@ -55,6 +56,11 @@ export default function MorePage() {
           </li>
         </ul>
 
+        {/*
+          참여 의료기관 안내. 1차에는 참여 병원이 0곳이라 내린다 —
+          "공유해 주고 있습니다"가 사실이 아니다. (lib/demoContent.showPartnerEntry)
+        */}
+        {showPartnerEntry && (
         <section className="ct-card p-5">
           <h2 className="ct-section-title">CareTime 참여 의료기관 안내</h2>
           <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
@@ -64,6 +70,7 @@ export default function MorePage() {
             마음으로 이용해 주세요.
           </p>
         </section>
+        )}
 
         <Link href="/" className="ct-secondary w-full">
           진료정보 찾기로 돌아가기

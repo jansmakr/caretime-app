@@ -65,6 +65,21 @@ export const showAdmissionHours = false;
  */
 export const showPartnerEntry = false;
 
+/**
+ * 홈의 탐색 조건 폼 — 지역 · 진료 항목 · 방문 목적 세 묶음.
+ *
+ * 1차에서는 내린다. 그 세 질문은 "야간 소아 외상 병원 찾기" 흐름의 입구이고,
+ * 답으로 나오는 것은 병원 2곳의 목록이다. 보호자가 밤에 묻는 것은
+ * "마곡동인데 지금 어디 열었나요?" 이고, 1차의 답은 현장톡이다.
+ *
+ * 그래서 홈의 결정은 하나여야 한다 — 현장톡을 연다(UI 원칙 1).
+ * 병원 전화번호·주소를 찾는 길은 작은 보조 링크로 남긴다. 전화번호는 1차에서도
+ * 가장 쓸모 있는 값이다.
+ *
+ * /search 와 그 화면의 조건 바(ConditionBar)는 그대로 돈다. 입구만 좁혔다.
+ */
+export const showCareConditionForm = false;
+
 function isOn(value: string | undefined): boolean {
   if (value === undefined) return false;
   const v = value.trim().toLowerCase();

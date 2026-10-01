@@ -29,10 +29,17 @@ const PREPARING = {
   button: "현장톡 안내 보기 →",
 } as const;
 
+/*
+ * 1차의 주 동작이다. 홈에서 h2 바로 아래에 오고, 이 화면의 유일한 주 버튼이다.
+ * 문구를 "접수·대기"에서 "열었는지"로 옮겼다 — 보호자가 밤에 먼저 묻는 것이 그것이고,
+ * 등록된 병원이 2곳뿐인 1차에서 우리가 답할 수 있는 것도 그것이다.
+ * 증상·평가·추천을 적지 않는다.
+ */
 const ACTIVE = {
-  hook: "지금 접수할까? 얼마나 기다릴까?",
-  description: "주변 병원의 현장 제보를 확인하고, 내가 본 상황도 알려주세요.",
-  button: "우리 동네 병원 상황 보기 →",
+  hook: "지금 열었나요? 얼마나 기다리나요?",
+  description:
+    "같은 동네 보호자에게 지금 상황을 묻고, 본 것을 알려주세요. 지역을 고르지 않아도 글을 남길 수 있습니다.",
+  button: "우리 동네 현장톡 열기 →",
   /** 실제 제보를 보여줄 때만 붙는 고지. 준비 중에는 보여 줄 제보가 없어 달지 않는다. */
   notice: "이용자 제보입니다. 방문 전 병원에 전화로 확인해 주세요.",
 } as const;
@@ -55,7 +62,7 @@ export function LiveTalkBanner({
   const tags = [sigungu ?? sido, categoryLabel].filter((v): v is string => Boolean(v));
 
   return (
-    <section className="mt-7">
+    <section className="mt-5">
       <Link
         href={href}
         aria-label={`실시간 병원 상황 공유${isFieldTalkSharingLive ? "" : " · 준비 중"} · ${copy.button.replace(" →", "")}`}

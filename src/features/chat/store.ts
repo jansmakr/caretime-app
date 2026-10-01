@@ -38,6 +38,14 @@ export interface ChatSnapshot {
   lastSentAt: number | null;
   /** 이번 브라우저의 익명 닉네임. 첫 글을 쓸 때 정해진다. */
   nickname: string | null;
+  /**
+   * 격리·삭제된 글의 id.
+   *
+   * 목록에서 지우는 것만으로는 부족하다. 화면은 서버가 렌더한 목록(initialMessages)을
+   * 함께 보고 있어서, 거기 남아 있는 글이 다시 올라올 수 있다. 지워진 글이 되살아나는
+   * 쪽이 훨씬 나쁘다 — 신고로 내린 글이다.
+   */
+  removedIds: Record<string, true>;
 }
 
 const SERVER_SNAPSHOT: ChatSnapshot = Object.freeze({
@@ -45,6 +53,7 @@ const SERVER_SNAPSHOT: ChatSnapshot = Object.freeze({
   myReactions: Object.freeze({}) as Record<string, ReactionKey[]>,
   lastSentAt: null,
   nickname: null,
+  removedIds: Object.freeze({}) as Record<string, true>,
 });
 
 let snapshot: ChatSnapshot = SERVER_SNAPSHOT;
@@ -163,7 +172,11 @@ export function connectChat(): () => void {
   unsubscribeRealtime = subscribeFieldReports(getPublicBrowserSupabase(), (signal) => {
     if (signal.kind === "remove") {
       // 격리·삭제된 글. 읽고 있던 사람 화면에서도 사라져야 한다.
-      commit({ messages: snapshot.messages.filter((m) => m.id !== signal.id) });
+      commit({
+        messages: snapshot.messages.filter((m) => m.id !== signal.id),
+        // 서버가 렌더한 목록에 남아 있어도 다시 올라오지 않게 id 를 기억한다.
+        removedIds: { ...snapshot.removedIds, [signal.id]: true },
+      });
       return;
     }
     commit({ messages: mergeMessage(snapshot.messages, signal.message) });
