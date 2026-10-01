@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:realtime": "vitest run --config vitest.realtime.config.ts",
     "test:watch": "vitest",
-    "seed:localuser": "tsx scripts/seed-local-testuser.ts"
+    "seed:localuser": "tsx scripts/seed-local-testuser.ts",
+    "check:manual-hospitals": "tsx scripts/check-manual-hospitals.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
