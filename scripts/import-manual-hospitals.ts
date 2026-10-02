@@ -13,14 +13,15 @@
  * 검사만 하려면 npm run check:manual-hospitals — DB 를 건드리지 않는다.
  *
  * ── 운영에 넣을 SQL 을 뽑으려면 ────────────────────────────
- *   npm run sql:manual-hospitals
+ *   npm run sql:manual-hospitals -- --out manual.sql    (파일로. PowerShell 은 이쪽)
+ *   npm run --silent sql:manual-hospitals               (화면으로)
  *
  * DB 에 붙지 않고 **INSERT 문만 찍는다.** 운영 콘솔에 그대로 붙여 넣는 용도다.
  * 로컬 투입과 **같은 매핑 코드**를 쓴다 — 두 벌로 두면 리허설에서 통과한 SQL 과
  * 운영에 붙여 넣는 SQL 이 달라질 수 있다. 그러면 리허설이 아무것도 보장하지 않는다.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { manualHospitalId } from "../src/features/hospitals/manualId";
 import { buildRegistryKey, findRegistryMismatch } from "../src/features/hospitals/registryKey";
@@ -135,7 +136,7 @@ function lit(value: string | number | boolean | null): string {
  * upsert 로 쓴다. 배치가 나중에 같은 병원을 가져와도 새 행이 생기지 않아야 하고,
  * 두 번 붙여 넣어도 결과가 같아야 한다 — 콘솔 작업은 두 번 눌리는 일이 흔하다.
  */
-function printSql(hospitals: ManualHospital[]): void {
+function printSql(hospitals: ManualHospital[], outPath: string | null): void {
   const lines: string[] = [
     "-- data/manual-hospitals.json → 운영 투입용 SQL",
     "-- npm run sql:manual-hospitals 로 생성했다. 손으로 고치지 말고 JSON 을 고쳐 다시 뽑는다.",
@@ -218,13 +219,37 @@ function printSql(hospitals: ManualHospital[]): void {
     "select id, name, tel, sigungu from public.hospitals where source = 'manual' order by name;",
     `-- → ${ready}행`,
   );
-  console.log(lines.join("\n"));
+  const sql = lines.join("\n") + "\n";
+
+  /*
+   * 파일로 받을 때 셸을 거치지 않는다. PowerShell 의 `>` 는 Node 의 UTF-8 출력을
+   * 다시 인코딩해서 한글 주석을 깨뜨린다 — SQL 문법은 멀쩡해서 실행은 되지만
+   * 나중에 열면 못 읽는다. 실제로 겪었다.
+   *
+   * BOM 도 붙이지 않는다. psql 은 BOM 을 견디지만(확인했다), 콘솔 편집기에 붙여
+   * 넣을 때 앞에 보이지 않는 글자가 끼는 것이 나을 이유가 없다.
+   */
+  if (outPath === null) {
+    console.log(sql);
+    return;
+  }
+  writeFileSync(outPath, sql, "utf8");
+  console.log(`O ${outPath} 에 썼습니다 (UTF-8, BOM 없음). 운영 콘솔에 붙여 넣으세요.`);
+}
+
+/** `--out manual.sql` 에서 경로를 집는다. 없으면 null — 화면으로 찍는다. */
+function outPathArg(): string | null {
+  const i = process.argv.indexOf("--out");
+  if (i < 0) return null;
+  const next = process.argv[i + 1];
+  if (!next || next.startsWith("--")) fail("--out 다음에 파일 경로를 적어 주세요.");
+  return next;
 }
 
 async function main(): Promise<void> {
   const raw0 = readFileSync(new URL("../data/manual-hospitals.json", import.meta.url), "utf8");
   if (process.argv.includes("--sql")) {
-    printSql((JSON.parse(raw0) as { hospitals: ManualHospital[] }).hospitals);
+    printSql((JSON.parse(raw0) as { hospitals: ManualHospital[] }).hospitals, outPathArg());
     return;
   }
 

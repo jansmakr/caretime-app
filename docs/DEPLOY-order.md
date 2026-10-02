@@ -124,7 +124,9 @@ select * from public.purge_health();
 
 ## F. 수동 병원 2곳
 
-- [ ] 콘솔 SQL 로 넣었다 (`npm run import:manual-hospitals` 는 로컬 전용 가드가 있다)
+- [ ] `npm run sql:manual-hospitals -- --out manual.sql` 로 뽑아 콘솔 SQL 로 넣었다
+      (`import:manual-hospitals` 는 로컬 전용 가드가 있어 운영에 쓰지 않는다.
+       `>` 로 받으면 한글 주석이 깨진다 — `--out` 을 쓴다)
 - [ ] `select id, name, tel from hospitals where id like 'm%';` → 2행, 전화번호가 맞다
 
 ## G. 환경변수 (Vercel Project Settings → Environment Variables)
@@ -257,7 +259,7 @@ docker exec supabase_db_caretime psql -U postgres -d postgres   -c "select count
 # → 가상 0 / 병원 0
 
 # 3. 수동 병원 2곳 — **운영에 붙여 넣을 그 SQL 로** 넣는다
-npm run --silent sql:manual-hospitals > manual.sql   # --silent 가 있어야 한다
+npm run sql:manual-hospitals -- --out manual.sql
 docker exec -i supabase_db_caretime psql -U postgres -d postgres < manual.sql
 # → 2행. 한 번 더 실행해도 2행이어야 한다(두 번 눌리는 일이 흔하다)
 
@@ -267,8 +269,20 @@ docker exec -i supabase_db_caretime psql -U postgres -d postgres < manual.sql
 npm run build && npm run start   # 다른 포트를 쓸 때는 next start -p 3001
 ```
 
-⚠️ `--silent` 없이 리다이렉트하면 npm 배너 두 줄(`> caretime@0.1.0 …`)이 파일
-맨 위에 들어가고 psql 이 그 줄에서 멈춘다. 리허설에서 실제로 걸렸다.
+⚠️ **셸 리다이렉트(`>`)로 받지 말고 `--out` 을 쓴다.** 두 가지가 걸린다.
+
+- PowerShell 의 `>` 는 Node 의 UTF-8 출력을 **다시 인코딩해서 한글 주석을 깨뜨린다.**
+  SQL 문법은 멀쩡해서 실행은 되지만 나중에 열면 못 읽는다. 실제로 겪었다.
+  꼭 리다이렉트로 받아야 하면 `| Out-File -Encoding utf8 manual.sql` 를 쓴다
+  (PowerShell 5.1 의 `-Encoding utf8` 은 BOM 을 붙인다. psql 은 BOM 을 견디는 것을
+  확인했지만, 콘솔 편집기에 붙여 넣을 때 앞에 보이지 않는 글자가 낀다).
+  `cmd /c "npm run --silent sql:manual-hospitals > manual.sql"` 도 바이트를 그대로
+  넘기므로 안전하다.
+- `--silent` 없이 리다이렉트하면 npm 배너 두 줄(`> caretime@0.1.0 …`)이 파일 맨
+  위에 들어가고 psql 이 그 줄에서 멈춘다. 리허설에서 실제로 걸렸다.
+
+`--out` 은 스크립트가 직접 UTF-8(BOM 없이)로 쓴다. 셸이 끼어들지 않으므로 둘 다
+해당되지 않는다.
 
 `npm run sql:manual-hospitals` 는 DB 에 붙지 않고 INSERT 문만 찍는다.
 **로컬 투입(`import:manual-hospitals`)과 같은 매핑 코드를 쓴다** — 두 벌로 두면
