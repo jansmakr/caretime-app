@@ -150,3 +150,32 @@ const fieldTalkFlag = process.env.NEXT_PUBLIC_FIELD_TALK_LIVE;
 
 export const isFieldTalkSharingLive: boolean =
   fieldTalkFlag !== undefined && fieldTalkFlag.trim() !== "" ? isOn(fieldTalkFlag) : true;
+
+/**
+ * 서버가 쓰기를 받아 주는가. **화면과 따로 판정한다.**
+ *
+ * 위의 `isFieldTalkSharingLive` 는 `NEXT_PUBLIC_` 이라 빌드에 박힌다. 즉 그것만으로는
+ * **화면만 닫는 것**이고, 주소와 요청 모양을 아는 사람은 그대로 쓸 수 있다.
+ * 같은 실수를 anon 키에서 이미 했다(화면 쿨다운만 검증하면 아무것도 검증하지 않은 것).
+ *
+ * 그래서 서버 전용 변수를 둔다. `NEXT_PUBLIC_` 이 아니므로 번들에 들어가지 않고,
+ * 서버가 **요청마다** 읽는다.
+ *
+ *   CARETIME_WRITES=closed   글·반응·요청·신고를 받지 않는다 (503)
+ *   CARETIME_WRITES=open     받는다
+ *   (미설정)                  화면 플래그를 따른다 — 기본은 열림
+ *
+ * 쓰는 자리: 출시 전 공개 기간이다. 방침 시행일 전에 글이 들어오면 그 수집은
+ * 근거가 없고, 그때 만들어진 세션은 동의 기록 없이 남는다. 지울 수는 있지만
+ * **애초에 만들지 않는 쪽**이 맞다.
+ *
+ * 닫아도 **자기 글 삭제는 막지 않는다.** 문을 닫는 것이 이미 들어온 글을 가두는
+ * 일이 되면 안 된다.
+ */
+export function areWritesOpen(): boolean {
+  const value = process.env.CARETIME_WRITES;
+  if (value !== undefined && value.trim() !== "") {
+    return value.trim().toLowerCase() !== "closed";
+  }
+  return isFieldTalkSharingLive;
+}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LegalBody } from "@/components/legal/LegalBody";
 import { loadLegalDocument, type LegalDocId } from "@/features/legal/documents";
+import { isPolicyInForce, todayInSeoul } from "@/features/legal/version";
 
 /**
  * /terms · /privacy 공통 화면.
@@ -12,6 +13,14 @@ import { loadLegalDocument, type LegalDocId } from "@/features/legal/documents";
 export function LegalPage({ id, fallbackTitle }: { id: LegalDocId; fallbackTitle: string }) {
   const document = loadLegalDocument(id);
   const title = document.title || fallbackTitle;
+  /*
+   * 시행일이 아직 오지 않았으면 그렇게 적는다. 사전 고지 기간에 "시행일 2026-10-13"만
+   * 적어 두면 읽는 사람은 지금 효력이 있는 줄로 안다.
+   */
+  const upcoming =
+    document.ready && document.effectiveDate !== null && !isPolicyInForce()
+      ? document.effectiveDate
+      : null;
 
   return (
     <>
@@ -20,9 +29,16 @@ export function LegalPage({ id, fallbackTitle }: { id: LegalDocId; fallbackTitle
         <section className="ct-card p-5">
           {document.ready ? (
             <>
-              <p className="text-[13px] font-semibold text-ink-faint">
-                시행일 {document.effectiveDate}
-              </p>
+              {upcoming ? (
+                <p className="rounded-field bg-caution-soft px-3.5 py-2.5 text-[13px] font-semibold leading-relaxed text-caution-ink">
+                  {upcoming} 부터 시행됩니다. 지금은 미리 읽어 보실 수 있도록 공개한
+                  것이며 아직 효력이 없습니다. (오늘 {todayInSeoul()})
+                </p>
+              ) : (
+                <p className="text-[13px] font-semibold text-ink-faint">
+                  시행일 {document.effectiveDate}
+                </p>
+              )}
               <div className="mt-3">
                 <LegalBody document={document} />
               </div>

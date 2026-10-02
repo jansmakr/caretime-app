@@ -16,9 +16,14 @@ import { loadLegalDocument, type LegalDocId } from "./documents";
  *
  * 길이는 40자 안쪽이고 text 컬럼이라 제한이 없다.
  *
- * ── 지금은 null 이다 ────────────────────────────────────────
- * 두 문서 중 하나라도 준비되지 않으면 null 을 쓴다. 동의할 문서가 없는데
- * "동의한 버전"을 적으면 그건 없는 동의를 기록하는 것이다.
+ * ── 언제 null 인가 ──────────────────────────────────────────
+ * 두 가지 경우다.
+ *   ① 두 문서 중 하나라도 본문이 없다 — 동의할 문서가 없다.
+ *   ② 시행일이 **아직 오지 않았다** — 문서는 있지만 시행 전이다.
+ *
+ * ②를 따로 두는 이유: 시행일을 미리 적어 공개하는 것은 정상이다(사전 고지).
+ * 그 기간에 세션을 만들면서 "미래 날짜의 방침에 동의했다"고 적으면, 그것은
+ * null 보다 나쁘다 — 없는 동의를 **있는 것처럼** 기록하는 것이다.
  */
 
 export function formatPolicyVersion(
@@ -38,18 +43,52 @@ export function parsePolicyVersion(
 }
 
 /**
- * 지금 시행 중인 버전. **서버에서만 부른다**(파일을 읽는다).
- * 문서가 준비되지 않았으면 null 이고, 세션에도 null 이 들어간다.
+ * 오늘(서울 기준) 날짜. `YYYY-MM-DD` 라 문자열 비교로 날짜를 견줄 수 있다.
+ *
+ * 시행일은 달력 날짜다. 서버가 UTC 로 돌면 한국 시간 9시간 동안 "어제"로 판정하므로
+ * 시간대를 고정해서 읽는다 — 시행일이 하루 늦게 켜지는 것을 막는다.
  */
-export function currentPolicyVersion(): string | null {
-  const dateOf = (id: LegalDocId) => {
-    const doc = loadLegalDocument(id);
-    return doc.ready ? doc.effectiveDate : null;
-  };
-  return formatPolicyVersion(dateOf("terms"), dateOf("privacy"));
+export function todayInSeoul(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
 }
 
-/** 두 문서가 다 준비됐는가. 하단 동의 문구·링크를 낼지 판단하는 값이다. */
+function readyDateOf(id: LegalDocId): string | null {
+  const doc = loadLegalDocument(id);
+  return doc.ready ? doc.effectiveDate : null;
+}
+
+/**
+ * 지금 시행 중인 버전. **서버에서만 부른다**(파일을 읽는다).
+ * 본문이 없거나 시행일이 아직 오지 않았으면 null 이고, 세션에도 null 이 들어간다.
+ */
+export function currentPolicyVersion(now: Date = new Date()): string | null {
+  const version = formatPolicyVersion(readyDateOf("terms"), readyDateOf("privacy"));
+  if (version === null) return null;
+
+  const today = todayInSeoul(now);
+  const parsed = parsePolicyVersion(version);
+  if (!parsed) return null;
+  // 둘 중 늦은 시행일이 와야 '두 문서가 함께 시행 중'이다.
+  const inForceFrom = parsed.terms > parsed.privacy ? parsed.terms : parsed.privacy;
+  return today >= inForceFrom ? version : null;
+}
+
+/**
+ * 두 문서가 다 준비됐는가 — **본문이 있는가**만 본다. 시행일은 보지 않는다.
+ *
+ * 시행 전에도 문서는 **보여 준다.** 사전 고지가 정상이고, 미리 읽을 수 있어야 한다.
+ * 다만 "동의하는 것으로 봅니다"는 시행 뒤에만 적는다(isPolicyInForce).
+ */
 export function areLegalDocsReady(): boolean {
-  return currentPolicyVersion() !== null;
+  return readyDateOf("terms") !== null && readyDateOf("privacy") !== null;
+}
+
+/** 지금 효력이 있는가. 동의 문구를 적을지, policy_version 을 박을지의 판정이다. */
+export function isPolicyInForce(now: Date = new Date()): boolean {
+  return currentPolicyVersion(now) !== null;
 }

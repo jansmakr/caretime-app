@@ -9,6 +9,7 @@ import {
 import { checkRate } from "@/features/p0/limits";
 import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { areWritesOpen } from "@/lib/demoContent";
 
 /**
  * 신고 접수.
@@ -35,6 +36,13 @@ const REASONS = new Set([
 ]);
 
 export async function POST(request: NextRequest) {
+  /*
+   * 출시 전 공개 기간에는 받지 않는다. 화면만 닫는 것은 닫은 것이 아니다 —
+   * 주소와 요청 모양을 아는 사람은 그대로 쓸 수 있다. (lib/demoContent.areWritesOpen)
+   */
+  if (!areWritesOpen()) {
+    return NextResponse.json({ error: "아직 준비 중입니다." }, { status: 503 });
+  }
   const admin = createAdminSupabase();
 
   const token = request.cookies.get(GUEST_COOKIE)?.value;

@@ -9,6 +9,7 @@ import {
 import { checkRate } from "@/features/p0/limits";
 import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { areWritesOpen } from "@/lib/demoContent";
 
 /**
  * 반응 누르기. 글과 같은 이유로 서버만 쓴다.
@@ -26,6 +27,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEYS = new Set(["low_wait", "doctor_present", "closed"]);
 
 export async function POST(request: NextRequest) {
+  /*
+   * 출시 전 공개 기간에는 받지 않는다. 화면만 닫는 것은 닫은 것이 아니다 —
+   * 주소와 요청 모양을 아는 사람은 그대로 쓸 수 있다. (lib/demoContent.areWritesOpen)
+   */
+  if (!areWritesOpen()) {
+    return NextResponse.json({ error: "아직 준비 중입니다." }, { status: 503 });
+  }
   const admin = createAdminSupabase();
 
   const token = request.cookies.get(GUEST_COOKIE)?.value;

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { COMPANY, applyCompanyTokens, unknownTokens } from "./company";
 import { loadLegalDocument, parseLegalDocument } from "./documents";
-import { currentPolicyVersion, formatPolicyVersion, parsePolicyVersion } from "./version";
+import {
+  currentPolicyVersion,
+  formatPolicyVersion,
+  parsePolicyVersion,
+  todayInSeoul,
+} from "./version";
 
 /**
  * 방침 문서를 읽는 규칙.
@@ -148,5 +153,30 @@ describe("policy_version", () => {
     });
     expect(parsePolicyVersion("v1")).toBeNull();
     expect(parsePolicyVersion(null)).toBeNull();
+  });
+});
+
+describe("시행일 — 오기 전에는 효력이 없다", () => {
+  /*
+   * 시행일을 미리 적어 공개하는 것은 정상이다(사전 고지). 그 기간에 세션을 만들면서
+   * "미래 날짜의 방침에 동의했다"고 적으면 null 보다 나쁘다 — 없는 동의를 있는
+   * 것처럼 기록하는 것이다. 그래서 currentPolicyVersion 이 시행일을 함께 본다.
+   */
+  it("★ 서울 기준 날짜를 쓴다 — UTC 로 읽으면 하루 늦게 켜진다", () => {
+    // 한국 2026-10-13 00:30 = UTC 2026-10-12 15:30
+    expect(todayInSeoul(new Date("2026-10-12T15:30:00Z"))).toBe("2026-10-13");
+    expect(todayInSeoul(new Date("2026-10-12T14:30:00Z"))).toBe("2026-10-12");
+  });
+
+  it("YYYY-MM-DD 모양이라 문자열로 견줄 수 있다", () => {
+    expect(todayInSeoul(new Date("2026-10-13T03:00:00Z"))).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("★ 저장소의 문서는 아직 시행 중이 아니다 — policy_version 이 null 이다", () => {
+    /*
+     * 본문이 없으면 null, 본문이 있고 시행일이 미래여도 null, 시행일이 지나면 값이다.
+     * 세 경우 모두 "지금 시행 중인가"를 묻는 한 함수로 답한다.
+     */
+    expect(currentPolicyVersion()).toBeNull();
   });
 });

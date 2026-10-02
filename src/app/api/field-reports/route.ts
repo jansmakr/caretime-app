@@ -11,6 +11,7 @@ import { checkRate, isDuplicateBody } from "@/features/p0/limits";
 import { findPiiExcludingKnown } from "@/features/p0/pii";
 import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { areWritesOpen } from "@/lib/demoContent";
 import { CHAT_BODY_MAX, CHAT_TOPIC_MAX } from "@/features/chat/types";
 
 /**
@@ -49,6 +50,13 @@ function text(value: unknown, max: number): string | null {
 }
 
 export async function POST(request: NextRequest) {
+  /*
+   * 출시 전 공개 기간에는 받지 않는다. 화면만 닫는 것은 닫은 것이 아니다 —
+   * 주소와 요청 모양을 아는 사람은 그대로 쓸 수 있다. (lib/demoContent.areWritesOpen)
+   */
+  if (!areWritesOpen()) {
+    return NextResponse.json({ error: "아직 준비 중입니다." }, { status: 503 });
+  }
   const admin = createAdminSupabase();
 
   // ── 1. 세션 ──

@@ -8,6 +8,7 @@ import {
 } from "@/features/chat/guestSession";
 import { myPostIdsOf } from "@/features/chat/myPosts";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { areWritesOpen } from "@/lib/demoContent";
 
 /**
  * 이 브라우저의 게스트 세션. 없으면 만든다.
@@ -34,6 +35,19 @@ export async function GET() {
       nickname: existing.nickname,
       myPostIds: await myPostIdsOf(admin, existing.id),
     });
+  }
+
+  /*
+   * 쓰기가 닫혀 있으면 **세션을 만들지 않는다.**
+   *
+   * 이 경로는 화면이 마운트될 때 불린다. 그래서 그냥 두면 출시 전 공개 기간에
+   * 들어온 사람마다 세션 행이 생기고, 그 세션들은 방침 시행 전이라 동의 기록
+   * (policy_version)이 없는 채로 남는다. 지울 수는 있지만 만들지 않는 쪽이 맞다.
+   *
+   * 이름이 없으면 화면은 이름 없이 그린다 — 글을 쓸 수 없는 동안 이름이 필요 없다.
+   */
+  if (!areWritesOpen()) {
+    return NextResponse.json({ nickname: null, myPostIds: [] });
   }
 
   // 방금 만든 세션에는 글이 없다. 조회하지 않는다.

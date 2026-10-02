@@ -62,12 +62,32 @@
 
 ## G. 환경변수 (Vercel Project Settings → Environment Variables)
 
-- [ ] `SUPABASE_SERVICE_ROLE_KEY` 가 들어 있다 —
-      **`NEXT_PUBLIC_` 접두사가 붙어 있지 않다.** 붙으면 브라우저 번들로 새고 RLS 가
-      무의미해진다. 이름을 눈으로 다시 읽는다
+앱이 읽는 변수는 **이 일곱 개가 전부다**(`grep process.env src` 로 뽑았다).
+Production·Preview 양쪽에 같은 값을 넣는다 — Preview 가 운영 DB 를 가리키게 두지
+않으려면 Preview 는 비워 두거나 따로 판단한다.
+
+| 이름 | 값 | 없으면 |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | 운영 프로젝트 URL | Mock 으로 돈다(병원 0곳) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 운영 anon 키 | 같음 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 운영 service_role 키 | **쓰기 라우트가 전부 실패한다** |
+| `CARETIME_WRITES` | 공개 전에는 `closed`, 공개일에 지운다 | 화면 플래그를 따른다(열림) |
+| `NEXT_PUBLIC_DEMO_CONTENT` | **넣지 않는다** | 꺼짐(원하는 상태) |
+| `NEXT_PUBLIC_FIELD_TALK_LIVE` | **넣지 않는다** | 켜짐(원하는 상태) |
+| `GUEST_LIMIT_POSTS` 외 3개 | 넣지 않는다 | PRD 기본값 |
+
+제한값 변수 넷은 `GUEST_LIMIT_POSTS` · `GUEST_LIMIT_REACTIONS` ·
+`GUEST_LIMIT_REPORTS` · `GUEST_LIMIT_DUPLICATE_MINUTES` 이고 형식은 `창초:건수` 를
+쉼표로 이은 것이다(`30:1,3600:10,86400:30`). 도배가 시작될 때 재빌드 없이 조이는
+경로다. 읽을 수 없는 값이면 **기본값**을 쓴다 — 오타 때문에 제한이 풀리지 않게.
+
+- [ ] `SUPABASE_SERVICE_ROLE_KEY` 에 **`NEXT_PUBLIC_` 접두사가 붙어 있지 않다.**
+      붙으면 브라우저 번들로 새고 RLS 가 무의미해진다. 이름을 눈으로 다시 읽는다
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` 가 운영 프로젝트 값이다
-- [ ] **`NEXT_PUBLIC_DEMO_CONTENT` 가 없다** (또는 `0`). 있으면 가상 병원·가상 제보가 켜진다
-- [ ] `NEXT_PUBLIC_FIELD_TALK_LIVE` 는 설정하지 않는다 (기본 켜짐). 장애 때 `0` 으로 닫는다
+- [ ] **`NEXT_PUBLIC_DEMO_CONTENT` 가 없다.** 있으면 가상 병원·가상 제보가 켜진다
+- [ ] `NEXT_PUBLIC_FIELD_TALK_LIVE` 가 없다 (기본 켜짐)
+- [ ] **`CARETIME_WRITES=closed`** — 공개일 전까지. 아래 「공개 전 기간」 참고
+- [ ] 로컬 테스트 변수(`E2E_PARTNER_EMAIL`·`E2E_PARTNER_PASSWORD`)를 운영에 넣지 않았다
 
 ## H. 배포와 리전
 
@@ -77,6 +97,36 @@
 - [ ] 배포 후 함수 리전이 실제로 서울인지 본다:
       `vercel inspect <배포 URL>` 또는 Project → Functions 탭의 Region 표시 → `icn1`
 - [ ] 미국 리전으로 떨어졌으면 **방침의 국외 이전 조항이 필요해진다.** 그대로 두지 않는다
+
+## H-2. 공개 전 기간 — 배포일과 시행일이 다를 때
+
+배포와 방침 시행일 사이가 비는 일정이면(예: 10/8 배포 · 10/13 시행) 그 사이에
+**글이 들어오면 안 된다.** 시행 전 수집은 근거가 없고, 그때 만들어진 세션은 동의
+기록(`policy_version`)이 없는 채로 남는다. 주소를 아는 사람은 들어오므로
+`noindex` 로는 막히지 않는다.
+
+- [ ] 배포 직후 **쓰기를 열어 둔 채** I 절을 끝낸다 (글 쓰기·삭제·422 확인)
+- [ ] 확인에 쓴 글을 **[삭제]로 지운다**
+- [ ] `CARETIME_WRITES=closed` 를 넣고 **다시 배포한다**
+- [ ] 닫혔는지 확인한다 — 글쓰기 버튼을 눌러도 올라가지 않고, 아래도 확인한다
+
+```bash
+curl -i -X POST https://<운영주소>/api/field-reports   -H 'Content-Type: application/json'   -d '{"id":"00000000-0000-4000-8000-000000000000","category":"other","body":"닫힘 확인"}'
+# → HTTP/2 503  {"error":"아직 준비 중입니다."}
+
+curl -s https://<운영주소>/api/guest
+# → {"nickname":null,"myPostIds":[]}   세션을 만들지 않는다(쿠키도 없다)
+```
+
+- [ ] 확인 기간에 만들어진 세션이 없다:
+      `select count(*) from guest_sessions;` → **0**
+- [ ] 공개일에 `CARETIME_WRITES` 를 **지우고 다시 배포한다.** 그다음 글 1건을 올려
+      `select policy_version from guest_sessions order by created_at desc limit 1;`
+      → `terms=…;privacy=…` 가 찍힌다 (null 이면 시행일이 아직 안 온 것이다)
+
+닫혀 있는 동안에도 **읽기와 자기 글 삭제는 열려 있다.** 문을 닫는 것이 이미 들어온
+글을 가두는 일이 되면 안 된다. 테스트가 이 조합을 고정한다
+(`tests/writeGate.realtime.test.ts`).
 
 ## I. 띄워서 읽는다 (운영 주소로)
 

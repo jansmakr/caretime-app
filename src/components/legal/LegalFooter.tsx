@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { COMPANY } from "@/features/legal/company";
 import { LEGAL_DOC_PATH } from "@/features/legal/documents";
-import { areLegalDocsReady } from "@/features/legal/version";
+import { areLegalDocsReady, isPolicyInForce } from "@/features/legal/version";
 
 /**
  * 보호자 화면 맨 아래.
@@ -12,20 +12,23 @@ import { areLegalDocsReady } from "@/features/legal/version";
  *      값은 features/legal/company 한 곳에서 읽는다. 문서 본문도 같은 값을 토큰으로
  *      읽으므로 주소나 보호책임자가 바뀌면 한 곳만 고치면 된다.
  *
- *   ② 약관·방침 링크와 동의 문구 — **문서가 준비된 뒤에만.** 빈 방침으로 가는 링크를
- *      만들지 않고, 동의했다고 적지도 않는다. 판정은 파일 머리글의 시행일이다
- *      (features/legal/documents). 본문을 넣는 것만으로 켜진다.
+ *   ② 약관·방침 **링크** — 본문이 들어오면 보인다. 시행 전에도 보여 준다(사전 고지).
+ *
+ *   ③ **동의 문구** — 시행일이 지난 뒤에만. 시행 전에 "동의하는 것으로 봅니다"를
+ *      적으면 아직 효력이 없는 문서에 동의시킨 셈이 된다. 그 기간에는 쓰기도
+ *      닫혀 있다(lib/demoContent.areWritesOpen).
  *
  * 서버 컴포넌트다. 파일을 읽으므로 클라이언트에서 부르지 않는다.
  */
 export function LegalFooter() {
   const ready = areLegalDocsReady();
+  const inForce = isPolicyInForce();
 
   return (
     <footer className="px-5 pb-5 pt-2">
       {ready && (
         <p className="text-[12.5px] leading-relaxed text-ink-faint">
-          글을 남기면{" "}
+          {inForce ? "글을 남기면 " : "시행 예정 "}
           <Link href={LEGAL_DOC_PATH.terms} className="font-semibold text-ink-muted underline">
             이용약관
           </Link>
@@ -33,7 +36,9 @@ export function LegalFooter() {
           <Link href={LEGAL_DOC_PATH.privacy} className="font-semibold text-ink-muted underline">
             개인정보 처리방침
           </Link>
-          에 동의하는 것으로 봅니다. 로그인 없이 이용하며 이름·연락처는 저장하지 않습니다.
+          {inForce
+            ? "에 동의하는 것으로 봅니다. 로그인 없이 이용하며 이름·연락처는 저장하지 않습니다."
+            : " 을 미리 읽을 수 있습니다. 시행일부터 적용됩니다."}
         </p>
       )}
 
