@@ -19,6 +19,8 @@ const admin = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
 const TEST_MS = 30_000;
 
 let db: SupabaseClient;
+/** 테스트가 만든 행만 골라 지우기 위한 표시. */
+const MARK = "보관테스트";
 const DAY_MS = 24 * 60 * 60_000;
 const daysAgo = (days: number) => new Date(Date.now() - days * DAY_MS).toISOString();
 
@@ -49,7 +51,7 @@ async function makeSession(lastSeenDaysAgo = 0): Promise<string> {
     headers: { ...admin, "Content-Type": "application/json", Prefer: "return=representation" },
     body: JSON.stringify({
       token_hash: `retention-${Math.random().toString(36).slice(2)}`,
-      nickname: "보관테스트",
+      nickname: MARK,
       expires_at: new Date(Date.now() + 30 * DAY_MS).toISOString(),
       last_seen_at: daysAgo(lastSeenDaysAgo),
     }),
@@ -89,6 +91,7 @@ async function makeAbuseReport(input: {
       target_id: input.targetId ?? crypto.randomUUID(),
       reporter_guest_id: input.reporter,
       reason: "SPAM",
+      detail: MARK,
       state: input.state,
       created_at: daysAgo(input.createdDaysAgo),
     }),
@@ -157,12 +160,22 @@ beforeAll(() => {
 afterEach(async () => {
   for (const path of [
     `moderation_actions?reason_code=eq.${ACTION_MARK}`,
-    "field_reports?handle=eq.보관테스트",
-    "hospital_requests?name=like.*보관테스트*",
-    // 세션을 지우면 그 세션의 신고·관찰이 함께 지워진다(cascade). 마지막에 둔다.
-    "guest_sessions?nickname=eq.보관테스트",
+    "moderation_actions?reason_code=eq.auto_on_report",
+    // 자동 종결 테스트가 남기는 기록.
+    "moderation_actions?reason_code=eq.auto_dismiss_unreviewed",
+    `reports?detail=eq.${MARK}`,
+    `field_reports?handle=eq.${MARK}`,
+    `hospital_requests?name=like.*${MARK}*`,
+    // 세션을 지우면 그 세션의 관찰이 함께 지워진다(cascade). 마지막에 둔다.
+    `guest_sessions?nickname=eq.${MARK}`,
   ]) {
-    await fetch(`${REST}/${encodeURI(path)}`, { method: "DELETE", headers: admin });
+    const res = await fetch(`${REST}/${encodeURI(path)}`, { method: "DELETE", headers: admin });
+    /*
+     * 정리가 실패하면 그 자리에서 터뜨린다. 조용히 넘기면 테스트 행이 쌓이고,
+     * **그 더미가 버그를 가린다** — 신고한 사람의 세션이 안 지워지는 것을 이렇게
+     * 늦게 봤다(migration 20261006). 정리 실패도 결함이다.
+     */
+    if (!res.ok) throw new Error(`정리 실패 ${path} → ${res.status} ${await res.text()}`);
   }
 });
 
@@ -259,6 +272,28 @@ describe("게스트 세션 — 글은 남고 연결만 끊긴다", () => {
     const session = await makeSession(1);
     await purge();
     expect(await sql<unknown[]>(`guest_sessions?id=eq.${session}&select=id`)).toHaveLength(1);
+  }, TEST_MS);
+
+  it("★ 신고한 사람의 세션도 지워진다 — 못 지우면 그날 삭제가 전부 멈춘다", async () => {
+    /*
+     * reports 는 신고자가 둘 중 하나여야 한다는 제약을 들고 있었고 FK 는 set null
+     * 이었다. 그래서 신고를 한 번이라도 한 세션은 **지울 수 없었다** — 그리고
+     * purge_expired() 는 세션을 한 문장으로 지우므로, 그런 세션 하나가 끼면 그날의
+     * 삭제가 아무것도 안 됐다. 증상이 없는 고장이다(화면은 그대로다).
+     */
+    const session = await makeSession(RETENTION_DAYS.guest_sessions + 1);
+    const reportId = await makeAbuseReport({ state: "OPEN", createdDaysAgo: 1, reporter: session });
+
+    await purge();
+
+    expect(await sql<unknown[]>(`guest_sessions?id=eq.${session}&select=id`)).toEqual([]);
+
+    // 신고 기록은 남고 연결만 끊긴다. 글에서 쓰는 방식과 같다.
+    const rows = await sql<{ reporter_guest_id: string | null }[]>(
+      `reports?id=eq.${reportId}&select=reporter_guest_id`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].reporter_guest_id).toBeNull();
   }, TEST_MS);
 
   it("★ 세션 삭제가 실패하지 않는다 — 반응이 달려 있어도", async () => {

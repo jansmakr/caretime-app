@@ -2,7 +2,7 @@
 
 **사람이 보고 실행하는 문서다.** 명령어를 그대로 복사해 쓸 수 있게 적었다.
 
-지금 migration 9개가 로컬에만 있다. 1차 출시 직전에 올린다.
+지금 migration 10개가 로컬에만 있다. 1차 출시 직전에 올린다.
 
 ## 적용 전 확인
 
@@ -32,6 +32,7 @@ supabase db diff
 | 7 | `20261002120000_hospital_requests.sql` | 목록에 없는 병원 요청 (비공개) |
 | 8 | `20261004120000_retention_purge.sql` | 보관 기간 표 + 실제 삭제 + pg_cron 04:00 KST |
 | 9 | `20261005120000_stale_reports_and_purge_health.sql` | 미처리 신고 90일 자동 종결 + 크론 상태 조회 |
+| 10 | `20261006120000_reporter_unlink.sql` | 신고한 사람의 세션을 지울 수 있게 (제약 완화) |
 
 ### ⚠️ 4와 5는 **쌍이다**
 
@@ -108,11 +109,40 @@ select * from public.purge_health();
 -- scheduled 가 f 이거나 행이 없으면 pg_cron 이 없는 것이다. 그러면 방침에 적은
 -- 보관 기간이 지켜지지 않는다 — 올린 뒤 바로 본다.
 
+-- 신고자 연결을 끊을 수 있는가. 못 끊으면 세션 삭제가 실패하고, 그러면 그날의
+-- 삭제가 전부 멈춘다(증상 없음). 10번 migration 이 올라갔는지 보는 질의다.
+select pg_get_constraintdef(oid) from pg_constraint where conname='reports_single_reporter';
+-- → CHECK ((NOT ((reporter_guest_id IS NOT NULL) AND (reporter_user_id IS NOT NULL))))
+--   '<>' (정확히 하나)가 보이면 아직 안 올라간 것이다.
+
 -- 보관 기간 표가 코드와 같은가 (테스트가 보지만 운영에서도 한 번 본다)
 select subject, keep_days from public.retention_policy order by subject;
 -- → field_reports 30 / guest_sessions 30 / hospital_requests 365 /
 --    observations 7 / reports 365 / reports_unreviewed 90
 ```
+
+## 배포 리전 — `icn1` (서울)
+
+`vercel.json` 에 박아 뒀다.
+
+```json
+{ "regions": ["icn1"] }
+```
+
+왜 고정하는가:
+
+1. **지연.** 정하지 않으면 Vercel 기본값 `iad1`(미국 동부)이고, 한국 이용자의 요청이
+   태평양을 왕복한다. 야간에 급한 사람이 쓰는 서비스에서 수백 ms 가 붙는다.
+2. **방침 문구가 달라진다.** 처리 위탁 칸에 실제 리전을 적어야 하고, 미국이면
+   개인정보 국외 이전 고지가 따라온다. 국내에 두면 그 조항이 필요 없다.
+   (Supabase 도 `ap-northeast-2` 서울이다 — 둘을 같은 나라에 둔다.)
+
+무료 요금제에서 함수 리전은 **하나만** 고를 수 있다. 하나이므로 통과해야 하지만,
+`vercel deploy` 가 리전 때문에 거부되면 그 메시지를 그대로 보고한다.
+
+⚠️ 한 가지는 법무 판단이다: **"리전이 국내"와 "수탁자가 해외 법인"은 다른 문제다.**
+저장·처리는 서울에서 일어나지만 Vercel Inc.·Supabase Inc. 는 미국 법인이다.
+위탁 고지에 법인명을 적는 것과, 국외 이전 조항이 필요한지는 따로 판단해야 한다.
 
 ## 적용 직후 해야 하는 것
 
