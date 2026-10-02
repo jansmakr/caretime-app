@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { DemoNotice } from "@/components/common/DemoNotice";
+import { StageNotice } from "@/components/common/StageNotice";
 import { ConditionBar } from "@/components/search/ConditionBar";
 import { FieldTalkExit } from "@/components/search/FieldTalkExit";
 import { HospitalCard } from "@/components/search/HospitalCard";
@@ -53,7 +53,7 @@ export default function SearchPage() {
   return (
     <>
       <AppHeader title="진료정보" backHref="/" />
-      <DemoNotice />
+      <StageNotice />
 
       <main className="space-y-3 px-4 pb-6 pt-3">
         <ConditionBar hospitals={list.hospitals} />

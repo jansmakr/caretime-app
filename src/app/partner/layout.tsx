@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { DemoNotice } from "@/components/common/DemoNotice";
+import { StageNotice } from "@/components/common/StageNotice";
 import { PartnerGate } from "@/components/partner/PartnerGate";
 import { PartnerHeader } from "@/components/partner/PartnerHeader";
 import { PartnerProvider } from "@/features/partner/PartnerProvider";
@@ -28,7 +28,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
     <PartnerProvider>
       <div className="mx-auto min-h-dvh max-w-app pb-[calc(24px+env(safe-area-inset-bottom))]">
         <PartnerHeader />
-        <DemoNotice />
+        <StageNotice />
         <PartnerGate>{children}</PartnerGate>
       </div>
     </PartnerProvider>

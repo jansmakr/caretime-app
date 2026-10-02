@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { DemoNotice } from "@/components/common/DemoNotice";
+import { StageNotice } from "@/components/common/StageNotice";
 import { SourceBadge } from "@/components/common/SourceBadge";
 import { StatusPill } from "@/components/common/StatusPill";
 import {
@@ -79,7 +79,7 @@ export function HospitalDetail({
   return (
     <>
       <AppHeader title={hospital.publicData.name} backHref="/search" />
-      <DemoNotice />
+      <StageNotice />
 
       <main className="space-y-3 px-4 pb-6 pt-3">
         {/* 계층 ①② — 공공 기본정보. 병원이 수정할 수 없는 값. */}

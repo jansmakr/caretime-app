@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { DemoNotice } from "@/components/common/DemoNotice";
+import { StageNotice } from "@/components/common/StageNotice";
 import { DiscoveryForm } from "@/components/home/DiscoveryForm";
 import { HomeLiveTalkBanner } from "@/components/home/HomeLiveTalkBanner";
 import { showCareConditionForm } from "@/lib/demoContent";
@@ -30,7 +30,7 @@ export default function HomePage() {
   return (
     <>
       <AppHeader />
-      <DemoNotice />
+      <StageNotice />
       <main className="px-5 pt-8">
         <h2 className="break-keep text-[26px] font-extrabold leading-[1.3]">
           {showCareConditionForm ? (

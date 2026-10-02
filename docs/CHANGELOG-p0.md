@@ -47,3 +47,4 @@
 - 운영 적용 리허설을 로컬에서 돌렸다. 걸린 것 둘(npm 배너가 SQL 에 섞임, capabilities 마스터가 seed 전용)
 - 사업자 정보를 한 곳(features/legal/company)에서 읽는다. 문서 본문은 토큰으로 적는다. 푸터에 사업자 정보 표기
 - 공개 전 기간에 서버가 쓰기를 받지 않게(CARETIME_WRITES). 시행일 전에는 policy_version 을 박지 않는다
+- 2026년은 베타. DEMO 자리를 베타 안내로(StageNotice). noindex 가 실제로 붙게. docs/BETA-check.md
