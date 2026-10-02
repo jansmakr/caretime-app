@@ -2,7 +2,7 @@
 
 **사람이 보고 실행하는 문서다.** 명령어를 그대로 복사해 쓸 수 있게 적었다.
 
-지금 migration 10개가 로컬에만 있다. 1차 출시 직전에 올린다.
+지금 migration **11개**가 로컬에만 있다. 베타 시작 직전에 올린다.
 
 ---
 
@@ -24,11 +24,53 @@
 - [ ] `supabase db diff` → **No schema changes found**
 - [ ] 로컬 리허설을 한 번 했다 (아래 「리허설」 절)
 
+## A-2. 운영 프로젝트로 바꾸는 법 — **`.env.local` 은 손대지 않는다**
+
+두 곳이 서로 다른 키를 들고 있고, 섞으면 사고가 난다.
+
+| 어디 | 무슨 키 | 누가 쓰나 |
+|---|---|---|
+| `.env.local` | **로컬 스택**(127.0.0.1:54321) | `npm run test` · `test:realtime` · `import:manual-hospitals` |
+| Vercel 환경변수 | **운영 프로젝트** | 배포된 서비스 |
+| `supabase link` | **운영 프로젝트** | `db push` 할 때만 |
+
+`.env.local` 을 운영 키로 바꾸면 **테스트가 운영 DB 에 글을 쓴다.** 그 테스트들은
+글·세션·신고를 만들고 지운다. 그래서 바꾸지 않는다 — 로컬은 끝까지 로컬이다.
+
+### ⚠️ 운영에 link 된 동안 절대 치지 말 것
+
+```bash
+supabase db reset --linked     # 운영 DB 를 비운다. 되돌릴 백업이 없다
+supabase db push --include-seed # 가상 병원 5곳이 운영에 들어간다
+```
+
+`db reset` 은 평소 로컬에 쓰는 명령이라 손이 먼저 간다. 그래서 **올린 직후 link 를
+끊는다.** 끊으면 `--linked` 가 붙은 명령이 갈 곳이 없어진다.
+
+```bash
+# 1) 운영에 붙인다 (DB 비밀번호를 묻는다)
+supabase link --project-ref <운영 ref>
+supabase projects list          # LINKED 표시가 운영 쪽에 있는지 눈으로 본다
+
+# 2) 무엇이 올라가는지 본다
+supabase db push --dry-run      # → 11개 파일. 그 외에 아무것도 없어야 한다
+
+# 3) 올린다
+supabase db push
+
+# 4) 바로 끊는다
+supabase unlink
+supabase projects list          # LINKED 표시가 사라졌는지 확인
+```
+
+링크를 끊어도 로컬 스택과 테스트는 그대로 돈다. 둘은 상관이 없다 —
+로컬은 `.env.local` 과 도커 컨테이너만 본다.
+
 ## B. 어느 프로젝트에 올리는가
 
 - [ ] `supabase projects list` 로 ref 를 눈으로 확인했다
 - [ ] `supabase link --project-ref <ref>` 를 그 ref 로 했다
-- [ ] **`supabase db push --dry-run` 결과가 10개 파일이고 그 외에 없다**
+- [ ] **`supabase db push --dry-run` 결과가 11개 파일이고 그 외에 없다**
 
 ## C. 가짜 데이터가 운영에 들어가지 않는가
 
@@ -49,11 +91,36 @@
 - [ ] 신고 자동 격리 트리거 `quarantine_on_report` 가 있다
 - [ ] `select * from cron.job;` → **두 줄**
       (`purge-expired` `0 19 * * *` · `close-stale-reports` `0 18 * * *`)
-      → 없으면 pg_cron 이 없는 것이다. **방침에 적은 보관 기간이 지켜지지 않는다**
+      → 없으면 아래 「크론이 안 걸렸을 때」를 본다. **방침에 적은 보관 기간이
+        지켜지지 않는 상태**이므로 넘어가지 않는다
 - [ ] `select * from public.purge_health();` 가 같은 두 줄을 돌려준다
 - [ ] `select subject, keep_days from public.retention_policy;` → 6행
 - [ ] `reports_single_reporter` 제약이 `NOT (... AND ...)` 모양이다
       (`<>` 가 보이면 10번이 안 올라간 것 — 세션 삭제가 실패하고 그날의 삭제가 멈춘다)
+
+### 크론이 안 걸렸을 때 — migration 은 조용히 넘어간다
+
+9·10번의 스케줄 등록은 `do` 블록 안에 있고 **실패하면 notice 만 남기고 넘어간다**
+(권한이 없는 환경에서 migration 전체가 깨지지 않게 그렇게 만들었다). 그래서
+`db push` 가 성공해도 크론이 없을 수 있다. 함수는 이미 만들어져 있으니 스케줄만
+손으로 걸면 된다.
+
+```sql
+-- 1) 확장을 켠다 (Dashboard → Database → Extensions 에서 pg_cron 을 켜도 된다)
+create extension if not exists pg_cron;
+
+-- 2) 두 작업을 걸어 준다
+select cron.schedule('close-stale-reports', '0 18 * * *',
+                     $$select public.close_stale_reports();$$);
+select cron.schedule('purge-expired',       '0 19 * * *',
+                     $$select public.purge_expired();$$);
+
+-- 3) 확인
+select * from public.purge_health();
+```
+
+같은 이름으로 두 번 걸면 덮어쓴다(`cron.schedule` 은 이름이 같으면 갱신한다).
+그래서 이미 걸려 있어도 위 두 줄을 그냥 실행해도 된다.
 
 ## F. 수동 병원 2곳
 
@@ -211,12 +278,12 @@ npm run build && npm run start   # 다른 포트를 쓸 때는 next start -p 300
 
 ### 리허설 결과 — 2026-10-02
 
-migration 10개만 올린 DB(`db reset --no-seed`)에 수동 병원 2곳을 운영용 SQL 로 넣고
+migration 전부만 올린 DB(`db reset --no-seed`)에 수동 병원 2곳을 운영용 SQL 로 넣고
 운영 빌드를 띄워 확인했다.
 
 | 무엇 | 결과 |
 |---|---|
-| migration 10개 적용 | 통과. `db diff` → No schema changes found |
+| migration 전부 적용 | 통과. `db diff` → No schema changes found |
 | 가상 병원 | **0행** (`name like '가상%'`). 병원도 0행에서 시작한다 |
 | 수동 병원 SQL | 2행. **두 번 실행해도 2행** (upsert) |
 | 공개 뷰 | 6개 다 생겼다 |
@@ -250,9 +317,10 @@ migration 10개만 올린 DB(`db reset --no-seed`)에 수동 병원 2곳을 운�
 | 5 | **`20260930120000_guest_writes.sql`** | 쓰기를 서버 전용으로 + 게스트 세션 연결 |
 | 6 | `20261001120000_report_autoquarantine.sql` | 신고 → 즉시 격리 |
 | 7 | `20261002120000_hospital_requests.sql` | 목록에 없는 병원 요청 (비공개) |
-| 8 | `20261004120000_retention_purge.sql` | 보관 기간 표 + 실제 삭제 + pg_cron 04:00 KST |
-| 9 | `20261005120000_stale_reports_and_purge_health.sql` | 미처리 신고 90일 자동 종결 + 크론 상태 조회 |
-| 10 | `20261006120000_reporter_unlink.sql` | 신고한 사람의 세션을 지울 수 있게 (제약 완화) |
+| 8 | **`20261003120000_hospital_public_data.sql`** | 지역·분류 컬럼 + `registry_key`, hpid·좌표를 nullable 로. **수동 병원 투입이 이 파일에 의존한다** |
+| 9 | `20261004120000_retention_purge.sql` | 보관 기간 표 + 실제 삭제 + pg_cron 04:00 KST |
+| 10 | `20261005120000_stale_reports_and_purge_health.sql` | 미처리 신고 90일 자동 종결 + 크론 상태 조회 |
+| 11 | `20261006120000_reporter_unlink.sql` | 신고한 사람의 세션을 지울 수 있게 (제약 완화) |
 
 ### ⚠️ 4와 5는 **쌍이다**
 
@@ -264,13 +332,19 @@ migration 10개만 올린 DB(`db reset --no-seed`)에 수동 병원 2곳을 운�
   배포하면 누구나 제한 없이 글을 넣을 수 있다.
 - **둘 사이에 멈추면 안 된다.** 한 번에 이어서 적용한다.
 
-### 8·9 는 pg_cron 이 필요하다
+### 9·10 은 pg_cron 이 필요하다
 
 둘 다 `pg_available_extensions` 를 보고 없으면 **스케줄만 건너뛴다**(함수는 생긴다).
 운영에서 건너뛰어지면 삭제가 돌지 않는다. 적용 후 확인에 그 질의가 있다.
 
-9번은 8번이 만든 `retention_policy` 에 행을 넣으므로 8번 뒤에 와야 한다.
+10번은 9번이 만든 `retention_policy` 에 행을 넣으므로 9번 뒤에 와야 한다.
 타임스탬프 순서가 이미 그렇다.
+
+### 8번이 없으면 수동 병원이 한 줄도 안 들어간다
+
+`20261003` 이 `registry_key` · `source` · `is_moonlight` · `has_emergency_room` ·
+`night_until_minutes` · `weekend_open` 을 만들고 `hpid`·좌표를 nullable 로 바꾼다.
+투입 SQL(`npm run --silent sql:manual-hospitals`)이 그 컬럼들을 쓴다.
 
 ### `20261001` 은 마지막이다
 
@@ -291,10 +365,14 @@ supabase db push --dry-run
 
 # 올린다
 supabase db push
+
+# **바로 끊는다.** 운영에 붙어 있는 동안 db reset --linked 를 치면 비워진다
+supabase unlink
 ```
 
 `db push` 는 아직 적용되지 않은 migration 을 타임스탬프 순으로 전부 올린다.
 위 표의 4·5가 그 안에서 연달아 돌므로 둘 사이에 멈추지 않는다.
+`seed.sql` 은 올리지 않는다(`--include-seed` 를 붙이지 않는 한).
 
 ## 적용 후 확인
 
