@@ -22,7 +22,7 @@
 | `field_report_reactions` | 별도 기간 없음 | — | 글과 함께 | 글·세션 삭제 시 `cascade` | ✅ 1개 — 세션을 지울 때 함께 지워지고 삭제가 실패하지 않는다 |
 | `guest_sessions` | **30일** | `last_seen_at` | — | 크론 | ✅ 3개 — 지워진다 / 최근 세션은 남는다 / 글은 남고 `guest_id` 만 끊긴다 |
 | `observations` | **7일** | `expires_at` | 15분 (`expires_at > now()`) | 크론 | ✅ 2개 |
-| `hospital_requests` | **1년** | `created_at` | 공개 안 됨 | 크론 | ⚠️ 기간 삭제는 테스트 없음. 세션이 지워져도 남고 연결만 끊기는 것은 ✅ |
+| `hospital_requests` | **1년** | `created_at` | 공개 안 됨 | 크론 | ✅ 3개 |
 | `reports` (미처리) | **90일 뒤 자동 종결** | `created_at` | 공개 안 됨 | 크론 18:00 UTC (`close_stale_reports()`) | ✅ 5개 |
 | `reports` | **1년** | `created_at` | 공개 안 됨 | 크론. `RESOLVED`·`DISMISSED` 만 지운다. 90일 동안 아무도 확인하지 않은 신고는 **자동 종결**되고(아래) 그 뒤에 이 기간을 따른다 | ✅ 3개 |
 | `moderation_actions` | **1년** | `created_at` | 공개 안 됨 | 크론 (`reports` 보다 먼저 지운다) | ✅ 2개 |

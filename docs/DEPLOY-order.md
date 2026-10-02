@@ -18,6 +18,9 @@
 - [ ] `npm run seed:localuser` · `npm run import:manual-hospitals` 가 끝났다
 - [ ] `npm run build` · `npx tsc --noEmit` 통과
 - [ ] `npm run test` · `npm run test:realtime` 통과
+      — `db reset` 직후 첫 실행에서 broadcast 묶음(`tests/broadcast.serviceStatuses`)이
+        깨지면 **한 번 더 돌린다.** Realtime 서버가 replication slot 을 처음 만드는
+        사이의 경합이고, 재실행에도 깨지면 그건 환경이 아니라 코드다
 - [ ] `supabase db diff` → **No schema changes found**
 - [ ] 로컬 리허설을 한 번 했다 (아래 「리허설」 절)
 
@@ -129,8 +132,8 @@ docker exec supabase_db_caretime psql -U postgres -d postgres   -c "select count
 # → 가상 0 / 병원 0
 
 # 3. 수동 병원 2곳 — **운영에 붙여 넣을 그 SQL 로** 넣는다
-npm run sql:manual-hospitals > /tmp/manual.sql
-docker exec -i supabase_db_caretime psql -U postgres -d postgres < /tmp/manual.sql
+npm run --silent sql:manual-hospitals > manual.sql   # --silent 가 있어야 한다
+docker exec -i supabase_db_caretime psql -U postgres -d postgres < manual.sql
 # → 2행. 한 번 더 실행해도 2행이어야 한다(두 번 눌리는 일이 흔하다)
 
 # 4. 적용 후 확인 질의들 (아래 「적용 후 확인」 절 전체)
@@ -139,17 +142,44 @@ docker exec -i supabase_db_caretime psql -U postgres -d postgres < /tmp/manual.s
 npm run build && npm run start   # 다른 포트를 쓸 때는 next start -p 3001
 ```
 
+⚠️ `--silent` 없이 리다이렉트하면 npm 배너 두 줄(`> caretime@0.1.0 …`)이 파일
+맨 위에 들어가고 psql 이 그 줄에서 멈춘다. 리허설에서 실제로 걸렸다.
+
 `npm run sql:manual-hospitals` 는 DB 에 붙지 않고 INSERT 문만 찍는다.
 **로컬 투입(`import:manual-hospitals`)과 같은 매핑 코드를 쓴다** — 두 벌로 두면
 리허설에서 통과한 SQL 과 운영에 붙여 넣는 SQL 이 달라지고, 그러면 리허설이
 아무것도 보장하지 않는다. 손으로 고치지 말고 `data/manual-hospitals.json` 을 고쳐
 다시 뽑는다.
 
-### 리허설 결과
+### 리허설 결과 — 2026-10-02
 
-| 돌린 날 | 결과 |
+migration 10개만 올린 DB(`db reset --no-seed`)에 수동 병원 2곳을 운영용 SQL 로 넣고
+운영 빌드를 띄워 확인했다.
+
+| 무엇 | 결과 |
 |---|---|
-| (아직) | Docker Desktop 이 멈춰서 돌리지 못했다. 뜨면 돌리고 이 줄을 채운다 |
+| migration 10개 적용 | 통과. `db diff` → No schema changes found |
+| 가상 병원 | **0행** (`name like '가상%'`). 병원도 0행에서 시작한다 |
+| 수동 병원 SQL | 2행. **두 번 실행해도 2행** (upsert) |
+| 공개 뷰 | 6개 다 생겼다 |
+| anon INSERT 정책 | **0건** |
+| 신고 자동 격리 트리거 | `quarantine_on_report` 있다 |
+| 크론 | `purge-expired` `0 19 * * *` · `close-stale-reports` `0 18 * * *` |
+| `reports_single_reporter` | `NOT (… AND …)` — 세션 삭제가 되는 모양 |
+| 화면 | `/` `/chat` `/search` `/more` `/terms` `/privacy` 200, `/partner` **404**, 병원 2곳 200 |
+| HTML 에 `가상` | **0** (`/search`·병원 상세 모두) |
+| 글 쓰기 → 작성자에게 [삭제] → 지우기 | 200 / 보인다 / 200, 목록에서 사라졌다 |
+| 전화번호 섞인 글 | **422** 거절 |
+
+**걸린 것 둘.** 둘 다 운영에서도 걸렸을 것이다.
+
+1. `npm run sql:manual-hospitals > manual.sql` 의 출력 맨 위에 npm 배너 두 줄이
+   들어가서 psql 이 멈췄다 → `--silent` 로 고쳤다(위 명령).
+2. **`capabilities` 마스터 7행이 `seed.sql` 에만 있다.** 운영에 seed 를 넣지 않으므로
+   그 표가 **빈 채로 시작한다.** 1차에는 아무것도 깨지지 않는다 — 병원 상세의
+   "등록된 진료기능"이 "등록된 세부 진료기능이 없습니다"로 나오고 그게 사실이다
+   (참여 병원 0곳). 병원 입력 화면을 여는 턴에 migration 으로 넣어야 한다.
+   그 7행은 외상 중심 분류라, 1차 지역의 진료과목에 맞춰 다시 세울 때 함께 넣는다.
 
 ## 순서
 

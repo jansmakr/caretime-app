@@ -44,3 +44,4 @@
 - 삭제 테스트의 빈칸을 채웠다(reports·moderation_actions·observations). 미처리 신고 90일 자동 종결 + 크론 상태 조회
 - Vercel 리전을 icn1(서울)로 고정. 운영 질의 문서. 신고한 사람의 세션을 못 지워 삭제가 전부 멈추던 것 수정
 - 운영 적용 직전 점검 목록(체크박스 41개)과 리허설 절차. 수동 병원 SQL 생성(npm run sql:manual-hospitals)
+- 운영 적용 리허설을 로컬에서 돌렸다. 걸린 것 둘(npm 배너가 SQL 에 섞임, capabilities 마스터가 seed 전용)
