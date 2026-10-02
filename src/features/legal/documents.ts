@@ -12,9 +12,9 @@ import { applyCompanyTokens } from "./company";
  * 본문의 사업자 정보는 토큰으로 적는다(`{{상호}}` 등). 값은 features/legal/company
  * 한 곳에 있고 푸터도 같은 값을 읽는다 — 두 군데에 적으면 갈라진다.
  *
- * **준비되지 않은 상태를 구분한다.** 시행일이 `미정` 이거나 본문대기 표시가 남아
- * 있으면 준비되지 않은 것으로 보고, 하단 동의 문구와 링크를 아예 내린다 —
- * 빈 방침으로 가는 링크를 만들지 않는다. 동의했다고 적지도 않는다.
+ * **준비되지 않은 상태를 구분한다.** 시행일이 없거나 본문대기 표시가 남아 있으면
+ * 준비되지 않은 것으로 보고, 하단 링크와 동의 문구를 내린다 — 빈 방침으로 가는
+ * 링크를 만들지 않는다. 동의했다고 적지도 않는다.
  */
 
 export type LegalDocId = "terms" | "privacy";
@@ -36,35 +36,76 @@ const PENDING_MARK = "<!-- 본문대기 -->";
 
 export interface LegalDocument {
   id: LegalDocId;
-  /** 첫 줄의 `# 제목`. 없으면 빈 문자열. */
+  /** `# 제목` 줄에서 읽은 제목. 없으면 빈 문자열. */
   title: string;
-  /** `시행일: YYYY-MM-DD`. `미정` 이거나 형식이 다르면 null. */
+  /** 시행일. 항상 `YYYY-MM-DD` 로 맞춰 둔다. 읽을 수 없으면 null. */
   effectiveDate: string | null;
-  /** 머리글 두 줄을 뺀 본문. */
+  /** 머리글을 뺀 본문. */
   body: string;
-  /** 보여 줄 수 있는 문서인가. 시행일이 있고 본문대기 표시가 없어야 한다. */
+  /** 보여 줄 수 있는 문서인가. 시행일이 있고 본문이 있어야 한다. */
   ready: boolean;
 }
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** `2026년 10월 8일` · `2026. 10. 8.` 처럼 사람이 쓰는 모양도 받는다. */
+const KO_DATE = /^(\d{4})\D{1,2}\s*(\d{1,2})\D{1,2}\s*(\d{1,2})\D?$/;
+
+/** 머리글을 찾을 범위. 이보다 아래의 `시행일:` 은 본문의 일부로 본다. */
+const HEADER_SCAN_LINES = 10;
+
+function normalizeDate(value: string): string | null {
+  const text = value.trim();
+
+  const iso = ISO_DATE.exec(text);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const ko = KO_DATE.exec(text);
+  if (!ko) return null;
+
+  const month = ko[2].padStart(2, "0");
+  const day = ko[3].padStart(2, "0");
+  if (Number(month) < 1 || Number(month) > 12) return null;
+  if (Number(day) < 1 || Number(day) > 31) return null;
+  return `${ko[1]}-${month}-${day}`;
+}
 
 /**
  * 파일 내용을 문서로 읽는다. 순수 함수다 — 파일을 읽는 일과 해석하는 일을 나눠 둔다.
+ *
+ * 머리글을 **찾아서** 읽는다. 줄 번호를 고정하지 않는 이유: 본문을 쓰는 사람이
+ * 개발자가 아니고, 제목과 시행일 사이에 빈 줄을 두는 것이 자연스럽다. 사람에게
+ * 모양을 맞추게 하는 대신 여기서 찾는다. 날짜도 `2026년 10월 8일` 로 쓸 수 있고,
+ * 안에서는 `YYYY-MM-DD` 로 바꿔 둔다 — policy_version 과 날짜 비교가 그 모양을 쓴다.
+ *
  * 머리글이 틀렸을 때 던지지 않는다. 방침 파일 하나의 오타로 서비스가 멈추면 안 된다.
  * 대신 `ready: false` 가 되고, 그러면 화면은 "준비 중"을 말한다.
  */
 export function parseLegalDocument(id: LegalDocId, raw: string): LegalDocument {
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
+  const head = lines.slice(0, HEADER_SCAN_LINES);
 
-  const titleLine = lines[0] ?? "";
-  const title = titleLine.startsWith("# ") ? titleLine.slice(2).trim() : "";
+  const titleIndex = head.findIndex((line) => line.trim().startsWith("# "));
+  const title = titleIndex >= 0 ? head[titleIndex].trim().slice(2).trim() : "";
 
-  const dateLine = (lines[1] ?? "").trim();
-  const dateValue = dateLine.startsWith("시행일:") ? dateLine.slice("시행일:".length).trim() : "";
-  const effectiveDate = DATE.test(dateValue) ? dateValue : null;
+  const dateIndex = head.findIndex((line) => line.trim().startsWith("시행일"));
+  const effectiveDate =
+    dateIndex >= 0 ? normalizeDate(head[dateIndex].trim().replace(/^시행일\s*[:：]?/, "")) : null;
+
+  /*
+   * 본문은 머리글 **아래**부터다. 제목과 시행일 중 늦게 나온 줄 다음이고, 바로 뒤에
+   * 붙은 빈 줄과 구분선은 뗀다 — 제목 바로 아래 가로줄은 읽는 데 보탬이 없다.
+   */
+  const bodyStart = Math.max(titleIndex, dateIndex) + 1;
+  const bodyLines = lines.slice(bodyStart < 1 ? 0 : bodyStart);
+  while (
+    bodyLines.length > 0 &&
+    (bodyLines[0].trim() === "" || /^-{3,}$/.test(bodyLines[0].trim()))
+  ) {
+    bodyLines.shift();
+  }
 
   // 사업자 정보는 값을 본문에 쓰지 않고 토큰으로 쓴다. 여기서 한 번만 바꾼다.
-  const body = applyCompanyTokens(lines.slice(2).join("\n").trim());
+  const body = applyCompanyTokens(bodyLines.join("\n").trim());
   const ready = effectiveDate !== null && !body.includes(PENDING_MARK) && body !== "";
 
   return { id, title, effectiveDate, body: body.replace(PENDING_MARK, "").trim(), ready };

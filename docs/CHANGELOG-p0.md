@@ -49,3 +49,4 @@
 - 공개 전 기간에 서버가 쓰기를 받지 않게(CARETIME_WRITES). 시행일 전에는 policy_version 을 박지 않는다
 - 2026년은 베타. DEMO 자리를 베타 안내로(StageNotice). noindex 가 실제로 붙게. docs/BETA-check.md
 - 약관 렌더러가 번호 조항을 뭉치고 표를 못 그리던 것 수정. 본문에 사업자 정보를 직접 적으면 테스트가 잡는다
+- 약관·방침 본문 투입. 사업자 정보 토큰 치환, 머리글·날짜 모양을 문서에 맞춤. policy_version 은 시행일(10/08)부터

@@ -68,11 +68,38 @@ describe("문서 읽기", () => {
     expect(doc.body).not.toContain("{{상호}}");
   });
 
-  it("머리글이 틀려도 던지지 않는다 — 파일 오타로 서비스가 멈추면 안 된다", () => {
+  it("제목 표시(# )가 없으면 제목은 빈 문자열 — 던지지 않는다", () => {
+    // 콜론이 없는 `시행일 2026-10-15` 도 읽는다. 사람이 두 가지로 쓴다.
     const doc = parseLegalDocument("terms", "이용약관\n시행일 2026-10-15\n본문");
     expect(doc.title).toBe("");
-    expect(doc.effectiveDate).toBeNull();
-    expect(doc.ready).toBe(false);
+    expect(doc.effectiveDate).toBe("2026-10-15");
+  });
+
+  it("★ 시행일을 읽을 수 없으면 준비되지 않은 것으로 본다", () => {
+    for (const bad of ["# 약관\n시행일: 미정\n\n본문", "# 약관\n\n본문만 있다"]) {
+      const doc = parseLegalDocument("terms", bad);
+      expect(doc.effectiveDate, bad).toBeNull();
+      expect(doc.ready, bad).toBe(false);
+    }
+  });
+
+  it("★ 사람이 쓰는 날짜 모양을 읽고 YYYY-MM-DD 로 맞춘다", () => {
+    /*
+     * policy_version 과 날짜 비교가 YYYY-MM-DD 를 쓴다. 본문을 쓰는 사람에게 그
+     * 모양을 강요하지 않고 여기서 맞춘다 — 실제로 `2026년 10월 8일` 로 들어왔다.
+     */
+    for (const shape of ["2026-10-08", "2026년 10월 8일", "2026. 10. 8.", "2026년 10월 08일"]) {
+      const doc = parseLegalDocument("terms", `# 약관\n\n시행일: ${shape}\n\n본문`);
+      expect(doc.effectiveDate, shape).toBe("2026-10-08");
+    }
+  });
+
+  it("★ 제목과 시행일 사이에 빈 줄이 있어도 읽는다 — 그게 자연스러운 모양이다", () => {
+    const doc = parseLegalDocument("privacy", "# 방침\n\n시행일: 2026-10-08\n\n---\n\n## 1. 수집");
+    expect(doc.title).toBe("방침");
+    expect(doc.effectiveDate).toBe("2026-10-08");
+    // 제목 바로 아래 가로줄은 본문에서 뗀다.
+    expect(doc.body.startsWith("## 1. 수집")).toBe(true);
   });
 
   /*
@@ -97,7 +124,13 @@ describe("문서 읽기", () => {
     const version = currentPolicyVersion();
     const ready = loadLegalDocument("terms").ready && loadLegalDocument("privacy").ready;
 
-    expect(version !== null).toBe(ready);
+    /*
+     * 값이 있는 것은 **본문이 있고 시행일이 지났을 때**뿐이다. 본문이 들어온 뒤에도
+     * 시행일 전이면 null 이다 — 미래 날짜를 동의한 버전으로 적지 않는다.
+     */
+    const effective = loadLegalDocument("terms").effectiveDate ?? "9999-12-31";
+    const inForce = ready && todayInSeoul() >= effective;
+    expect(version !== null).toBe(inForce);
     if (version !== null) {
       // 콘솔에서 본 값으로 어느 문서인지 알 수 있어야 한다.
       expect(parsePolicyVersion(version)).not.toBeNull();
