@@ -11,6 +11,13 @@
  *    운영에 넣는 것은 사람이 결정한다.
  *
  * 검사만 하려면 npm run check:manual-hospitals — DB 를 건드리지 않는다.
+ *
+ * ── 운영에 넣을 SQL 을 뽑으려면 ────────────────────────────
+ *   npm run sql:manual-hospitals
+ *
+ * DB 에 붙지 않고 **INSERT 문만 찍는다.** 운영 콘솔에 그대로 붙여 넣는 용도다.
+ * 로컬 투입과 **같은 매핑 코드**를 쓴다 — 두 벌로 두면 리허설에서 통과한 SQL 과
+ * 운영에 붙여 넣는 SQL 이 달라질 수 있다. 그러면 리허설이 아무것도 보장하지 않는다.
  */
 
 import { readFileSync } from "node:fs";
@@ -114,7 +121,113 @@ function derivedFlags(rows: WeeklyRow[]): {
   };
 }
 
+/** SQL 문자열 리터럴. 홑따옴표만 막으면 된다 — 값은 우리가 쓴 JSON 이다. */
+function lit(value: string | number | boolean | null): string {
+  if (value === null) return "null";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
+ * 운영 콘솔에 붙여 넣을 SQL 을 찍는다. DB 에 붙지 않는다.
+ *
+ * upsert 로 쓴다. 배치가 나중에 같은 병원을 가져와도 새 행이 생기지 않아야 하고,
+ * 두 번 붙여 넣어도 결과가 같아야 한다 — 콘솔 작업은 두 번 눌리는 일이 흔하다.
+ */
+function printSql(hospitals: ManualHospital[]): void {
+  const lines: string[] = [
+    "-- data/manual-hospitals.json → 운영 투입용 SQL",
+    "-- npm run sql:manual-hospitals 로 생성했다. 손으로 고치지 말고 JSON 을 고쳐 다시 뽑는다.",
+    "-- 두 번 실행해도 결과가 같다(upsert + 진료시간 재삽입).",
+    "begin;",
+  ];
+  let ready = 0;
+
+  for (const hospital of hospitals) {
+    const registryKey = buildRegistryKey({ sigungu: hospital.sigungu, name: hospital.name });
+    if (!registryKey || !hospital.address || !hospital.tel) {
+      lines.push(`-- 건너뜀: ${hospital.name} (이름·시군구·주소·전화가 모두 있어야 합니다)`);
+      continue;
+    }
+
+    const id = manualHospitalId(registryKey);
+    const rows = weeklyRows(id, hospital);
+    const flags = derivedFlags(rows);
+    ready += 1;
+
+    lines.push(
+      "",
+      `-- ${hospital.name}`,
+      "insert into public.hospitals (id, hpid, name, address, tel, lat, lng, sido, sigungu,",
+      "  registry_key, source, duty_div, is_moonlight, has_emergency_room,",
+      "  night_until_minutes, weekend_open, verification_state, synced_at)",
+      "values (" +
+        [
+          lit(id),
+          "null",
+          lit(hospital.name),
+          lit(hospital.address),
+          lit(hospital.tel),
+          lit(hospital.lat),
+          lit(hospital.lng),
+          lit(hospital.sido),
+          lit(hospital.sigungu),
+          lit(registryKey),
+          lit("manual"),
+          lit(hospital.dutyDiv),
+          lit(hospital.classification === "moonlight"),
+          lit(hospital.classification === "emergency"),
+          lit(flags.night_until_minutes),
+          lit(flags.weekend_open),
+          lit("PENDING"),
+          "now()",
+        ].join(", ") +
+        ")",
+      "on conflict (id) do update set",
+      "  name = excluded.name, address = excluded.address, tel = excluded.tel,",
+      "  lat = excluded.lat, lng = excluded.lng, sido = excluded.sido, sigungu = excluded.sigungu,",
+      "  registry_key = excluded.registry_key, duty_div = excluded.duty_div,",
+      "  is_moonlight = excluded.is_moonlight, has_emergency_room = excluded.has_emergency_room,",
+      "  night_until_minutes = excluded.night_until_minutes, weekend_open = excluded.weekend_open,",
+      "  synced_at = now();",
+      `delete from public.hospital_weekly_hours where hospital_id = ${lit(id)};`,
+    );
+
+    if (rows.length === 0) {
+      lines.push("-- 진료시간 없음 — '지금 열었나'에 답할 수 없다. 확인되면 JSON 을 고쳐 다시 뽑는다.");
+    } else {
+      lines.push(
+        "insert into public.hospital_weekly_hours (hospital_id, day, open_minutes, close_minutes) values",
+        rows
+          .map(
+            (row, i) =>
+              `  (${lit(row.hospital_id)}, ${row.day}, ${row.open_minutes}, ${row.close_minutes})` +
+              (i === rows.length - 1 ? ";" : ","),
+          )
+          .join("\n"),
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "commit;",
+    "",
+    "-- 확인",
+    "select id, name, tel, sigungu from public.hospitals where source = 'manual' order by name;",
+    `-- → ${ready}행`,
+  );
+  console.log(lines.join("\n"));
+}
+
 async function main(): Promise<void> {
+  const raw0 = readFileSync(new URL("../data/manual-hospitals.json", import.meta.url), "utf8");
+  if (process.argv.includes("--sql")) {
+    printSql((JSON.parse(raw0) as { hospitals: ManualHospital[] }).hospitals);
+    return;
+  }
+
   const env = readEnvLocal();
   const url = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 

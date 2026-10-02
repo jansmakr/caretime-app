@@ -60,6 +60,24 @@ async function makeSession(lastSeenDaysAgo = 0): Promise<string> {
   return ((await res.json()) as { id: string }[])[0].id;
 }
 
+/** 의료기관 추가 요청 한 건. 이름에 표시를 붙여 정리할 수 있게 한다. */
+async function makeHospitalRequest(input: {
+  guestId: string | null;
+  createdDaysAgo: number;
+}): Promise<string> {
+  const res = await fetch(`${REST}/hospital_requests`, {
+    method: "POST",
+    headers: { ...admin, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      name: `${MARK}의원`,
+      guest_id: input.guestId,
+      created_at: daysAgo(input.createdDaysAgo),
+    }),
+  });
+  if (!res.ok) throw new Error(`요청 생성 실패 → ${await res.text()}`);
+  return ((await res.json()) as { id: string }[])[0].id;
+}
+
 async function makeReport(guestId: string | null, createdDaysAgo: number): Promise<string> {
   const res = await fetch(`${REST}/field_reports`, {
     method: "POST",
@@ -322,13 +340,7 @@ describe("게스트 세션 — 글은 남고 연결만 끊긴다", () => {
 describe("의료기관 추가 요청 — 세션보다 오래 남는다", () => {
   it("★ 세션이 지워져도 요청은 남는다. 다음 지역 판단 근거다", async () => {
     const session = await makeSession(RETENTION_DAYS.guest_sessions + 1);
-    const res = await fetch(`${REST}/hospital_requests`, {
-      method: "POST",
-      headers: { ...admin, "Content-Type": "application/json", Prefer: "return=representation" },
-      body: JSON.stringify({ name: "보관테스트의원", guest_id: session }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const id = ((await res.json()) as { id: string }[])[0].id;
+    const id = await makeHospitalRequest({ guestId: session, createdDaysAgo: 0 });
 
     await purge();
 
@@ -337,6 +349,33 @@ describe("의료기관 추가 요청 — 세션보다 오래 남는다", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].guest_id).toBeNull();
+  }, TEST_MS);
+
+  it("★ 기간이 지난 요청은 지워진다 — 영구 보관이 아니다", async () => {
+    /*
+     * 1년이 지난 요청은 그 지역 사정이 바뀌었을 수 있어 근거로 쓰지 않는다.
+     * 자유 입력(이름·대략 위치)이 들어 있는 표라 "근거로 안 쓰는 값"을 들고 있을
+     * 이유가 없다.
+     */
+    const id = await makeHospitalRequest({
+      guestId: null,
+      createdDaysAgo: RETENTION_DAYS.hospital_requests + 1,
+    });
+
+    await purge();
+
+    expect(await sql<unknown[]>(`hospital_requests?id=eq.${id}&select=id`)).toEqual([]);
+  }, TEST_MS);
+
+  it("기간 안의 요청은 남는다", async () => {
+    const id = await makeHospitalRequest({
+      guestId: null,
+      createdDaysAgo: RETENTION_DAYS.hospital_requests - 1,
+    });
+
+    await purge();
+
+    expect(await sql<unknown[]>(`hospital_requests?id=eq.${id}&select=id`)).toHaveLength(1);
   }, TEST_MS);
 });
 

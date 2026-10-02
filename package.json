@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "seed:localuser": "tsx scripts/seed-local-testuser.ts",
     "check:manual-hospitals": "tsx scripts/check-manual-hospitals.ts",
-    "import:manual-hospitals": "tsx scripts/import-manual-hospitals.ts"
+    "import:manual-hospitals": "tsx scripts/import-manual-hospitals.ts",
+    "sql:manual-hospitals": "tsx scripts/import-manual-hospitals.ts --sql"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

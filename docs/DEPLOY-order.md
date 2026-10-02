@@ -4,6 +4,99 @@
 
 지금 migration 10개가 로컬에만 있다. 1차 출시 직전에 올린다.
 
+---
+
+# 적용 직전 점검 목록
+
+**이 목록을 위에서 아래로 하나씩 한다.** 각 항목의 자세한 설명은 아래 절들에 있다.
+중간에 막히면 멈추고, 그 지점을 고친 뒤 처음부터 다시 본다 — 되돌리는 스크립트가
+없기 때문이다.
+
+## A. 올리기 전 (로컬에서)
+
+- [ ] `supabase db reset` 이 처음부터 깨끗하게 돌았다
+- [ ] `npm run seed:localuser` · `npm run import:manual-hospitals` 가 끝났다
+- [ ] `npm run build` · `npx tsc --noEmit` 통과
+- [ ] `npm run test` · `npm run test:realtime` 통과
+- [ ] `supabase db diff` → **No schema changes found**
+- [ ] 로컬 리허설을 한 번 했다 (아래 「리허설」 절)
+
+## B. 어느 프로젝트에 올리는가
+
+- [ ] `supabase projects list` 로 ref 를 눈으로 확인했다
+- [ ] `supabase link --project-ref <ref>` 를 그 ref 로 했다
+- [ ] **`supabase db push --dry-run` 결과가 10개 파일이고 그 외에 없다**
+
+## C. 가짜 데이터가 운영에 들어가지 않는가
+
+- [ ] **`supabase/seed.sql` 을 적용하지 않는다.** 가상 병원 5곳(`가상한빛외과의원` 등)이
+      들어 있다. `db push` 는 seed 를 올리지 않지만, `db reset --linked` 같은 명령은
+      올린다 — **운영을 대상으로 `db reset` 을 쓰지 않는다**
+- [ ] 적용 후 `select count(*) from hospitals where name like '가상%';` → **0**
+
+## D. 올린다
+
+- [ ] `supabase db push`
+- [ ] 4번(`20260929`)과 5번(`20260930`) 사이에서 멈추지 않았다 — 한 번에 이어서 돌았다
+
+## E. 올린 직후 SQL 로 확인 (아래 「적용 후 확인」의 질의들)
+
+- [ ] 공개 뷰가 다 생겼다
+- [ ] **anon 이 쓸 수 있는 표가 0개** (`cmd='INSERT'` + `anon` 정책 0행)
+- [ ] 신고 자동 격리 트리거 `quarantine_on_report` 가 있다
+- [ ] `select * from cron.job;` → **두 줄**
+      (`purge-expired` `0 19 * * *` · `close-stale-reports` `0 18 * * *`)
+      → 없으면 pg_cron 이 없는 것이다. **방침에 적은 보관 기간이 지켜지지 않는다**
+- [ ] `select * from public.purge_health();` 가 같은 두 줄을 돌려준다
+- [ ] `select subject, keep_days from public.retention_policy;` → 6행
+- [ ] `reports_single_reporter` 제약이 `NOT (... AND ...)` 모양이다
+      (`<>` 가 보이면 10번이 안 올라간 것 — 세션 삭제가 실패하고 그날의 삭제가 멈춘다)
+
+## F. 수동 병원 2곳
+
+- [ ] 콘솔 SQL 로 넣었다 (`npm run import:manual-hospitals` 는 로컬 전용 가드가 있다)
+- [ ] `select id, name, tel from hospitals where id like 'm%';` → 2행, 전화번호가 맞다
+
+## G. 환경변수 (Vercel Project Settings → Environment Variables)
+
+- [ ] `SUPABASE_SERVICE_ROLE_KEY` 가 들어 있다 —
+      **`NEXT_PUBLIC_` 접두사가 붙어 있지 않다.** 붙으면 브라우저 번들로 새고 RLS 가
+      무의미해진다. 이름을 눈으로 다시 읽는다
+- [ ] `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` 가 운영 프로젝트 값이다
+- [ ] **`NEXT_PUBLIC_DEMO_CONTENT` 가 없다** (또는 `0`). 있으면 가상 병원·가상 제보가 켜진다
+- [ ] `NEXT_PUBLIC_FIELD_TALK_LIVE` 는 설정하지 않는다 (기본 켜짐). 장애 때 `0` 으로 닫는다
+
+## H. 배포와 리전
+
+- [ ] `vercel.json` 이 저장소에 있다 (`{ "regions": ["icn1"] }`)
+- [ ] 배포가 리전 때문에 거부되지 않았다 — 무료 요금제는 리전을 **하나만** 고를 수 있다.
+      거부되면 그 메시지를 그대로 남긴다
+- [ ] 배포 후 함수 리전이 실제로 서울인지 본다:
+      `vercel inspect <배포 URL>` 또는 Project → Functions 탭의 Region 표시 → `icn1`
+- [ ] 미국 리전으로 떨어졌으면 **방침의 국외 이전 조항이 필요해진다.** 그대로 두지 않는다
+
+## I. 띄워서 읽는다 (운영 주소로)
+
+- [ ] `/` — 주 버튼이 현장톡 하나다
+- [ ] `/chat` — 빈 방 안내가 나온다. **글 1건을 실제로 써 본다**
+- [ ] 그 글이 다른 브라우저(시크릿 창)에서도 보인다
+- [ ] 쓴 브라우저에서 그 글 옆 **[삭제] → [지운다]** 로 지워진다. 시크릿 창에서도 사라진다
+- [ ] 전화번호가 섞인 글은 거절된다 (예: `010-1234-5678` 을 적어 본다)
+- [ ] `/hospital/<수동 병원 id>` — 주소·전화가 맞다. 전화 버튼이 눌린다
+- [ ] `/partner`, `/partner/login` — **404**
+- [ ] `/terms`, `/privacy` — 본문이 나온다 (본문을 넣은 뒤라면). 하단 동의 링크도 보인다
+- [ ] HTML 에 `가상` 이 없다
+
+## J. 다음 날
+
+- [ ] `select * from public.purge_health();` 의 `last_run_at` 에 시각이 찍혔다
+      → 비어 있으면 크론이 등록만 되고 돌지 않았다
+- [ ] `select count(*) from public.reports where state in ('OPEN','REVIEWING')
+       and created_at < now() - interval '7 days';` → 0
+      (운영 질의는 [OPS-moderation.md](OPS-moderation.md))
+
+---
+
 ## 적용 전 확인
 
 ```bash
@@ -18,6 +111,45 @@ npm run test:realtime
 supabase db diff
 # → "No schema changes found" 가 아니면 적용하지 않는다
 ```
+
+## 리허설 — 운영에서 처음 하지 않는다
+
+운영에서 중간에 막히면 되돌리기 어렵다(되돌리는 스크립트가 없다). **리허설에서
+걸리는 것은 운영에서도 걸린다.** 그래서 빈 DB 에 migration 만 올리는 연습을 한다.
+
+`db reset` 과 다른 점은 **`--no-seed`** 다. 평소 리셋은 `supabase/seed.sql`(가상 병원
+5곳)까지 넣으므로, 그 상태로는 "운영에 가짜가 안 들어가는가"를 확인할 수 없다.
+
+```bash
+# 1. 빈 DB + migration 만 (seed.sql 없이)
+supabase db reset --no-seed --local
+
+# 2. 가짜가 없는지. 여기서 0 이 아니면 운영에도 들어간다
+docker exec supabase_db_caretime psql -U postgres -d postgres   -c "select count(*) as 가상 from hospitals where name like '가상%';"   -c "select count(*) as 병원 from hospitals;"
+# → 가상 0 / 병원 0
+
+# 3. 수동 병원 2곳 — **운영에 붙여 넣을 그 SQL 로** 넣는다
+npm run sql:manual-hospitals > /tmp/manual.sql
+docker exec -i supabase_db_caretime psql -U postgres -d postgres < /tmp/manual.sql
+# → 2행. 한 번 더 실행해도 2행이어야 한다(두 번 눌리는 일이 흔하다)
+
+# 4. 적용 후 확인 질의들 (아래 「적용 후 확인」 절 전체)
+
+# 5. 화면이 뜨는가
+npm run build && npm run start   # 다른 포트를 쓸 때는 next start -p 3001
+```
+
+`npm run sql:manual-hospitals` 는 DB 에 붙지 않고 INSERT 문만 찍는다.
+**로컬 투입(`import:manual-hospitals`)과 같은 매핑 코드를 쓴다** — 두 벌로 두면
+리허설에서 통과한 SQL 과 운영에 붙여 넣는 SQL 이 달라지고, 그러면 리허설이
+아무것도 보장하지 않는다. 손으로 고치지 말고 `data/manual-hospitals.json` 을 고쳐
+다시 뽑는다.
+
+### 리허설 결과
+
+| 돌린 날 | 결과 |
+|---|---|
+| (아직) | Docker Desktop 이 멈춰서 돌리지 못했다. 뜨면 돌리고 이 줄을 채운다 |
 
 ## 순서
 
