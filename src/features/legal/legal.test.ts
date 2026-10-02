@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { parseLegalDocument } from "./documents";
-import { formatPolicyVersion, parsePolicyVersion } from "./version";
+import { COMPANY, applyCompanyTokens, unknownTokens } from "./company";
+import { loadLegalDocument, parseLegalDocument } from "./documents";
+import { currentPolicyVersion, formatPolicyVersion, parsePolicyVersion } from "./version";
 
 /**
  * 방침 문서를 읽는 규칙.
@@ -55,11 +56,75 @@ describe("문서 읽기", () => {
     expect(doc.ready).toBe(false);
   });
 
-  it("실제 저장소의 두 파일은 아직 준비되지 않았다", async () => {
-    // 본문을 받으면 이 테스트가 깨진다. 그때 기대값을 true 로 바꾸는 것이 '적용'이다.
-    const { loadLegalDocument } = await import("./documents");
-    expect(loadLegalDocument("terms").ready).toBe(false);
-    expect(loadLegalDocument("privacy").ready).toBe(false);
+  /*
+   * 전에는 "두 파일은 아직 준비되지 않았다(false)"를 고정해 두고, 본문을 받으면
+   * 손으로 true 로 바꾸게 했다. 그 방식을 버렸다 — 기대값을 손으로 뒤집는 테스트는
+   * 본문이 들어온 날 **고치는 사람이 무엇을 확인해야 하는지**를 알려 주지 않는다.
+   * 지금은 상태가 아니라 **규칙**을 고정한다. 본문이 없을 때도, 들어온 뒤에도 그대로
+   * 통과하고, 어긋난 조합에서만 깨진다.
+   */
+  it("★ 두 문서는 함께 준비된다 — 한쪽만 켜지지 않는다", () => {
+    const terms = loadLegalDocument("terms");
+    const privacy = loadLegalDocument("privacy");
+
+    /*
+     * 하나만 준비되면 하단 링크가 한쪽만 가리키거나, 동의 문구가 없는 문서를
+     * 가리킨다. policy_version 도 그 경우 null 이라 "동의한 버전"을 잃는다.
+     */
+    expect(terms.ready).toBe(privacy.ready);
+  });
+
+  it("★ 준비됐다면 policy_version 이 만들어지고 되읽힌다", () => {
+    const version = currentPolicyVersion();
+    const ready = loadLegalDocument("terms").ready && loadLegalDocument("privacy").ready;
+
+    expect(version !== null).toBe(ready);
+    if (version !== null) {
+      // 콘솔에서 본 값으로 어느 문서인지 알 수 있어야 한다.
+      expect(parsePolicyVersion(version)).not.toBeNull();
+    }
+  });
+
+  it("★ 본문에 바꾸지 못한 토큰이 없다 — 오타 하나가 공개된다", () => {
+    for (const id of ["terms", "privacy"] as const) {
+      const doc = loadLegalDocument(id);
+      /*
+       * 사업자 정보는 토큰으로 적는다(features/legal/company). 토큰 이름을 틀리면
+       * 화면에 `{{상호}}` 가 그대로 나간다. 조용히 빈칸으로 만들지 않는 대신
+       * 여기서 잡는다.
+       */
+      expect(unknownTokens(doc.body), `${id}: 모르는 토큰`).toEqual([]);
+    }
+  });
+});
+
+describe("사업자 정보 — 한 곳에서만 적는다", () => {
+  it("★ 문서 본문의 토큰이 같은 값으로 바뀐다", () => {
+    const filled = applyCompanyTokens(
+      "상호 {{상호}} / 대표 {{대표자}} / 번호 {{사업자등록번호}} / " +
+        "주소 {{주소}} / 책임자 {{보호책임자}} / 메일 {{이메일}}",
+    );
+    expect(filled).toBe(
+      `상호 ${COMPANY.name} / 대표 ${COMPANY.ceo} / 번호 ${COMPANY.registrationNumber} / ` +
+        `주소 ${COMPANY.address} / 책임자 ${COMPANY.privacyOfficer} / 메일 ${COMPANY.email}`,
+    );
+  });
+
+  it("모르는 토큰은 바꾸지 않고 그대로 남긴다 — 빈칸이 되면 안 보인다", () => {
+    const text = "담당 {{담당자}}";
+    expect(applyCompanyTokens(text)).toBe(text);
+    expect(unknownTokens(text)).toEqual(["{{담당자}}"]);
+  });
+
+  it("값이 비어 있지 않다", () => {
+    for (const [key, value] of Object.entries(COMPANY)) {
+      expect(value.trim().length, key).toBeGreaterThan(1);
+    }
+  });
+
+  it("★ 이메일 모양이고, 그 값이 토큰 표와 같다", () => {
+    expect(COMPANY.email).toMatch(/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i);
+    expect(applyCompanyTokens("{{이메일}}")).toBe(COMPANY.email);
   });
 });
 

@@ -1,32 +1,62 @@
 import Link from "next/link";
+import { COMPANY } from "@/features/legal/company";
 import { LEGAL_DOC_PATH } from "@/features/legal/documents";
 import { areLegalDocsReady } from "@/features/legal/version";
 
 /**
- * 보호자 화면 맨 아래 한 줄.
+ * 보호자 화면 맨 아래.
  *
- * **문서가 준비되기 전에는 아무것도 그리지 않는다.** 빈 방침으로 가는 링크를 만들지
- * 않고, 동의했다고 적지도 않는다. 준비 여부는 파일 머리글의 시행일로 판정한다
- * (features/legal/documents). 그래서 본문을 넣는 것만으로 이 줄이 생긴다 —
- * 코드를 또 고칠 필요가 없다.
+ * 두 묶음이고 켜지는 조건이 다르다.
+ *
+ *   ① 사업자 정보 — **항상 보인다.** 표기 의무는 약관이 있는지와 무관하다.
+ *      값은 features/legal/company 한 곳에서 읽는다. 문서 본문도 같은 값을 토큰으로
+ *      읽으므로 주소나 보호책임자가 바뀌면 한 곳만 고치면 된다.
+ *
+ *   ② 약관·방침 링크와 동의 문구 — **문서가 준비된 뒤에만.** 빈 방침으로 가는 링크를
+ *      만들지 않고, 동의했다고 적지도 않는다. 판정은 파일 머리글의 시행일이다
+ *      (features/legal/documents). 본문을 넣는 것만으로 켜진다.
  *
  * 서버 컴포넌트다. 파일을 읽으므로 클라이언트에서 부르지 않는다.
- * /more 에는 이 줄을 쓰지 않는다 — 그쪽은 준비 중이라는 사실까지 적어 둔다.
  */
 export function LegalFooter() {
-  if (!areLegalDocsReady()) return null;
+  const ready = areLegalDocsReady();
 
   return (
-    <p className="px-5 pb-4 text-[12.5px] leading-relaxed text-ink-faint">
-      글을 남기면{" "}
-      <Link href={LEGAL_DOC_PATH.terms} className="font-semibold text-ink-muted underline">
-        이용약관
-      </Link>
-      {" 과 "}
-      <Link href={LEGAL_DOC_PATH.privacy} className="font-semibold text-ink-muted underline">
-        개인정보 처리방침
-      </Link>
-      에 동의하는 것으로 봅니다. 로그인 없이 이용하며 이름·연락처는 저장하지 않습니다.
-    </p>
+    <footer className="px-5 pb-5 pt-2">
+      {ready && (
+        <p className="text-[12.5px] leading-relaxed text-ink-faint">
+          글을 남기면{" "}
+          <Link href={LEGAL_DOC_PATH.terms} className="font-semibold text-ink-muted underline">
+            이용약관
+          </Link>
+          {" 과 "}
+          <Link href={LEGAL_DOC_PATH.privacy} className="font-semibold text-ink-muted underline">
+            개인정보 처리방침
+          </Link>
+          에 동의하는 것으로 봅니다. 로그인 없이 이용하며 이름·연락처는 저장하지 않습니다.
+        </p>
+      )}
+
+      {/*
+        사업자 정보. 줄을 나눠 적는다 — 한 줄로 이으면 좁은 화면에서 끊어 읽기 어렵다.
+        전화번호를 적지 않는다. 운영 문의는 이메일로 받는다(응급은 119 다).
+
+        dl + sr-only 라벨로 짜다가 되돌렸다. 라벨을 숨긴 채 값 앞에 또 적으니
+        화면에는 한 번, 스크린리더에는 두 번 읽혔다. 띄워서 읽고 찾았다.
+      */}
+      <address className={`not-italic text-[12px] leading-relaxed text-ink-faint ${ready ? "mt-3" : ""}`}>
+        <span className="font-semibold text-ink-muted">{COMPANY.name}</span>
+        {` 대표 ${COMPANY.ceo}`}
+        <br />
+        {`사업자등록번호 ${COMPANY.registrationNumber}`}
+        <br />
+        {COMPANY.address}
+        <br />
+        {`개인정보 보호책임자 ${COMPANY.privacyOfficer} · `}
+        <a href={`mailto:${COMPANY.email}`} className="underline">
+          {COMPANY.email}
+        </a>
+      </address>
+    </footer>
   );
 }

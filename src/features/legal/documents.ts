@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { applyCompanyTokens } from "./company";
 
 /**
  * 약관 · 개인정보 처리방침.
@@ -7,6 +8,9 @@ import { join } from "node:path";
  * 본문은 `docs/legal/*.md` 에 있고 라우트가 그것을 그대로 읽는다. 코드에 넣지 않는
  * 이유: 법무 문구는 개발자가 아닌 사람이 고치고, 고칠 때마다 소스 파일을 손대야 하면
  * "일단 코드에 적어 두고 나중에"가 된다.
+ *
+ * 본문의 사업자 정보는 토큰으로 적는다(`{{상호}}` 등). 값은 features/legal/company
+ * 한 곳에 있고 푸터도 같은 값을 읽는다 — 두 군데에 적으면 갈라진다.
  *
  * **준비되지 않은 상태를 구분한다.** 시행일이 `미정` 이거나 본문대기 표시가 남아
  * 있으면 준비되지 않은 것으로 보고, 하단 동의 문구와 링크를 아예 내린다 —
