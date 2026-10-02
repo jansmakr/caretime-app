@@ -1,76 +1,113 @@
 import type { LegalDocument } from "@/features/legal/documents";
+import { parseLegalBlocks, type LegalBlock } from "@/features/legal/markdown";
 
 /**
- * 약관 · 방침 본문 그리기.
+ * 약관·방침 본문 그리기.
  *
- * 마크다운 전부를 그리지 않는다. 방침 본문에 실제로 필요한 것은 소제목·문단·목록·
- * 굵은 글씨 넷이다(docs/legal/README.md 의 표). 라이브러리를 하나 더 붙이는 대신
- * 그 넷만 그린다 — 본문은 사용자가 쓴 글이 아니라 우리가 넣은 파일이므로
- * 임의 HTML 을 해석할 이유가 없다. 해석하지 않으니 끼워 넣기 사고가 날 자리도 없다.
+ * 읽는 양이 많은 화면이라 본문 15px 을 지킨다(UI 원칙 2). 줄바꿈은 저자가 쓴 대로
+ * 둔다 — 조항 번호와 줄 구분이 문서의 일부다(features/legal/markdown).
  *
- * 글자 크기는 본문 15px 이다. 읽을 양이 많은 화면이라 더 작게 두지 않는다(UI 원칙 2).
+ * ── 표를 좁은 화면에서 어떻게 그리는가 ──────────────────────
+ * **가로로 넘치지 않는 것이 표처럼 보이는 것보다 중요하다.** 360px 에서 가로
+ * 스크롤이 생기면 오른쪽 칸을 못 읽고, 방침은 끝까지 읽혀야 하는 글이다.
+ *
+ *   · 두 칸 표  → 라벨/값 두 줄로 쌓는다. 좁은 화면에서도 표처럼 읽힌다.
+ *   · 세 칸 이상 → 한 행을 덩이로 쌓는다. 첫 칸이 제목, 나머지는 "머리글 값".
+ *
+ * 그래서 `<table>` 을 쓰지 않는다. 쓰면 어느 폭에서는 반드시 넘친다.
  */
 export function LegalBody({ document }: { document: LegalDocument }) {
-  return <div className="space-y-3">{blocks(document.body).map(render)}</div>;
+  return <div className="space-y-3">{parseLegalBlocks(document.body).map(render)}</div>;
 }
 
-type Block =
-  | { kind: "heading"; level: 2 | 3; text: string }
-  | { kind: "list"; items: string[] }
-  | { kind: "paragraph"; text: string };
+function render(block: LegalBlock, i: number) {
+  switch (block.kind) {
+    case "heading":
+      return block.level === 2 ? (
+        <h2 key={i} className="break-keep pt-3 text-[18px] font-bold leading-snug">
+          {bold(block.text)}
+        </h2>
+      ) : (
+        <h3 key={i} className="break-keep pt-2 text-[16px] font-bold leading-snug">
+          {bold(block.text)}
+        </h3>
+      );
 
-/** 빈 줄로 덩이를 나누고, 덩이의 첫 글자로 종류를 정한다. */
-function blocks(body: string): Block[] {
-  const out: Block[] = [];
-  for (const chunk of body.split(/\n{2,}/)) {
-    const lines = chunk.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) continue;
+    case "rule":
+      return <hr key={i} className="my-1 border-line" />;
 
-    if (lines[0].startsWith("### ")) {
-      out.push({ kind: "heading", level: 3, text: lines[0].slice(4) });
-      if (lines.length > 1) out.push({ kind: "paragraph", text: lines.slice(1).join(" ") });
-      continue;
-    }
-    if (lines[0].startsWith("## ")) {
-      out.push({ kind: "heading", level: 2, text: lines[0].slice(3) });
-      if (lines.length > 1) out.push({ kind: "paragraph", text: lines.slice(1).join(" ") });
-      continue;
-    }
-    if (lines.every((l) => l.startsWith("- "))) {
-      out.push({ kind: "list", items: lines.map((l) => l.slice(2)) });
-      continue;
-    }
-    out.push({ kind: "paragraph", text: lines.join(" ") });
-  }
-  return out;
-}
+    case "bullets":
+      return (
+        <ul key={i} className="list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-ink">
+          {block.items.map((item, k) => (
+            <li key={k} className="break-keep">
+              {bold(item)}
+            </li>
+          ))}
+        </ul>
+      );
 
-function render(block: Block, i: number) {
-  if (block.kind === "heading") {
-    return block.level === 2 ? (
-      <h2 key={i} className="pt-3 text-[18px] font-bold leading-snug">
-        {bold(block.text)}
-      </h2>
-    ) : (
-      <h3 key={i} className="pt-2 text-[16px] font-bold leading-snug">
-        {bold(block.text)}
-      </h3>
-    );
+    case "quote":
+      return (
+        <blockquote
+          key={i}
+          className="rounded-field bg-fill px-3.5 py-2.5 text-[14.5px] leading-relaxed text-ink-muted"
+        >
+          {block.lines.map((line, k) => (
+            <span key={k} className="block break-keep">
+              {bold(line)}
+            </span>
+          ))}
+        </blockquote>
+      );
+
+    case "lines":
+      /*
+       * 한 줄이 한 줄로 남는다. 전에는 붙어 있는 줄을 공백으로 이어 붙여 한 문단으로
+       * 만들었다 — 번호 조항이 통째로 뭉쳤다.
+       */
+      return (
+        <p key={i} className="text-[15px] leading-relaxed text-ink">
+          {block.items.map((line, k) => (
+            <span key={k} className="block break-keep">
+              {bold(line)}
+            </span>
+          ))}
+        </p>
+      );
+
+    case "table":
+      return block.head.length <= 2 ? (
+        <dl key={i} className="divide-y divide-line rounded-field bg-fill px-4">
+          {block.rows.map((row, k) => (
+            <div key={k} className="py-2.5">
+              <dt className="break-keep text-[13px] font-semibold text-ink-faint">{bold(row[0])}</dt>
+              <dd className="mt-0.5 break-keep text-[15px] leading-relaxed text-ink">
+                {bold(row[1] ?? "")}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <div key={i} className="divide-y divide-line rounded-field bg-fill px-4">
+          {block.rows.map((row, k) => (
+            <div key={k} className="py-2.5">
+              <p className="break-keep text-[15px] font-bold leading-snug text-ink">
+                {bold(row[0])}
+              </p>
+              {row.slice(1).map((cell, c) =>
+                cell === "" ? null : (
+                  <p key={c} className="mt-0.5 break-keep text-[14px] leading-relaxed text-ink-muted">
+                    <span className="text-ink-faint">{block.head[c + 1]} </span>
+                    {bold(cell)}
+                  </p>
+                ),
+              )}
+            </div>
+          ))}
+        </div>
+      );
   }
-  if (block.kind === "list") {
-    return (
-      <ul key={i} className="list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-ink">
-        {block.items.map((item, k) => (
-          <li key={k}>{bold(item)}</li>
-        ))}
-      </ul>
-    );
-  }
-  return (
-    <p key={i} className="text-[15px] leading-relaxed text-ink">
-      {bold(block.text)}
-    </p>
-  );
 }
 
 /** `**굵게**` 만 해석한다. 나머지 기호는 글자 그대로 둔다. */

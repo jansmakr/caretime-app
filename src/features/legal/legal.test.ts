@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { COMPANY, applyCompanyTokens, unknownTokens } from "./company";
-import { loadLegalDocument, parseLegalDocument } from "./documents";
+import { LEGAL_DOC_IDS, loadLegalDocument, parseLegalDocument, readLegalSource } from "./documents";
 import {
   currentPolicyVersion,
   formatPolicyVersion,
@@ -52,6 +52,20 @@ describe("문서 읽기", () => {
 
   it("★ 본문이 비어 있으면 준비되지 않은 것으로 본다", () => {
     expect(parseLegalDocument("terms", "# 이용약관\n시행일: 2026-10-15\n\n").ready).toBe(false);
+  });
+
+  it("★ 본문의 사업자 정보 토큰이 실제로 바뀐다 — 파서에 연결돼 있는가", () => {
+    /*
+     * applyCompanyTokens 가 **호출되고 있는지**를 본다. 함수만 따로 테스트하면
+     * 파서에 연결하는 줄이 빠져도 통과한다 — 실제로 그렇게 빠져 있었고,
+     * 띄워서 `{{상호}}` 가 화면에 그대로 찍힌 것을 보고 찾았다.
+     */
+    const doc = parseLegalDocument(
+      "terms",
+      "# 이용약관\n시행일: 2026-10-08\n\n본 약관은 {{상호}}가 운영합니다.",
+    );
+    expect(doc.body).toContain(COMPANY.name);
+    expect(doc.body).not.toContain("{{상호}}");
   });
 
   it("머리글이 틀려도 던지지 않는다 — 파일 오타로 서비스가 멈추면 안 된다", () => {
@@ -178,5 +192,45 @@ describe("시행일 — 오기 전에는 효력이 없다", () => {
      * 세 경우 모두 "지금 시행 중인가"를 묻는 한 함수로 답한다.
      */
     expect(currentPolicyVersion()).toBeNull();
+  });
+});
+
+describe("문서 본문에 사업자 정보를 직접 적지 않는다", () => {
+  /*
+   * 값을 본문에 적으면 푸터와 문서가 갈라진다. 주소를 옮기거나 보호책임자가 바뀌는
+   * 날 한쪽만 고쳐지고, 표기 의무가 있는 값이라 "둘 중 하나가 틀린" 상태가 그대로
+   * 위반이다. 그래서 본문에는 토큰을 쓰고 값은 company.ts 한 곳에 둔다.
+   *
+   * 이 테스트는 **원문**을 본다(토큰을 바꾸기 전). 바꾼 뒤를 보면 토큰으로 적은
+   * 것과 직접 적은 것이 같아 보여 아무것도 못 잡는다.
+   */
+  const SHOULD_BE_TOKEN: [value: string, token: string][] = [
+    [COMPANY.name, "{{상호}}"],
+    [COMPANY.address, "{{주소}}"],
+    [COMPANY.registrationNumber, "{{사업자등록번호}}"],
+    [COMPANY.email, "{{이메일}}"],
+  ];
+
+  for (const id of LEGAL_DOC_IDS) {
+    it(`★ ${id}: 값이 아니라 토큰으로 적혀 있다`, () => {
+      const source = readLegalSource(id);
+      const typed = SHOULD_BE_TOKEN.filter(([value]) => source.includes(value)).map(
+        ([value, token]) => `${value} → ${token}`,
+      );
+      /*
+       * 깨지면 고치는 방법이 메시지에 있다. 본문의 그 값을 토큰으로 바꾸면 된다 —
+       * 화면에는 같은 글자가 나가고, 바꾸는 곳만 한 곳이 된다.
+       */
+      expect(typed, `${id} 본문에 직접 적힌 값: ${typed.join(" / ")}`).toEqual([]);
+    });
+  }
+
+  it("대표자·보호책임자 이름은 검사하지 않는다 — 두 글자 이름이 본문에 우연히 섞인다", () => {
+    /*
+     * "박대수"·"강혁" 같은 짧은 이름은 다른 문장에 우연히 들어갈 수 있다. 잘못 잡는
+     * 테스트는 고치려고 본문을 비틀게 만든다. 그 둘은 토큰을 쓰라고 README 에 적고
+     * 검사는 하지 않는다. 적지 않기로 한 것을 적어 두는 쪽을 골랐다.
+     */
+    expect(SHOULD_BE_TOKEN.map(([, token]) => token)).not.toContain("{{대표자}}");
   });
 });

@@ -19,6 +19,8 @@ import { applyCompanyTokens } from "./company";
 
 export type LegalDocId = "terms" | "privacy";
 
+export const LEGAL_DOC_IDS: readonly LegalDocId[] = ["terms", "privacy"];
+
 export const LEGAL_DOC_FILE: Record<LegalDocId, string> = {
   terms: "terms.md",
   privacy: "privacy.md",
@@ -61,7 +63,8 @@ export function parseLegalDocument(id: LegalDocId, raw: string): LegalDocument {
   const dateValue = dateLine.startsWith("시행일:") ? dateLine.slice("시행일:".length).trim() : "";
   const effectiveDate = DATE.test(dateValue) ? dateValue : null;
 
-  const body = lines.slice(2).join("\n").trim();
+  // 사업자 정보는 값을 본문에 쓰지 않고 토큰으로 쓴다. 여기서 한 번만 바꾼다.
+  const body = applyCompanyTokens(lines.slice(2).join("\n").trim());
   const ready = effectiveDate !== null && !body.includes(PENDING_MARK) && body !== "";
 
   return { id, title, effectiveDate, body: body.replace(PENDING_MARK, "").trim(), ready };
@@ -76,9 +79,19 @@ export function parseLegalDocument(id: LegalDocId, raw: string): LegalDocument {
  */
 export function loadLegalDocument(id: LegalDocId): LegalDocument {
   try {
-    const raw = readFileSync(join(process.cwd(), "docs", "legal", LEGAL_DOC_FILE[id]), "utf8");
-    return parseLegalDocument(id, raw);
+    return parseLegalDocument(id, readLegalSource(id));
   } catch {
     return { id, title: "", effectiveDate: null, body: "", ready: false };
   }
+}
+
+/**
+ * 파일 원문. **토큰을 바꾸지 않은 상태**다.
+ *
+ * `loadLegalDocument` 는 사업자 정보 토큰을 값으로 바꿔서 돌려주므로, "본문에 값이
+ * 직접 적혀 있는가"를 그 결과로는 알 수 없다 — 바뀐 값과 직접 적은 값이 같아 보인다.
+ * 그래서 원문을 읽는 길을 따로 둔다. 테스트가 쓴다.
+ */
+export function readLegalSource(id: LegalDocId): string {
+  return readFileSync(join(process.cwd(), "docs", "legal", LEGAL_DOC_FILE[id]), "utf8");
 }
