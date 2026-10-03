@@ -40,8 +40,15 @@ export interface RetentionRule {
  * 기간을 바꾸려면 migration 과 이 파일을 함께 고쳐야 한다. 한쪽만 고치면 테스트가 깨진다.
  */
 export const RETENTION_DAYS = {
-  /** 작성 시각 기준. 공개는 24시간, 그 뒤 신고·이의 처리를 위해 더 둔다. */
-  field_reports: 30,
+  /*
+   * 현장톡 글(field_reports)은 여기 없다. **자동으로 지우지 않는다**
+   * (migration 20261007). 동네 정보는 몇 년 뒤에도 유효해서 쌓아 두는 것이 이
+   * 서비스의 값이다. 숫자를 늘린 것이 아니라 규칙을 뺐다 — 행이 있으면 누군가
+   * keep_days 를 고쳐 다시 켤 수 있다.
+   *
+   * 지우는 길은 그대로다: 본인 삭제(글 옆 삭제 버튼)와 신고 자동 격리.
+   * 둘 다 사람이 누른다.
+   */
   /** 마지막 접속 기준. 지워지면 글의 guest_id 만 끊기고 글은 남는다. */
   guest_sessions: 30,
   /** 만료 시각 기준. (PRD 표. 현재 미사용) */
@@ -83,6 +90,9 @@ export function purgeAt(subject: RetentionSubject, basisAt: Date): Date {
 /**
  * 공개해도 되는지. 서버 조회와 화면이 같은 함수를 쓴다(PRD §3.5 "서버 조회에서도 동일 정책").
  * 클라이언트 타이머만 믿지 않으므로 now 를 인자로 받는다.
+ *
+ * ⚠️ 현장톡 글에는 **공개 기간이 없다**(migration 20261007). `public_until` 이 null 이고
+ *    이 함수는 null 을 "제한 없음"으로 본다. 기간을 두는 글 종류가 생기면 그때 쓴다.
  */
 export function isPubliclyVisible(input: {
   publicUntil: string | null;

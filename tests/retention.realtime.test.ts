@@ -222,49 +222,64 @@ describe("방침에 쓸 숫자와 코드가 같다", () => {
   }, TEST_MS);
 });
 
-describe("현장톡 글", () => {
-  it("★ 기간이 지난 글은 지워진다", async () => {
-    const old = await makeReport(null, RETENTION_DAYS.field_reports + 1);
-    await purge();
-    expect(await sql<unknown[]>(`field_reports?id=eq.${old}&select=id`)).toEqual([]);
-  }, TEST_MS);
-
-  it("★ 기간 안의 글은 남는다", async () => {
-    const fresh = await makeReport(null, RETENTION_DAYS.field_reports - 1);
-    await purge();
-    expect(await sql<unknown[]>(`field_reports?id=eq.${fresh}&select=id`)).toHaveLength(1);
-  }, TEST_MS);
-
-  it("★ 처리 중인 신고가 걸린 글은 기간이 지나도 남는다 — 분쟁 중 증거가 사라지면 안 된다", async () => {
-    const reporter = await makeSession();
-    const old = await makeReport(null, RETENTION_DAYS.field_reports + 5);
-
-    const res = await fetch(`${REST}/reports`, {
-      method: "POST",
-      headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({
-        target_type: "post",
-        target_id: old,
-        reporter_guest_id: reporter,
-        reason: "PRIVACY",
-      }),
-    });
-    if (!res.ok) throw new Error(await res.text());
+describe("현장톡 글 — 쌓는다. 자동으로 지우지 않는다", () => {
+  /*
+   * 전에는 작성 30일 뒤에 지웠다. 그 규칙을 껐다(migration 20261007) — "로뎀 밤
+   * 10시까지" 같은 동네 정보는 몇 년 뒤에도 유효하다. 카페처럼 쌓는다.
+   *
+   * 이 묶음이 지키는 것은 **자동 삭제가 꺼져 있는지**다. 지우는 길은 그대로 있다 —
+   * 본인 삭제와 신고 격리는 사람이 누르고, 다른 테스트가 본다
+   * (guestWrites.realtime: "내가 쓴 글 지우기", "신고 → 자동 격리").
+   */
+  it("★ 아주 오래된 글도 지워지지 않는다", async () => {
+    const old = await makeReport(null, 400);
 
     await purge();
+
     expect(await sql<unknown[]>(`field_reports?id=eq.${old}&select=id`)).toHaveLength(1);
+  }, TEST_MS);
 
-    // 신고가 끝나면 다음 실행이 지운다.
-    await fetch(`${REST}/reports?target_id=eq.${old}`, {
+  it("★ 기간 표에 글 항목이 없다 — 숫자를 지운 것이 아니라 규칙을 지웠다", async () => {
+    /*
+     * 표가 단일 소스다. 행이 있으면 누군가 keep_days 를 고쳐 다시 켤 수 있다.
+     * 그래서 행 자체를 뺐다. TS 사본에서도 함께 뺐고, 비교 테스트가 둘을 묶는다.
+     */
+    const rows = await sql<{ subject: string }[]>("retention_policy?select=subject");
+    expect(rows.map((r) => r.subject)).not.toContain("field_reports");
+  }, TEST_MS);
+
+  it("★ 공개 기간이 끝나서 사라지는 일도 없다 — 안 지워도 안 보이면 쌓이지 않는다", async () => {
+    /*
+     * 자동 삭제만 끄면 충분하지 않았다. 공개 뷰가 `public_until > now()` 로 걸러서
+     * 지우지 않아도 하루 뒤에는 목록에서 사라졌다. 둘을 함께 껐다.
+     */
+    const id = await makeReport(null, 400);
+    const anon = createClient(url, anonKey, { auth: { persistSession: false } });
+
+    const { data } = await anon.from("field_reports_public").select("id").eq("id", id);
+
+    expect(data).toHaveLength(1);
+    // 새 글에는 공개 종료 시각이 박히지 않는다.
+    const rows = await sql<{ public_until: string | null }[]>(
+      `field_reports?id=eq.${id}&select=public_until`,
+    );
+    expect(rows[0].public_until).toBeNull();
+  }, TEST_MS);
+
+  it("★ 신고로 격리된 글은 공개 목록에서 사라진다 — 쌓는 것과 내리는 것은 다른 일이다", async () => {
+    const id = await makeReport(null, 400);
+    await fetch(`${REST}/field_reports?id=eq.${id}`, {
       method: "PATCH",
       headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ state: "DISMISSED" }),
+      body: JSON.stringify({ visibility: "QUARANTINED" }),
     });
-    await purge();
-    expect(await sql<unknown[]>(`field_reports?id=eq.${old}&select=id`)).toEqual([]);
 
-    await fetch(`${REST}/reports?target_id=eq.${old}`, { method: "DELETE", headers: admin });
-    await fetch(`${REST}/guest_sessions?id=eq.${reporter}`, { method: "DELETE", headers: admin });
+    const anon = createClient(url, anonKey, { auth: { persistSession: false } });
+    const { data } = await anon.from("field_reports_public").select("id").eq("id", id);
+
+    expect(data).toEqual([]);
+    // 행은 남는다. 복구할 수 있어야 한다.
+    expect(await sql<unknown[]>(`field_reports?id=eq.${id}&select=id`)).toHaveLength(1);
   }, TEST_MS);
 });
 
