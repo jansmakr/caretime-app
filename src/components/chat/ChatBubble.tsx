@@ -9,6 +9,7 @@ import { ShareButton } from "@/components/chat/ShareButton";
 import { categoryLabel } from "@/features/reports/templates";
 import type { ReactionKey } from "@/features/chat/reactions";
 import { formatChatAgo } from "@/features/chat/service";
+import { formatPostDate, postAgeDays } from "@/features/chat/age";
 import { buildShareText } from "@/features/chat/share";
 import type { ChatMessageView } from "@/features/chat/types";
 
@@ -45,6 +46,8 @@ export function ChatBubble({
   const place = [message.scope.hospitalName, message.scope.sigungu ?? message.scope.sido]
     .filter(Boolean)
     .join(" · ");
+  const age = postAgeDays(message.createdAt, now);
+  const dateLabel = formatPostDate(message.createdAt, now);
 
   return (
     <article>
@@ -54,8 +57,19 @@ export function ChatBubble({
         {message.mine && (
           <span className="ct-chip bg-confirmed-soft text-confirmed-ink">내 글</span>
         )}
-        <span className="ml-auto shrink-0 text-[12.5px] font-medium text-ink-faint">
-          {formatChatAgo(message.createdAt, now)}
+        {/*
+          날짜를 크게 쓴다. 글을 지우지 않고 쌓으므로 2년 전 글이 섞여 있고, 병원이
+          진료시간을 바꾸면 **그 글은 거짓이 된다.** 읽는 사람이 그것을 감안할 수
+          있어야 해서, 오래된 글일수록 날짜를 더 분명하게 보여준다(원칙 5).
+        */}
+        <span className="ml-auto shrink-0 text-right">
+          {age >= 30 ? (
+            <span className="block text-[13.5px] font-bold text-caution-ink">{dateLabel}</span>
+          ) : (
+            <span className="block text-[12.5px] font-medium text-ink-faint">
+              {formatChatAgo(message.createdAt, now)}
+            </span>
+          )}
         </span>
       </div>
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ZERO_REACTIONS, type ReactionCounts, type ReactionKey } from "./reactions";
-import type { ChatDraft, ChatMessage } from "./types";
+import { RECENT_DAYS, type ChatDraft, type ChatMessage } from "./types";
 
 /**
  * 현장톡 ↔ Supabase.
@@ -82,25 +82,53 @@ export function groupReactions(rows: ReactionCountRow[]): Record<string, Reactio
  * 서버 렌더에서도 부른다. 그래야 첫 화면부터 글이 보인다 — 클라이언트에서만 읽으면
  * 처음 그려지는 것은 언제나 빈 방이고, 그건 출시 직후에 특히 나쁘다.
  */
+export interface FieldReportQuery {
+  /** 내 지역만. 시도만 주면 그 시도 전체. */
+  sido?: string | null;
+  sigungu?: string | null;
+  /** 최근 1개월만(기본 true). false 면 전체 기간. */
+  recentOnly?: boolean;
+  limit?: number;
+}
+
+/**
+ * 첫 화면에 쓸 글 목록. **거르는 일을 서버가 한다.**
+ *
+ * 전에는 최신 100건을 받아 브라우저가 걸렀다. 글을 쌓기 시작하면 그 방식이 깨진다 —
+ * **"내 구 보기"가 100건 밖의 글을 못 본다.** 강서구 글이 안 보이는 날이 온다.
+ *
+ * 지역은 좁히는 방향으로만 건다. 구가 있으면 구로, 시도만 있으면 시도로.
+ * 지역을 적지 않은 글(sigungu null)은 전국에서만 보인다 — 임의로 끌어오지 않는다.
+ *
+ * 서버 렌더에서도 부른다. 그래야 첫 화면부터 글이 보인다.
+ */
 export async function fetchFieldReports(
   client: SupabaseClient,
-  /**
-   * 한 의료기관 이야기만 읽을 때 쓴다. 병원 상세가 이 경로로 읽는다 —
-   * 최신 100건을 받아 화면에서 걸러내면 그 100건 안에 그 병원 글이 없을 수 있다.
-   * 조건을 거는 곳은 여기 한 곳이다(DB). 화면에서 또 거르지만, 그건 실시간으로
-   * 들어오는 글을 좁히기 위한 것이고 첫 화면의 범위는 여기서 정해진다.
-   */
-  options: { hospitalId?: string } = {},
+  query: FieldReportQuery = {},
 ): Promise<ChatMessage[]> {
-  let query = client
+  let rows = client
     .from("field_reports_public")
     .select(REPORT_COLUMNS)
     .order("created_at", { ascending: false })
-    .limit(FIELD_REPORT_PAGE);
-  if (options.hospitalId) query = query.eq("hospital_id", options.hospitalId);
+    .limit(query.limit ?? FIELD_REPORT_PAGE);
+
+  if (query.sigungu) {
+    rows = rows.eq("sigungu", query.sigungu);
+  } else if (query.sido) {
+    rows = rows.eq("sido", query.sido);
+  }
+
+  /*
+   * 기본은 최근 1개월이다. 글이 쌓이므로 기간이 곧 검색이고, 오래된 글을 기본으로
+   * 섞으면 "지금 상황"을 묻는 사람이 2년 전 글을 먼저 읽는다.
+   */
+  if (query.recentOnly !== false) {
+    const since = new Date(Date.now() - RECENT_DAYS * 24 * 60 * 60_000).toISOString();
+    rows = rows.gte("created_at", since);
+  }
 
   const [reports, counts] = await Promise.all([
-    query,
+    rows,
     client.from("field_report_reaction_counts").select("report_id,key,count"),
   ]);
 

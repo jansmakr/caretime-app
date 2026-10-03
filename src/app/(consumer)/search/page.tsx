@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { useMemo } from "react";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { StageNotice } from "@/components/common/StageNotice";
 import { ConditionBar } from "@/components/search/ConditionBar";
-import { FieldTalkExit } from "@/components/search/FieldTalkExit";
 import { HospitalCard } from "@/components/search/HospitalCard";
 import { useDiscovery } from "@/features/discovery/DiscoveryProvider";
 import { matchHospitals } from "@/features/discovery/match";
 import { useHospitalList } from "@/features/hospitals/useHospitalList";
-import type { ChatFilter } from "@/features/chat/types";
 import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
+import { showHospitalDirectory } from "@/lib/demoContent";
 
 /**
  * 검색 결과.
@@ -23,6 +23,13 @@ import { CALL_IS_SUREST, NOT_A_BOOKING } from "@/lib/copy";
  * 함께 바뀐다(features/discovery/match).
  */
 export default function SearchPage() {
+  /*
+   * 1차에는 닫혀 있다. 글을 병원이 아니라 구에 걸기로 해서 병원을 고르는 자리가
+   * 없어졌고, 고르는 자리가 없으면 이 목록도 갈 길이 없다.
+   * (lib/demoContent.showHospitalDirectory, docs/LAUNCH-scope.md)
+   */
+  if (!showHospitalDirectory) notFound();
+
   const { conditions, origin, ready } = useDiscovery();
   const list = useHospitalList();
   // 구조 분해해서 좁힌다. list.now 로 두면 아래 삼항 안에서 null 이 다시 살아난다.
@@ -34,17 +41,6 @@ export default function SearchPage() {
   );
 
   const regionChosen = conditions.region.sido !== null || origin.kind === "device";
-
-  /*
-   * 고른 조건을 현장톡으로 그대로 넘긴다. 지역을 고른 사람이 전국 글을 보게 되면
-   * "내 동네 이야기가 없다"로 읽히고, 그건 사실이 아니다.
-   * 나이·진료 상황·자유입력은 넘기지 않는다 — 현장톡은 그 값을 받는 키 자체가 없다.
-   */
-  const chatFilter: ChatFilter = {
-    sido: conditions.region.sido,
-    sigungu: conditions.region.sigungu,
-    hospitalId: null,
-  };
 
   /** 확인된 상태가 하나도 없다. 목록은 있는데 답이 없는 상태다. */
   const nothingConfirmed =
@@ -96,7 +92,6 @@ export default function SearchPage() {
               </p>
             </div>
             {/* 0건이 막다른 길이 되지 않게. 조건을 그대로 들고 현장톡으로 간다. */}
-            <FieldTalkExit filter={chatFilter} variant="empty" />
           </>
         ) : (
           <>
@@ -119,7 +114,6 @@ export default function SearchPage() {
               기본 화면이고, 보호자가 얻는 답이 "전화해 보세요" 하나로 끝난다.
               전화를 대신하지 않고, 갈 곳을 하나 더 준다.
             */}
-            {nothingConfirmed && <FieldTalkExit filter={chatFilter} />}
           </>
         )}
 

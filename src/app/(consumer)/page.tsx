@@ -2,8 +2,8 @@ import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { StageNotice } from "@/components/common/StageNotice";
 import { DiscoveryForm } from "@/components/home/DiscoveryForm";
-import { HomeLiveTalkBanner } from "@/components/home/HomeLiveTalkBanner";
-import { showCareConditionForm } from "@/lib/demoContent";
+import { MyRegionGate } from "@/components/home/MyRegionGate";
+import { showCareConditionForm, showHospitalDirectory } from "@/lib/demoContent";
 
 /*
  * 홈은 다시 정적 렌더다.
@@ -51,17 +51,18 @@ export default function HomePage() {
         {showCareConditionForm && <DiscoveryForm />}
 
         {/*
-         * 현장톡 배너. 본문 흐름 안에 두고 하단 고정·팝업으로 만들지 않는다.
-         * 선택한 지역·일반 카테고리만 넘긴다. 나이·방문 목적·좌표는 넘기지 않는다.
+         * 지역을 아직 안 고른 사람에게는 그것만 묻고, 고른 사람에게는 현장톡 배너를
+         * 보여준다. 둘을 나란히 두면 "건너뛰고 들어갈까"를 먼저 판단하게 된다.
+         * 배너는 본문 흐름 안에 두고 하단 고정·팝업으로 만들지 않는다.
          */}
-        <HomeLiveTalkBanner />
+        <MyRegionGate />
 
         {/*
-         * 병원 정보로 가는 보조 길. 주 버튼(위의 현장톡)과 무게를 같게 만들지 않는다.
-         * 1차에는 등록된 병원이 2곳이고 진료시간이 없다. 그래서 여기서 약속하는 것은
-         * 전화번호와 주소뿐이다 — 할 수 있는 것만 적는다.
+         * 병원 목록으로 가는 길은 1차에 없다. 글을 병원이 아니라 구에 걸기로 했고,
+         * 병원 이름은 본문에 그냥 쓴다. 라우트도 닫혀 있다(404).
+         * 되살릴 때 이 칸이 돌아온다 — lib/demoContent.showHospitalDirectory.
          */}
-        {!showCareConditionForm && (
+        {showHospitalDirectory && (
           <section className="mt-6 border-t border-line pt-5">
             <h3 className="text-[15px] font-bold">의료기관 전화번호 · 주소</h3>
             <p className="mt-1.5 break-keep text-[13.5px] leading-relaxed text-ink-muted">
@@ -73,6 +74,7 @@ export default function HomePage() {
             </Link>
           </section>
         )}
+
       </main>
     </>
   );

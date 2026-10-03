@@ -17,22 +17,20 @@ export function LegalPage({ id, fallbackTitle }: { id: LegalDocId; fallbackTitle
    * 시행일이 아직 오지 않았으면 그렇게 적는다. 사전 고지 기간에 "시행일 2026-10-13"만
    * 적어 두면 읽는 사람은 지금 효력이 있는 줄로 안다.
    */
-  const upcoming =
-    document.ready && document.effectiveDate !== null && !isPolicyInForce()
-      ? document.effectiveDate
-      : null;
+  const pending = document.hasBody && !isPolicyInForce();
 
   return (
     <>
       <AppHeader title={title} backHref="/more" />
       <main className="space-y-3 px-4 pb-6 pt-3">
         <section className="ct-card p-5">
-          {document.ready ? (
+          {document.hasBody ? (
             <>
-              {upcoming ? (
+              {pending ? (
                 <p className="rounded-field bg-caution-soft px-3.5 py-2.5 text-[13px] font-semibold leading-relaxed text-caution-ink">
-                  {upcoming} 부터 시행됩니다. 지금은 미리 읽어 보실 수 있도록 공개한
-                  것이며 아직 효력이 없습니다. (오늘 {todayInSeoul()})
+                  {document.effectiveDate === null
+                    ? "시행일이 아직 정해지지 않았습니다. 미리 읽어 보실 수 있도록 공개한 것이며 아직 효력이 없습니다."
+                    : `${document.effectiveDate} 부터 시행됩니다. 지금은 미리 읽어 보실 수 있도록 공개한 것이며 아직 효력이 없습니다. (오늘 ${todayInSeoul()})`}
                 </p>
               ) : (
                 <p className="text-[13px] font-semibold text-ink-faint">

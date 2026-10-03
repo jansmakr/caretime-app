@@ -55,7 +55,8 @@ export function BottomNav() {
       <ul className="mx-auto flex max-w-app">
         {ITEMS.map((item) => {
           const active =
-            item.href === "/" ? pathname === "/" || pathname === "/search" : pathname.startsWith(item.href);
+            // /search 는 1차에 닫혀 있다(404). 활성 판정에서 뺀다.
+            item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
             <li key={item.href} className="flex-1">
               <Link

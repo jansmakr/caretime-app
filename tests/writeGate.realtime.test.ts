@@ -121,7 +121,8 @@ describe("쓰기가 닫혀 있을 때", () => {
   }, TEST_MS);
 
   it("읽기는 열려 있다 — 화면은 띄워서 확인할 수 있어야 한다", async () => {
-    for (const path of ["/", "/chat", "/search"]) {
+    // /search 는 1차에 닫혀 있다(404). 읽을 수 있어야 하는 것은 홈과 현장톡이다.
+    for (const path of ["/", "/chat"]) {
       const res = await fetch(`${BASE}${path}`);
       expect(res.status, path).toBe(200);
     }

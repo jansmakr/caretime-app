@@ -41,7 +41,7 @@ describe("언제 빈 방 화면을 보여 주는가", () => {
      * 여기서 필터를 감추면 조건을 되돌릴 길이 사라진다. "글이 없다"와
      * "이 조건에 없다"는 사용자가 할 일이 다르다.
      */
-    const filtered: ChatFilter = { sido: "서울", sigungu: "강서구", hospitalId: null };
+    const filtered: ChatFilter = { sido: "서울", sigungu: "강서구", recentOnly: true };
     expect(isEmptyRoom({ filter: filtered, totalCount: 0, initialLoadFailed: false })).toBe(false);
   });
 
@@ -64,8 +64,20 @@ describe("검색 조건이 현장톡으로 넘어간다", () => {
     expect(chatHref({ sido: null, sigungu: "강서구" })).toBe("/chat");
   });
 
-  it("병원 상세에서는 그 병원 방으로 간다", () => {
-    expect(chatHref({ hospitalId: "h_001" })).toBe("/chat?hospital=h_001");
+  it("★ 전체 기간은 링크에 실린다 — 공유한 링크가 같은 화면을 열어야 한다", () => {
+    expect(chatHref({ allTime: true })).toBe("/chat?all=1");
+    expect(chatHref({ sido: "서울", sigungu: "강서구", allTime: true })).toBe(
+      "/chat?sido=%EC%84%9C%EC%9A%B8&sigungu=%EA%B0%95%EC%84%9C%EA%B5%AC&all=1",
+    );
+  });
+
+  it("★ 병원 조건은 받는 키 자체가 없다 — 1차에 병원을 고르는 자리가 없다", () => {
+    const href = chatHref({
+      sido: "서울",
+      // @ts-expect-error 받는 키가 아니다. 넘겨도 무시된다는 것을 고정한다.
+      hospitalId: "h_001",
+    });
+    expect(href).not.toContain("hospital");
   });
 
   it("★ 나이·진료 상황 같은 건강 조건은 넘어갈 키 자체가 없다", () => {

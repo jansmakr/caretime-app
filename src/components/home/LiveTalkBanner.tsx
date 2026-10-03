@@ -56,7 +56,11 @@ export function LiveTalkBanner({
   /** 화면에 보일 진료 항목 이름. category 와 짝이 맞을 때만 넘긴다. */
   categoryLabel?: string | null;
 }) {
-  const href = chatHref({ sido, sigungu, category });
+  /*
+   * 방은 하나다(전국). 지역은 브라우저에 기억된 내 지역으로 화면에서 좁히므로
+   * 링크에 조건을 싣지 않는다 — 홈에서 고른 조건을 들고 가던 경로는 없어졌다.
+   */
+  const href = chatHref({ sido, sigungu });
   const copy = isFieldTalkSharingLive ? ACTIVE : PREPARING;
   // 태그는 실제로 고른 값만. 없으면 아무것도 붙이지 않는다.
   const tags = [sigungu ?? sido, categoryLabel].filter((v): v is string => Boolean(v));

@@ -54,7 +54,6 @@ export function normalizeChatDraft(draft: ChatDraft): ChatDraft {
  * 임의로 끌어오면 "이 병원 이야기"인 줄 알고 읽게 된다.
  */
 export function matchesFilter(message: ChatMessage, filter: ChatFilter): boolean {
-  if (filter.hospitalId && message.scope.hospitalId !== filter.hospitalId) return false;
   if (filter.sido && message.scope.sido !== filter.sido) return false;
   if (filter.sigungu && message.scope.sigungu !== filter.sigungu) return false;
   return true;
@@ -65,8 +64,12 @@ export function filterMessages<T extends ChatMessage>(messages: T[], filter: Cha
   return messages.filter((m) => matchesFilter(m, filter));
 }
 
+/**
+ * 지역을 좁혀 보고 있는가. **기간은 보지 않는다** — 기본값(최근 1개월)이 '조건을
+ * 걸었다'로 읽히면, 글이 0건일 때 "조건을 넓혀 보라"는 안내가 엉뚱하게 나온다.
+ */
 export function isFilterActive(filter: ChatFilter): boolean {
-  return filter.sido !== null || filter.sigungu !== null || filter.hospitalId !== null;
+  return filter.sido !== null || filter.sigungu !== null;
 }
 
 /** 필터를 한 줄로 설명한다. 무엇이 걸려 있는지 보이지 않으면 빈 목록을 오해한다. */

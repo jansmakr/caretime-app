@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import type { HospitalView } from "@/features/hospitals/types";
-import { toDirectory } from "@/features/reports/directory";
+import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
 import {
   CHAT_DEFAULT_CATEGORY,
   CHAT_TEMPLATES,
@@ -18,7 +17,6 @@ import {
   CHAT_TOPIC_MAX,
   EMPTY_SCOPE,
   type ChatCategory,
-  type ChatFilter,
   type ChatScope,
 } from "@/features/chat/types";
 
@@ -32,19 +30,21 @@ import {
  * 강서구를 보고 있다가 보낸 글이 다른 지역에 붙으면 아무도 답을 못 한다.
  */
 export function ChatComposer({
-  hospitals,
-  filter,
+  myRegion,
   lastSentAt,
   onSent,
-  scopePickerVisible = true,
   scopeNote,
 }: {
-  hospitals: HospitalView[];
-  filter: ChatFilter;
+  /**
+   * 글에 붙는 지역. **보고 있는 필터가 아니라 글쓴이의 지역이다.**
+   *
+   * 전에는 필터를 그대로 글의 범위로 썼다. 전국을 보고 있으면 글에 지역이 안 붙고,
+   * 다른 구를 보고 있으면 그 구에 붙었다. 전국 한 방에서는 "글쓴이의 구"가 맞다 —
+   * 다른 구 이야기는 본문에 쓴다(병원을 본문에 쓰기로 한 것과 같다).
+   */
+  myRegion: MyRegion | null;
   lastSentAt: number | null;
   onSent: (message: string) => void;
-  /** 조건 고르는 줄이 화면에 있는가. 빈 방에서는 감춰져 있어 안내 문구가 달라진다. */
-  scopePickerVisible?: boolean;
   /**
    * 어디로 올라가는지 설명하는 한 줄. 넘기면 이 문구를 쓴다.
    *
@@ -69,15 +69,19 @@ export function ChatComposer({
   const ids = useId();
   const meta = chatTemplate(category);
 
-  /** 필터를 그대로 글의 범위로 쓴다. 병원까지 골라져 있으면 이름도 같이 싣는다. */
-  function scopeFromFilter(): ChatScope {
-    if (!filter.sido && !filter.sigungu && !filter.hospitalId) return EMPTY_SCOPE;
-    const entry = toDirectory(hospitals).find((h) => h.id === filter.hospitalId);
+  /**
+   * 글에 붙는 범위. 내 지역 하나뿐이다.
+   *
+   * 병원은 넣지 않는다 — 1차에는 고르는 자리가 없고, 병원 이름은 본문에 쓴다.
+   * 컬럼은 글 스키마에 남아 있다(2차).
+   */
+  function myScope(): ChatScope {
+    if (myRegion === null) return EMPTY_SCOPE;
     return {
-      sido: filter.sido ?? entry?.sido ?? null,
-      sigungu: filter.sigungu ?? entry?.sigungu ?? null,
-      hospitalId: filter.hospitalId,
-      hospitalName: entry?.name ?? null,
+      sido: myRegion.sido,
+      sigungu: myRegion.sigungu,
+      hospitalId: null,
+      hospitalName: null,
     };
   }
 
@@ -93,7 +97,7 @@ export function ChatComposer({
       category,
       topic: category === "other" ? topic : null,
       body,
-      scope: scopeFromFilter(),
+      scope: myScope(),
     };
     const result = validateChatDraft(draft);
     if (!result.ok) {
@@ -119,9 +123,7 @@ export function ChatComposer({
     onSent("등록되었습니다");
   }
 
-  const scope = scopeFromFilter();
-  const scopeLabel =
-    [scope.hospitalName, scope.sigungu ?? scope.sido].filter(Boolean).join(" · ") || "지역 미지정";
+  const scopeLabel = myRegion === null ? "지역 미지정" : regionLabel(myRegion);
 
   return (
     <section className="ct-card p-5">
@@ -186,8 +188,16 @@ export function ChatComposer({
           <p className="text-[11.5px] leading-relaxed text-ink-faint">
             이름·연락처처럼 개인을 알 수 있는 정보는 적지 마세요.
           </p>
-          <span className="shrink-0 text-[11.5px] text-ink-faint">
-            {body.length}/{CHAT_BODY_MAX}
+          {/*
+            남은 글자를 보여준다. 음성으로 말하면 길어지기 쉬워서 "몇 자 썼나"보다
+            "얼마 남았나"가 쓸모 있다. 100자 아래로 내려가면 색으로 알린다.
+          */}
+          <span
+            className={`shrink-0 text-[11.5px] ${
+              CHAT_BODY_MAX - body.length <= 100 ? "font-semibold text-caution-ink" : "text-ink-faint"
+            }`}
+          >
+            {CHAT_BODY_MAX - body.length}자 남음
           </span>
         </div>
       </div>
@@ -201,9 +211,9 @@ export function ChatComposer({
           곳이 없는 말이 된다. 안내는 화면에 실제로 있는 것만 가리켜야 한다.
         */}
         {scopeNote ??
-          (scopePickerVisible
-            ? "위에서 지역·병원을 고르면 그 방으로 올라갑니다."
-            : "지역을 고르지 않아도 올라갑니다. 어느 병원인지는 글에 적어 주세요.")}
+          (myRegion === null
+            ? "지역을 고르지 않아도 올라갑니다. 어느 동네·병원인지는 글에 적어 주세요."
+            : "내 지역으로 올라갑니다. 다른 동네 이야기는 글에 적어 주세요.")}
         {nickname && (
           <>
             <br />

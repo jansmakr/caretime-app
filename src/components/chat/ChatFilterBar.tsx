@@ -1,113 +1,118 @@
 "use client";
 
-import { useMemo } from "react";
-import type { HospitalView } from "@/features/hospitals/types";
-import { searchDirectory, toDirectory } from "@/features/reports/directory";
-import { SIDO_LIST, sidoOptions, sigunguOptions, type Sido } from "@/features/reports/regions";
-import { describeFilter, isFilterActive } from "@/features/chat/service";
-import { EMPTY_FILTER, type ChatFilter } from "@/features/chat/types";
+import { useState } from "react";
+import { RegionPicker } from "@/components/chat/RegionPicker";
+import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
+import { type ChatFilter } from "@/features/chat/types";
 
 /**
- * 지역 · 병원 필터.
+ * 어디를 볼까 · 언제까지 볼까.
  *
- * 무엇이 걸려 있는지 한 줄로 보여준다. 필터를 켜 둔 걸 모르고 "글이 없네"로 읽는 일이
- * 가장 흔한 오해라서, 초기화 버튼을 항상 같은 자리에 둔다.
+ * 방은 하나다(전국). 여기서 **좁혀 본다**.
+ *   · 전국 / 내 지역    — 지역
+ *   · 최근 1개월 / 전체 — 기간
+ *
+ * 두 줄로 끝낸다. 전에는 시/도·시/군/구·병원 드롭다운 셋이 있었고, 무엇이 걸려
+ * 있는지 읽어야 알 수 있었다. 토글은 눌린 것이 보인다(원칙 4·10).
+ *
+ * "지역 바꾸기"는 평소 접혀 있다. 한 번 고르면 거의 바꾸지 않는 값이라, 늘 펼쳐
+ * 두면 화면의 결정이 하나 늘어난다.
  */
 export function ChatFilterBar({
-  hospitals,
-  loading,
   filter,
+  myRegion,
   onChange,
+  onChangeRegion,
 }: {
-  hospitals: HospitalView[];
-  loading: boolean;
   filter: ChatFilter;
+  /** 브라우저에 기억된 내 지역. 없으면 "내 지역 보기"를 그리지 않는다. */
+  myRegion: MyRegion | null;
   onChange: (next: ChatFilter) => void;
+  onChangeRegion: (next: MyRegion) => void;
 }) {
-  const directory = useMemo(() => toDirectory(hospitals), [hospitals]);
-  const availableSido = useMemo(() => sidoOptions(hospitals), [hospitals]);
-  const availableSigungu = useMemo(() => sigunguOptions(hospitals, filter.sido), [hospitals, filter.sido]);
-  const hospitalChoices = useMemo(
-    () => searchDirectory(directory, { sido: filter.sido, sigungu: filter.sigungu, query: "" }),
-    [directory, filter.sido, filter.sigungu],
-  );
-  const selectedName = hospitalChoices.find((h) => h.id === filter.hospitalId)?.name ?? null;
+  const [editing, setEditing] = useState(false);
+  const mine = filter.sido !== null;
 
   return (
     <section className="ct-card p-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-[14px] font-bold">
-          지역 · 병원
-          <span className="ml-2 font-semibold text-ink-faint">{describeFilter(filter, selectedName)}</span>
-        </h2>
-        <button
-          type="button"
-          onClick={() => onChange(EMPTY_FILTER)}
-          disabled={!isFilterActive(filter)}
-          className="shrink-0 rounded-pill bg-fill px-3 py-1.5 text-[12.5px] font-semibold text-ink-muted
-                     active:brightness-95 disabled:text-line"
-        >
-          전체 보기
-        </button>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <label className="block">
-          <span className="text-[12px] font-semibold text-ink-faint">시/도</span>
-          <select
-            value={filter.sido ?? ""}
-            aria-label="시/도 필터"
-            onChange={(e) =>
-              // 시/도가 바뀌면 그 아래 선택은 더 이상 유효하지 않다. 같이 비운다.
-              onChange({ sido: (e.target.value || null) as Sido | null, sigungu: null, hospitalId: null })
+      {myRegion && (
+        <div role="group" aria-label="보는 지역" className="grid grid-cols-2 gap-1 rounded-[16px] bg-fill p-1">
+          <Toggle
+            on={!mine}
+            onClick={() => onChange({ ...filter, sido: null, sigungu: null })}
+            label="전국"
+          />
+          <Toggle
+            on={mine}
+            onClick={() =>
+              onChange({ ...filter, sido: myRegion.sido, sigungu: myRegion.sigungu })
             }
-            className="ct-field mt-1 h-11 text-[14.5px]"
-          >
-            <option value="">전체</option>
-            {(availableSido.length > 0 ? availableSido : SIDO_LIST).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+            label={regionLabel(myRegion)}
+          />
+        </div>
+      )}
 
-        <label className="block">
-          <span className="text-[12px] font-semibold text-ink-faint">시/군/구</span>
-          <select
-            value={filter.sigungu ?? ""}
-            aria-label="시/군/구 필터"
-            onChange={(e) => onChange({ ...filter, sigungu: e.target.value || null, hospitalId: null })}
-            className="ct-field mt-1 h-11 text-[14.5px]"
-          >
-            <option value="">전체</option>
-            {availableSigungu.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div
+        role="group"
+        aria-label="보는 기간"
+        className={`grid grid-cols-2 gap-1 rounded-[16px] bg-fill p-1 ${myRegion ? "mt-2" : ""}`}
+      >
+        <Toggle
+          on={filter.recentOnly}
+          onClick={() => onChange({ ...filter, recentOnly: true })}
+          label="최근 1개월"
+        />
+        <Toggle
+          on={!filter.recentOnly}
+          onClick={() => onChange({ ...filter, recentOnly: false })}
+          label="이전 글도 보기"
+        />
       </div>
 
-      <label className="mt-2 block">
-        <span className="text-[12px] font-semibold text-ink-faint">의료기관</span>
-        <select
-          value={filter.hospitalId ?? ""}
-          aria-label="의료기관 필터"
-          onChange={(e) => onChange({ ...filter, hospitalId: e.target.value || null })}
-          className="ct-field mt-1 h-11 text-[14.5px]"
-        >
-          <option value="">전체</option>
-          {hospitalChoices.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {loading && <p className="mt-2 text-[12.5px] text-ink-faint">의료기관 목록을 불러오는 중입니다.</p>}
+      <div className="mt-2.5">
+        {editing ? (
+          <>
+            <RegionPicker
+              region={myRegion}
+              onChange={(next) => {
+                onChangeRegion(next);
+                // 바꾸는 중에 보고 있던 것이 '내 지역'이면 새 지역으로 따라간다.
+                if (mine) onChange({ ...filter, sido: next.sido, sigungu: next.sigungu });
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setEditing(false)}
+              className="mt-2 min-h-[44px] w-full text-[13.5px] font-semibold text-ink-muted"
+            >
+              닫기
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="min-h-[44px] text-[13.5px] font-semibold text-blue"
+          >
+            {myRegion ? "내 지역 바꾸기" : "내 지역 고르기"}
+          </button>
+        )}
+      </div>
     </section>
+  );
+}
+
+function Toggle({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+      className={`flex min-h-[48px] items-center justify-center break-keep rounded-field px-2 text-center text-[14.5px] transition active:scale-[0.98] ${
+        on ? "bg-blue-soft font-bold text-blue-deep ring-1 ring-inset ring-blue" : "font-semibold text-ink-muted"
+      }`}
+    >
+      {label}
+    </button>
   );
 }

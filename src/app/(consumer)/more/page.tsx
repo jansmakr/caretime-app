@@ -21,8 +21,12 @@ export default function MorePage() {
     return {
       href: LEGAL_DOC_PATH[id],
       label: doc.title || (id === "terms" ? "이용약관" : "개인정보 처리방침"),
-      ready: doc.ready,
-      note: doc.ready ? `시행 ${doc.effectiveDate}` : "준비 중",
+      ready: doc.hasBody,
+      note: doc.hasBody
+        ? doc.effectiveDate === null
+          ? "시행일 미정"
+          : `시행 ${doc.effectiveDate}`
+        : "준비 중",
     };
   });
 

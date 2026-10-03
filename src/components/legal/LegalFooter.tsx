@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { COMPANY } from "@/features/legal/company";
 import { LEGAL_DOC_PATH } from "@/features/legal/documents";
-import { areLegalDocsReady, isPolicyInForce } from "@/features/legal/version";
+import { areLegalDocsReadable, isPolicyInForce } from "@/features/legal/version";
 
 /**
  * 보호자 화면 맨 아래.
@@ -21,14 +21,14 @@ import { areLegalDocsReady, isPolicyInForce } from "@/features/legal/version";
  * 서버 컴포넌트다. 파일을 읽으므로 클라이언트에서 부르지 않는다.
  */
 export function LegalFooter() {
-  const ready = areLegalDocsReady();
+  const ready = areLegalDocsReadable();
   const inForce = isPolicyInForce();
 
   return (
     <footer className="px-5 pb-5 pt-2">
       {ready && (
         <p className="text-[12.5px] leading-relaxed text-ink-faint">
-          {inForce ? "글을 남기면 " : "시행 예정 "}
+          {inForce ? "글을 남기면 " : "시행 전입니다. "}
           <Link href={LEGAL_DOC_PATH.terms} className="font-semibold text-ink-muted underline">
             이용약관
           </Link>
@@ -38,7 +38,7 @@ export function LegalFooter() {
           </Link>
           {inForce
             ? "에 동의하는 것으로 봅니다. 로그인 없이 이용하며 이름·연락처는 저장하지 않습니다."
-            : " 을 미리 읽을 수 있습니다. 시행일부터 적용됩니다."}
+            : " 을 미리 읽을 수 있습니다. 아직 효력이 없습니다."}
         </p>
       )}
 

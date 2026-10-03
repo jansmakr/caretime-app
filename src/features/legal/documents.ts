@@ -12,9 +12,14 @@ import { applyCompanyTokens } from "./company";
  * 본문의 사업자 정보는 토큰으로 적는다(`{{상호}}` 등). 값은 features/legal/company
  * 한 곳에 있고 푸터도 같은 값을 읽는다 — 두 군데에 적으면 갈라진다.
  *
- * **준비되지 않은 상태를 구분한다.** 시행일이 없거나 본문대기 표시가 남아 있으면
- * 준비되지 않은 것으로 보고, 하단 링크와 동의 문구를 내린다 — 빈 방침으로 가는
- * 링크를 만들지 않는다. 동의했다고 적지도 않는다.
+ * **세 상태를 구분한다.**
+ *   ① 본문이 없다        — 라우트가 "준비 중", 하단 링크 없음, policy_version null
+ *   ② 본문 있고 시행 전   — 본문을 보여주되 "아직 효력이 없습니다", policy_version null
+ *   ③ 시행일이 지났다     — 평소 화면, 동의 문구, policy_version 이 박힌다
+ *
+ * ②를 따로 두는 이유: 시행일을 미리 적어 공개하는 것(사전 고지)과 시행일을 아직
+ * 정하지 않은 것 모두 정상이고, 그동안에도 본문은 읽을 수 있어야 한다. 그러나 효력이
+ * 없는 문서에 "동의하는 것으로 봅니다"를 적으면 없는 동의를 기록하는 것이 된다.
  */
 
 export type LegalDocId = "terms" | "privacy";
@@ -42,8 +47,14 @@ export interface LegalDocument {
   effectiveDate: string | null;
   /** 머리글을 뺀 본문. */
   body: string;
-  /** 보여 줄 수 있는 문서인가. 시행일이 있고 본문이 있어야 한다. */
-  ready: boolean;
+  /**
+   * 보여 줄 본문이 있는가.
+   *
+   * **시행일은 보지 않는다.** 시행일이 미정이어도 본문은 보여준다 — 교정하러 띄워
+   * 읽어야 하고, 사전 고지도 정상이다. 효력이 있는지는 따로 본다
+   * (features/legal/version.isPolicyInForce).
+   */
+  hasBody: boolean;
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -106,9 +117,9 @@ export function parseLegalDocument(id: LegalDocId, raw: string): LegalDocument {
 
   // 사업자 정보는 값을 본문에 쓰지 않고 토큰으로 쓴다. 여기서 한 번만 바꾼다.
   const body = applyCompanyTokens(bodyLines.join("\n").trim());
-  const ready = effectiveDate !== null && !body.includes(PENDING_MARK) && body !== "";
+  const hasBody = !body.includes(PENDING_MARK) && body !== "";
 
-  return { id, title, effectiveDate, body: body.replace(PENDING_MARK, "").trim(), ready };
+  return { id, title, effectiveDate, body: body.replace(PENDING_MARK, "").trim(), hasBody };
 }
 
 /**
@@ -122,7 +133,7 @@ export function loadLegalDocument(id: LegalDocId): LegalDocument {
   try {
     return parseLegalDocument(id, readLegalSource(id));
   } catch {
-    return { id, title: "", effectiveDate: null, body: "", ready: false };
+    return { id, title: "", effectiveDate: null, body: "", hasBody: false };
   }
 }
 

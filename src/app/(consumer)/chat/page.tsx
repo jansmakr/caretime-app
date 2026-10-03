@@ -45,8 +45,20 @@ export default async function ChatPage({
    * 둘을 같게 다루면 서버가 죽은 날에도 화면이 "아직 올라온 글이 없습니다"라고 말한다.
    * 그건 사실이 아니고, 첫 사용자는 그 말을 믿고 방이 비었다고 생각한다.
    */
+  /*
+   * 거르는 일을 서버가 한다. 전에는 최신 100건을 받아 브라우저가 걸렀다 — 글을 쌓기
+   * 시작하면 "내 구 보기"가 그 100건 밖의 글을 못 본다.
+   *
+   * 조건은 URL 에서 온다. 내 지역은 브라우저에 있어서 서버가 못 읽으므로, 첫 화면은
+   * 링크에 지역이 없으면 **전국**이다. 화면이 마운트된 뒤 내 지역으로 좁힐 수 있다.
+   */
+  const filter = chatFilterFromParams(params);
   const initial = isSupabaseConfigured
-    ? await fetchFieldReports(createServerSupabase()).then(
+    ? await fetchFieldReports(createServerSupabase(), {
+        sido: filter.sido,
+        sigungu: filter.sigungu,
+        recentOnly: filter.recentOnly,
+      }).then(
         (messages) => ({ messages, failed: false }),
         () => ({ messages: [], failed: true }),
       )
@@ -64,7 +76,7 @@ export default async function ChatPage({
       <StageNotice />
       <ChatRoom
         renderedAt={new Date().toISOString()}
-        initialFilter={chatFilterFromParams(params)}
+        initialFilter={filter}
         initialMessages={initial.messages}
         initialLoadFailed={initial.failed}
         initialMyPostIds={myPostIds}

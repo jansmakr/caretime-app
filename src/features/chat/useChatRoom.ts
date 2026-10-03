@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { fetchFieldReports } from "./repository";
 import { withMyReactions } from "./reactions";
 import { seedChatMessages } from "./seed";
 import { showDemoReports } from "@/lib/demoContent";
@@ -60,6 +63,48 @@ export function useChatRoom(
     // initialMessages 는 서버 렌더값이라 한 번만 쓴다. 매 렌더마다 다시 올리지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /*
+   * 조건이 바뀌면 **서버에서 다시 읽는다.**
+   *
+   * 화면에서 거르는 것만으로는 안 된다 — 보관소에는 서버가 처음 준 것(기본: 내가 보던
+   * 조건의 최근 1개월)만 있다. "이전 글도 보기"를 누르면 그 글은 애초에 받지 않았고,
+   * "내 지역 보기"도 전국 최신 100건 밖의 구 글을 못 본다. 그래서 조건마다 읽는다.
+   *
+   * 받은 글은 **더한다**(hydrateMessages 가 id 로 합친다). 조건을 되돌렸을 때 다시
+   * 읽지 않아도 되고, 넓혔다 좁히는 동안 목록이 깜빡이지 않는다.
+   *
+   * 첫 렌더에서는 돌지 않는다 — 서버가 이미 그 조건으로 읽어 넘겼다.
+   */
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (!isSupabaseConfigured) return;
+
+    let live = true;
+    void fetchFieldReports(getPublicBrowserSupabase(), {
+      sido: filter.sido,
+      sigungu: filter.sigungu,
+      recentOnly: filter.recentOnly,
+    })
+      .then((rows) => {
+        // 조건을 빠르게 두 번 바꾸면 늦게 온 응답이 먼저 온 것을 덮는다. 그래서 버린다.
+        if (live) hydrateMessages(rows);
+      })
+      .catch(() => {
+        /*
+         * 실패해도 화면을 비우지 않는다. 이미 보고 있던 글은 그대로 두는 것이 맞다 —
+         * 조건을 바꿨다고 읽던 것이 사라지면 고장으로 읽힌다.
+         */
+      });
+
+    return () => {
+      live = false;
+    };
+  }, [filter.sido, filter.sigungu, filter.recentOnly]);
 
   /*
    * 합치는 규칙은 service.mergeRoomMessages 에 있다(테스트가 그 함수를 붙든다).

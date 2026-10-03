@@ -10,13 +10,11 @@ import {
   capabilityLabel,
   describeWaitingForUser,
 } from "@/features/hospitals/service";
-import type { ChatMessage } from "@/features/chat/types";
 import type { HospitalView } from "@/features/hospitals/types";
 import { useHospitalLive } from "@/features/hospitals/useHospitalLive";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { CALL_IS_SUREST, NOT_A_BOOKING, VISIT_INTENT_DISCLAIMER } from "@/lib/copy";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
-import { HospitalFieldTalk } from "@/components/hospital/HospitalFieldTalk";
 import { deriveStatusView } from "@/features/hospitals/statusView";
 import { CONTACT_TEXT, REASON_TEXT } from "@/features/hospitals/labels";
 import {
@@ -36,19 +34,10 @@ export function HospitalDetail({
   initial,
   renderedAt,
   realtime,
-  initialMessages = [],
-  messagesLoadFailed = false,
-  myPostIds = [],
 }: {
   initial: HospitalView;
   renderedAt: string;
   realtime: boolean;
-  /** 서버가 읽어 온 이 의료기관의 현장톡 글. 첫 화면부터 보이게 한다. */
-  initialMessages?: ChatMessage[];
-  /** 그 조회가 실패했는가. 빈 목록과 다른 말을 해야 한다. */
-  messagesLoadFailed?: boolean;
-  /** 이 브라우저가 쓴 글의 id. 첫 그림부터 삭제 버튼이 붙게 한다. */
-  myPostIds?: string[];
 }) {
   const { hospital, now, connection } = useHospitalLive(initial, renderedAt, realtime);
 
@@ -251,59 +240,15 @@ export function HospitalDetail({
         </section>
 
         {/*
-          계층 ⑤ — 보호자 현장톡. 병원 직접확인 카드와 다른 카드로 둔다. 출처가 다른
-          정보를 한 면에 얹으면 보호자는 둘을 구분하지 못한다(기획안 12항).
+          계층 ⑤ — 보호자 현장톡은 여기 없다.
 
-          여기 있던 "실시간 제보"는 /chat 과 다른 저장소를 썼고 브라우저에만 남았다.
-          이제 같은 방을 이 의료기관으로 좁혀 보여 준다 — 어디에 썼느냐로 글이 남는지가
-          갈리지 않는다. (HospitalFieldTalk 주석)
+          1차에서 글을 **병원이 아니라 구에 걸기로** 했다. 병원별 방이 없으므로 이
+          화면에 끼울 방도 없다. 현장톡은 전국 하나의 방이고 지역으로 좁혀 본다.
+          병원을 다시 붙이는 2차에 "이 의료기관 글만 보기"를 그 방의 필터로 되살린다 —
+          화면을 또 만드는 것이 아니라 필터 하나를 더하는 일이다.
+          (지운 컴포넌트: HospitalFieldTalk. git 기록에 있다)
         */}
-        <HospitalFieldTalk
-          hospital={hospital}
-          renderedAt={renderedAt}
-          now={now}
-          initialMessages={initialMessages}
-          initialLoadFailed={messagesLoadFailed}
-          initialMyPostIds={myPostIds}
-        />
 
-        {/*
-          계층 ⑥ — 도착 예정 알리기. 후속 개발이라 사용자 흐름에서 빼 둔다.
-          코드·타입·데이터는 지우지 않았고 진입점만 닫았다. 되살릴 때는
-          lib/demoContent.showArrivalIntent 를 true 로 바꾼다.
-        */}
-        {showArrivalIntent && (
-          <section className="ct-card p-5">
-            <h2 className="ct-section-title">내원 예정 알리기</h2>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
-              도착 예정 시간을 의료기관에 미리 알리는 기능입니다.
-            </p>
-            <p className="mt-2 text-[13.5px] leading-relaxed text-caution">{VISIT_INTENT_DISCLAIMER}</p>
-            <button type="button" disabled className="ct-primary mt-4">
-              내원 예정 알리기
-            </button>
-          </section>
-        )}
-
-        {hospital.isParticipating && (
-          <p className="px-1 pt-1 text-[13px] leading-relaxed text-ink-faint">
-            환자 편의를 위해 진료정보 공유에 참여하는 의료기관입니다. 실제 상황은 변경될 수
-            있습니다.
-          </p>
-        )}
-
-        {/*
-          병원이 "전화문의 어려움"을 켜 두면 전화를 주 버튼으로 올리지 않는다.
-          받지 못하는 번호로 급한 사람을 보내면 시간만 잃는다.
-
-          그렇다고 다른 것을 주 버튼으로 올리지도 않는다. "목록으로"를 크게 만들면
-          사용자를 밀어내기만 하고 답을 주지 않는다 — 돌아가도 같은 문제의 병원이 또 있다.
-          우리가 권할 수 있는 행동이 실제로 없을 때 하나를 크게 만드는 것은 거짓이다.
-          그래서 무게가 같은 선택지 둘을 둔다.
-
-          [그래도 전화]가 남아 있는 이유: 병원이 어렵다고 알린 것이고 불가능한 것은 아니다.
-          응급 여부는 우리가 판단하지 않는다. 119 안내는 이미 있는 자리 그대로 둔다.
-        */}
         {/*
           전에는 여기서 /chat?hospitalId= 으로 내보냈다. 이제 그 방이 이 화면 안에
           있으므로 같은 방으로 가는 문을 두 개 두지 않는다 — 눌러도 방금 읽은 글이

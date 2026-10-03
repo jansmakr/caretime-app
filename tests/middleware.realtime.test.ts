@@ -113,7 +113,8 @@ describe("비인증 요청", () => {
   }, TEST_MS);
 
   it("보호자 화면은 그대로 열린다", async () => {
-    for (const path of ["/", "/search"]) {
+    // /search 는 1차에 닫혀 있다(의료기관 목록). 보호자 경로는 홈과 현장톡이다.
+    for (const path of ["/", "/chat"]) {
       const res = await fetch(`${BASE}${path}`, { redirect: "manual" });
       expect(res.status, path).toBe(200);
     }

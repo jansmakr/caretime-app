@@ -10,7 +10,8 @@ import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
 import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
 import { ShareButton } from "@/components/chat/ShareButton";
-import { useHospitalList } from "@/features/hospitals/useHospitalList";
+import { useMyRegion } from "@/features/regions/myRegion";
+import { regionLabel } from "@/features/regions/sigungu";
 import { isFilterActive } from "@/features/chat/service";
 import { buildRoomShareText } from "@/features/chat/share";
 import { useChatRoom } from "@/features/chat/useChatRoom";
@@ -56,7 +57,12 @@ export function ChatRoom({
 }) {
   const [filter, setFilter] = useState<ChatFilter>(initialFilter);
   const [now, setNow] = useState(() => new Date(renderedAt));
-  const list = useHospitalList();
+  /*
+   * 내 지역은 브라우저에 있다(localStorage). 서버는 못 읽으므로 첫 렌더에서는 null 이고
+   * 마운트 뒤에 채워진다 — 그래서 첫 화면은 전국이다. 방침에 "거주 지역"을 적지 않기
+   * 위해 고른 대가다(features/regions/myRegion).
+   */
+  const { region: myRegion, loaded: regionLoaded, save: saveRegion } = useMyRegion();
   const { messages, totalCount, lastSentAt, react, remove } = useChatRoom(
     renderedAt,
     filter,
@@ -72,6 +78,11 @@ export function ChatRoom({
   }, []);
 
   const filtered = isFilterActive(filter);
+  /** 지금 좁혀 본 지역의 이름. 안내 문구가 "강서구에는" 으로 시작해야 한다. */
+  const regionName =
+    filter.sido === null
+      ? "전국"
+      : regionLabel({ sido: filter.sido, sigungu: filter.sigungu });
 
   /*
    * 빈 방. **출시 직후에는 반드시 이 상태다.**
@@ -100,10 +111,10 @@ export function ChatRoom({
       {/* 고를 것이 없으면 조건도 접는다. 첫 글은 지역을 고르지 않고도 쓸 수 있다. */}
       {!emptyRoom && (
         <ChatFilterBar
-          hospitals={list.hospitals}
-          loading={list.status === "loading"}
           filter={filter}
+          myRegion={myRegion}
           onChange={setFilter}
+          onChangeRegion={saveRegion}
         />
       )}
 
@@ -112,13 +123,7 @@ export function ChatRoom({
         플래그를 내리면 이쪽이 나온다 — 장애 때 쓰기만 닫는 경로다.
       */}
       {isFieldTalkSharingLive ? (
-        <ChatComposer
-          hospitals={list.hospitals}
-          filter={filter}
-          lastSentAt={lastSentAt}
-          onSent={show}
-          scopePickerVisible={!emptyRoom}
-        />
+        <ChatComposer myRegion={myRegion} lastSentAt={lastSentAt} onSent={show} />
       ) : (
         <ComposerClosedNotice />
       )}
@@ -129,7 +134,7 @@ export function ChatRoom({
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="ct-section-title">대화</h2>
           <span className="shrink-0 text-[13px] font-semibold text-ink-faint">
-            {filtered ? `${messages.length} / ${totalCount}건` : `${totalCount}건`}
+            {messages.length}건
           </span>
         </div>
 
@@ -150,26 +155,42 @@ export function ChatRoom({
         {messages.length === 0 && !emptyRoom && (
           <div className="mt-3">
             {/*
-              세 가지를 구분해서 말한다. 셋 다 "목록이 비어 있다"이지만 사용자가 할 일이 다르다.
-                조회 실패 — 우리 문제다. 다시 시도해야 한다.
-                조건에 걸림 — 조건을 넓히면 보인다.
-                진짜 0건   — 첫 글을 쓰면 된다.
+              네 가지를 구분해서 말한다. 넷 다 "목록이 비어 있다"이지만 할 일이 다르다.
+                조회 실패      — 우리 문제다. 다시 시도해야 한다.
+                내 지역 0건    — 전국에는 글이 있다. **되돌려 준다.**
+                기간에 걸림    — 이전 글을 보면 있다.
+                진짜 0건       — 첫 글을 쓰면 된다.
               하나로 합치면 서버가 죽은 날에도 "아직 글이 없습니다"라고 말하게 된다.
+
+              내 지역 0건이 **막다른 화면이 되면 안 된다.** 출시 직후 대부분의 구는
+              0건이고, 그 사람이 보는 첫 화면이 빈 목록이면 나간다.
             */}
             <p className="text-[14.5px] leading-relaxed text-ink-muted">
-              {initialLoadFailed && messages.length === 0
+              {initialLoadFailed
                 ? "글을 불러오지 못했습니다. 잠시 후 다시 열어 주세요. 올라온 글이 없다는 뜻은 아닙니다."
                 : filtered
-                  ? "이 조건에 올라온 글이 아직 없습니다. 위에서 첫 글을 남겨 보세요."
-                  : "아직 올라온 글이 없습니다. 지금 상황을 물어보거나 알려 주세요."}
+                  ? `${regionName}에는 아직 글이 없어요. 전국 글을 보시겠어요?`
+                  : filter.recentOnly
+                    ? "최근 1개월에 올라온 글이 없습니다. 이전 글도 보시겠어요?"
+                    : "아직 올라온 글이 없습니다. 지금 상황을 물어보거나 알려 주세요."}
             </p>
+
             {filtered && (
               <button
                 type="button"
-                onClick={() => setFilter(EMPTY_FILTER)}
+                onClick={() => setFilter({ ...filter, sido: null, sigungu: null })}
+                className="ct-primary mt-3"
+              >
+                전국 글 보기
+              </button>
+            )}
+            {!filtered && filter.recentOnly && (
+              <button
+                type="button"
+                onClick={() => setFilter({ ...filter, recentOnly: false })}
                 className="ct-secondary mt-3 w-full"
               >
-                전체 보기
+                이전 글도 보기
               </button>
             )}
           </div>
@@ -181,7 +202,7 @@ export function ChatRoom({
         */}
         <p className="mt-3 text-[12px] leading-relaxed text-ink-faint">
           {isFieldTalkSharingLive
-            ? "올린 글은 24시간 동안 공개되고, 다른 분들에게 바로 전달됩니다. 이름·연락처는 저장하지 않습니다."
+            ? "올린 글은 지워지지 않고 쌓입니다. 다른 분들에게 바로 전달되고, 이름·연락처는 저장하지 않습니다. 내 글은 글 옆 [삭제]로 지울 수 있습니다."
             : "제보 공유 기능은 준비 중입니다. 목록이 비어 있는 것은 오류가 아니라 아직 올라온 제보가 없다는 뜻입니다."}
         </p>
       </section>

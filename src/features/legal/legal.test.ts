@@ -31,15 +31,20 @@ describe("문서 읽기", () => {
     const doc = parseLegalDocument("privacy", READY);
     expect(doc.title).toBe("개인정보 처리방침");
     expect(doc.effectiveDate).toBe("2026-10-15");
-    expect(doc.ready).toBe(true);
+    expect(doc.hasBody).toBe(true);
     // 머리글은 본문에서 빠진다. 제목이 두 번 나오면 안 된다.
     expect(doc.body.startsWith("## 수집하는 항목")).toBe(true);
   });
 
-  it("★ 시행일이 미정이면 준비되지 않은 것으로 본다", () => {
+  it("★ 시행일이 미정이어도 본문은 보여준다 — 효력만 없다", () => {
+    /*
+     * 세 상태를 구분한다. 본문 없음 / 본문 있고 시행 전 / 시행 중.
+     * 미정인 동안에도 읽을 수는 있어야 한다 — 교정도 실제 화면에서 하고, 사전 고지도
+     * 정상이다. 효력 여부는 isPolicyInForce 가 따로 본다.
+     */
     const doc = parseLegalDocument("terms", "# 이용약관\n시행일: 미정\n\n내용이 조금 있어도.");
     expect(doc.effectiveDate).toBeNull();
-    expect(doc.ready).toBe(false);
+    expect(doc.hasBody).toBe(true);
   });
 
   it("★ 본문대기 표시가 남아 있으면 시행일이 있어도 준비되지 않은 것으로 본다", () => {
@@ -47,11 +52,11 @@ describe("문서 읽기", () => {
       "terms",
       "# 이용약관\n시행일: 2026-10-15\n\n<!-- 본문대기 -->\n\n아직 안 받았습니다.",
     );
-    expect(doc.ready).toBe(false);
+    expect(doc.hasBody).toBe(false);
   });
 
-  it("★ 본문이 비어 있으면 준비되지 않은 것으로 본다", () => {
-    expect(parseLegalDocument("terms", "# 이용약관\n시행일: 2026-10-15\n\n").ready).toBe(false);
+  it("★ 본문이 비어 있으면 보여 줄 것이 없다", () => {
+    expect(parseLegalDocument("terms", "# 이용약관\n시행일: 2026-10-15\n\n").hasBody).toBe(false);
   });
 
   it("★ 본문의 사업자 정보 토큰이 실제로 바뀐다 — 파서에 연결돼 있는가", () => {
@@ -73,14 +78,6 @@ describe("문서 읽기", () => {
     const doc = parseLegalDocument("terms", "이용약관\n시행일 2026-10-15\n본문");
     expect(doc.title).toBe("");
     expect(doc.effectiveDate).toBe("2026-10-15");
-  });
-
-  it("★ 시행일을 읽을 수 없으면 준비되지 않은 것으로 본다", () => {
-    for (const bad of ["# 약관\n시행일: 미정\n\n본문", "# 약관\n\n본문만 있다"]) {
-      const doc = parseLegalDocument("terms", bad);
-      expect(doc.effectiveDate, bad).toBeNull();
-      expect(doc.ready, bad).toBe(false);
-    }
   });
 
   it("★ 사람이 쓰는 날짜 모양을 읽고 YYYY-MM-DD 로 맞춘다", () => {
@@ -117,12 +114,12 @@ describe("문서 읽기", () => {
      * 하나만 준비되면 하단 링크가 한쪽만 가리키거나, 동의 문구가 없는 문서를
      * 가리킨다. policy_version 도 그 경우 null 이라 "동의한 버전"을 잃는다.
      */
-    expect(terms.ready).toBe(privacy.ready);
+    expect(terms.hasBody).toBe(privacy.hasBody);
   });
 
   it("★ 준비됐다면 policy_version 이 만들어지고 되읽힌다", () => {
     const version = currentPolicyVersion();
-    const ready = loadLegalDocument("terms").ready && loadLegalDocument("privacy").ready;
+    const ready = loadLegalDocument("terms").hasBody && loadLegalDocument("privacy").hasBody;
 
     /*
      * 값이 있는 것은 **본문이 있고 시행일이 지났을 때**뿐이다. 본문이 들어온 뒤에도

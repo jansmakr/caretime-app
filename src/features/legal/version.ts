@@ -59,7 +59,7 @@ export function todayInSeoul(now: Date = new Date()): string {
 
 function readyDateOf(id: LegalDocId): string | null {
   const doc = loadLegalDocument(id);
-  return doc.ready ? doc.effectiveDate : null;
+  return doc.hasBody ? doc.effectiveDate : null;
 }
 
 /**
@@ -79,13 +79,14 @@ export function currentPolicyVersion(now: Date = new Date()): string | null {
 }
 
 /**
- * 두 문서가 다 준비됐는가 — **본문이 있는가**만 본다. 시행일은 보지 않는다.
+ * 두 문서를 보여 줄 수 있는가 — **본문이 있는가**만 본다. 시행일은 보지 않는다.
  *
- * 시행 전에도 문서는 **보여 준다.** 사전 고지가 정상이고, 미리 읽을 수 있어야 한다.
- * 다만 "동의하는 것으로 봅니다"는 시행 뒤에만 적는다(isPolicyInForce).
+ * 시행일이 미정이거나 아직 오지 않아도 문서는 **보여 준다.** 미리 읽을 수 있어야
+ * 하고, 교정도 실제 화면에서 한다. 다만 "동의하는 것으로 봅니다"는 시행 뒤에만
+ * 적는다(isPolicyInForce).
  */
-export function areLegalDocsReady(): boolean {
-  return readyDateOf("terms") !== null && readyDateOf("privacy") !== null;
+export function areLegalDocsReadable(): boolean {
+  return loadLegalDocument("terms").hasBody && loadLegalDocument("privacy").hasBody;
 }
 
 /** 지금 효력이 있는가. 동의 문구를 적을지, policy_version 을 박을지의 판정이다. */

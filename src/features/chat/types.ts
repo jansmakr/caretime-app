@@ -60,12 +60,31 @@ export interface ChatMessageView extends ChatMessage {
   myReactions: ReactionKey[];
 }
 
-/** 목록 필터. 세 값 모두 null 이면 전체 보기다. */
+/**
+ * 목록 필터. 지역 둘 + 기간 하나다.
+ *
+ * 방을 지역별로 나누지 않는다. **전국 하나의 방**이고 이 필터로 좁혀 본다 —
+ * 방을 나누면 다 빈 방이 되고, 하나로 합치면 글이 모여 활기가 보인다.
+ *
+ * 병원 조건은 없다. 글을 병원이 아니라 **구에 건다**(1차). 병원을 다시 붙이는
+ * 2차에 hospitalId 를 여기 더한다 — 글 스키마에는 컬럼이 남아 있다.
+ */
 export interface ChatFilter {
+  /** 내 지역만 볼 때. null = 전국 */
   sido: Sido | null;
+  /** 구 목록이 있는 시도에서만 채운다. (features/regions/sigungu) */
   sigungu: string | null;
-  hospitalId: string | null;
+  /**
+   * 최근 1개월만 볼까(기본 true), 전체 기간을 볼까.
+   *
+   * 글을 쌓아 두므로 기간이 곧 검색이다. 키워드 검색을 넣지 않은 이유 —
+   * 글이 수십 건일 때 검색창은 빈 결과를 만드는 장치다(UI 원칙 10).
+   */
+  recentOnly: boolean;
 }
+
+/** "최근"의 길이. 1개월로 본다. */
+export const RECENT_DAYS = 30;
 
 export const EMPTY_SCOPE: ChatScope = {
   sido: null,
@@ -74,9 +93,14 @@ export const EMPTY_SCOPE: ChatScope = {
   hospitalName: null,
 };
 
-export const EMPTY_FILTER: ChatFilter = { sido: null, sigungu: null, hospitalId: null };
+/** 처음 보는 화면: 전국 · 최근 1개월. */
+export const EMPTY_FILTER: ChatFilter = { sido: null, sigungu: null, recentOnly: true };
 
-export const CHAT_BODY_MAX = 300;
+/**
+ * 본문 상한. 음성 입력을 쓰기 때문에 넉넉히 둔다 — 키보드 마이크로 말하면 300자에서
+ * 말하다 잘린다. DB 제약도 1000 이다(migration 20261007). 화면은 남은 글자를 보여준다.
+ */
+export const CHAT_BODY_MAX = 1000;
 export const CHAT_TOPIC_MAX = 30;
 
 /**

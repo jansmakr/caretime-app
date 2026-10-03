@@ -81,6 +81,24 @@ export const showPartnerEntry = false;
 export const showCareConditionForm = false;
 
 /**
+ * 의료기관 목록·상세.
+ *
+ * 1차에서 닫는다(2026-10-03). 글을 **병원이 아니라 구에 걸기로** 했기 때문이다 —
+ * 병원 이름은 본문에 그냥 쓴다. 이름이 갈라져도 괜찮다. 그러면 목록에서 병원을
+ * 고르는 자리가 필요 없고, 고르는 자리가 없으면 상세 화면도 갈 길이 없다.
+ *
+ * 라우트까지 닫는다(not found). 반쯤 살려 두면 어딘가 남은 링크가 깨진 화면을 연다.
+ *
+ * 남겨 둔 것: `field_reports.hospital_id`·`hospital_name` 컬럼, 수동 병원 데이터와
+ * 투입 SQL, 공공데이터 스키마. 2차에 병원을 다시 붙일 때 쓴다.
+ *
+ * ⚠️ 2차에 병원 글에 배지를 붙일 때: **출처 표시이고 추천이 아니다.** 의료법 27조
+ *    (환자 유인·알선) 때문에 정렬·노출 가중치에 쓰지 않는다. 배지가 순서를 바꾸는
+ *    순간 그것은 광고가 된다. (features/hospitals/types 설계 규칙 ②와 같은 이유)
+ */
+export const showHospitalDirectory = false;
+
+/**
  * 베타 운영 중인가.
  *
  * **`isDemoContentAllowed` 와 묶지 않는다.** 베타 표시는 데이터가 가짜라서 붙는 것이
