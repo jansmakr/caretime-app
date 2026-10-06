@@ -1,33 +1,34 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
-import {
-  CHAT_DEFAULT_CATEGORY,
-  CHAT_TEMPLATES,
-  chatTemplate,
-  chatTemplateText,
-  shouldReplaceChatBody,
-} from "@/features/chat/templates";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
 import { COOLDOWN_SECONDS, useChatNickname, useCooldownSeconds } from "@/features/chat/useChatRoom";
 import {
   CHAT_BODY_MAX,
   CHAT_TOPIC_MAX,
+  DEFAULT_CATEGORY,
   EMPTY_SCOPE,
-  type ChatCategory,
   type ChatScope,
 } from "@/features/chat/types";
 
 /**
- * 현장톡 입력창.
+ * 현장톡 입력창. **칸 하나로 끝난다.**
  *
- * 퀵 템플릿 칩(열상 · 화상 · 기타)을 누르면 물어볼 항목이 채워지고, 보호자는 상황만 덧붙인다.
- * 이미 쓴 글은 칩을 잘못 눌러도 지워지지 않는다.
+ * ── 주제 칩을 없앴다 (2026-10-06) ───────────────────────────
+ * 전에는 "찢어진 상처 / 화상 / 그 밖의 상황" 칩 셋이 먼저 보이고, 누르면 물어볼
+ * 항목이 본문에 채워졌다. 그것이 **대상을 좁혔다** — 열·구토로 온 사람이 그 셋을
+ * 보고 "내 건 해당 안 되나" 하고 멈춘다. 서비스는 전 과목·전 연령으로 연다.
  *
- * 보내는 글의 지역·병원은 지금 보고 있는 필터를 그대로 따라간다 —
- * 강서구를 보고 있다가 보낸 글이 다른 지역에 붙으면 아무도 답을 못 한다.
+ * 분류할 이유도 없어졌다. 글은 지역 하나로 흐르고(전국 방 + 내 지역 필터),
+ * 찾는 축은 지역과 기간이다. 칩은 읽어야 하는 줄만 늘린다(원칙 4·10).
+ *
+ * `field_reports.category` 컬럼은 남아 있고 모든 글이 같은 값으로 들어간다.
+ * 2차에 분류가 다시 필요해지면 그 컬럼을 쓴다 — 지금은 화면에서만 없앴다.
+ *
+ * 남은 것: 주제 한 줄(선택) · 본문 · 보내기. 진단·치료 조언을 적지 말라는 문구는
+ * 그대로 둔다. 그건 대상을 좁히는 말이 아니라 **하지 말아야 하는 일**이다.
  */
 export function ChatComposer({
   myRegion,
@@ -45,17 +46,11 @@ export function ChatComposer({
   myRegion: MyRegion | null;
   lastSentAt: number | null;
   onSent: (message: string) => void;
-  /**
-   * 어디로 올라가는지 설명하는 한 줄. 넘기면 이 문구를 쓴다.
-   *
-   * 병원 상세에서는 범위가 그 병원으로 고정돼 있어 고를 것이 없다 — 그때 "위에서
-   * 고르면"도, "지역을 고르지 않아도"도 둘 다 사실이 아니다. 화면에 있는 것만 가리킨다.
-   */
+  /** 어디로 올라가는지 설명하는 한 줄. 넘기면 이 문구를 쓴다. */
   scopeNote?: string;
 }) {
-  const [category, setCategory] = useState<ChatCategory>(CHAT_DEFAULT_CATEGORY);
   const [topic, setTopic] = useState("");
-  const [body, setBody] = useState(() => chatTemplateText(CHAT_DEFAULT_CATEGORY));
+  const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const cooldown = useCooldownSeconds(lastSentAt);
 
@@ -65,9 +60,7 @@ export function ChatComposer({
    * 정하므로 화면이 이름을 알아야 보낼 수 있는 것은 아니다.
    */
   const nickname = useChatNickname();
-
   const ids = useId();
-  const meta = chatTemplate(category);
 
   /**
    * 글에 붙는 범위. 내 지역 하나뿐이다.
@@ -85,17 +78,11 @@ export function ChatComposer({
     };
   }
 
-  function pickCategory(next: ChatCategory) {
-    if (next === category) return;
-    if (shouldReplaceChatBody(body, category)) setBody(chatTemplateText(next));
-    setCategory(next);
-    setError(null);
-  }
-
   async function send() {
     const draft = {
-      category,
-      topic: category === "other" ? topic : null,
+      // 모든 글이 같은 값으로 들어간다. 화면에서 고르지 않는다.
+      category: DEFAULT_CATEGORY,
+      topic: topic.trim() === "" ? null : topic,
       body,
       scope: myScope(),
     };
@@ -105,8 +92,8 @@ export function ChatComposer({
       return;
     }
 
-    // 글은 이제 서버에 저장된다. 저장이 끝나기 전에 입력칸을 비우지 않는다 —
-    // 실패했을 때 쓴 내용이 사라지면 다시 쓰게 된다.
+    // 저장이 끝나기 전에 입력칸을 비우지 않는다 — 실패했을 때 쓴 내용이 사라지면
+    // 다시 쓰게 된다.
     try {
       if ((await sendChatMessage(draft)) === null) {
         setError(`잠시 후 다시 보낼 수 있습니다. (${cooldown || COOLDOWN_SECONDS}초)`);
@@ -117,69 +104,33 @@ export function ChatComposer({
       return;
     }
 
-    setBody(chatTemplateText(category));
+    setBody("");
     setTopic("");
     setError(null);
     onSent("등록되었습니다");
   }
 
   const scopeLabel = myRegion === null ? "지역 미지정" : regionLabel(myRegion);
+  const left = CHAT_BODY_MAX - body.length;
 
   return (
     <section className="ct-card p-5">
       <h2 className="ct-section-title">현장 상황 묻기 · 답하기</h2>
-      <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-muted">
+      <p className="mt-1.5 break-keep text-[13.5px] leading-relaxed text-ink-muted">
         직접 확인한 사실만 적어 주세요. 진단이나 치료 판단은 적지 않습니다.
       </p>
 
-      {/* 퀵 템플릿 칩 3분할 */}
-      <div role="group" aria-label="퀵 템플릿" className="mt-4 grid grid-cols-3 gap-1 rounded-[18px] bg-fill p-1">
-        {CHAT_TEMPLATES.map((t) => {
-          const on = t.value === category;
-          return (
-            <button
-              key={t.value}
-              type="button"
-              aria-pressed={on}
-              onClick={() => pickCategory(t.value)}
-              className={`flex min-h-[54px] flex-col items-center justify-center rounded-field px-1 text-center transition active:scale-[0.97] ${
-                on ? "bg-blue-soft text-blue-deep ring-1 ring-inset ring-blue" : "text-ink-muted"
-              }`}
-            >
-              <span className={`text-[15px] ${on ? "font-bold" : "font-semibold"}`}>{t.label}</span>
-              <span className="mt-0.5 text-[11px] font-medium text-ink-faint">{t.hint}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {meta.needsTopic && (
-        <div className="mt-3">
-          <label htmlFor={`${ids}-topic`} className="text-[12.5px] font-semibold text-ink-faint">
-            주제 (선택)
-          </label>
-          <input
-            id={`${ids}-topic`}
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            maxLength={CHAT_TOPIC_MAX}
-            placeholder="예: 야간 진료, 접수 마감, 주차 (비워도 됩니다)"
-            className="ct-field mt-1 h-12"
-          />
-        </div>
-      )}
-
-      <div className="mt-3">
+      <div className="mt-4">
         <label htmlFor={`${ids}-body`} className="text-[12.5px] font-semibold text-ink-faint">
-          자유 입력
+          무엇이든
         </label>
         <textarea
           id={`${ids}-body`}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          rows={4}
+          rows={5}
           maxLength={CHAT_BODY_MAX}
-          placeholder="지금 상황을 적어 주세요."
+          placeholder="지금 상황을 적어 주세요. 어느 동네·병원인지 함께 적으면 더 도움이 됩니다."
           className="mt-1 w-full resize-none rounded-field bg-fill px-4 py-3 text-[15px] leading-relaxed
                      text-ink transition placeholder:text-ink-faint
                      focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue"
@@ -190,26 +141,42 @@ export function ChatComposer({
           </p>
           {/*
             남은 글자를 보여준다. 음성으로 말하면 길어지기 쉬워서 "몇 자 썼나"보다
-            "얼마 남았나"가 쓸모 있다. 100자 아래로 내려가면 색으로 알린다.
+            "얼마 남았나"가 쓸모 있다 — 잘린 줄 모르고 올리는 것을 막는다.
+            100자 아래로 내려가면 색으로도 알린다.
           */}
           <span
             className={`shrink-0 text-[11.5px] ${
-              CHAT_BODY_MAX - body.length <= 100 ? "font-semibold text-caution-ink" : "text-ink-faint"
+              left <= 100 ? "font-semibold text-caution-ink" : "text-ink-faint"
             }`}
           >
-            {CHAT_BODY_MAX - body.length}자 남음
+            {left}자 남음
           </span>
         </div>
+      </div>
+
+      {/*
+        주제는 **선택**이다. 목록에서 칩으로 보일 뿐이고, 비워도 보낼 수 있다 —
+        한 줄 물어보려는 사람에게 칸 두 개를 채우게 하면 첫 글이 안 올라간다.
+        본문보다 아래에 둔다. 위에 두면 먼저 채워야 하는 것처럼 읽힌다.
+      */}
+      <div className="mt-3">
+        <label htmlFor={`${ids}-topic`} className="text-[12.5px] font-semibold text-ink-faint">
+          주제 (선택)
+        </label>
+        <input
+          id={`${ids}-topic`}
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          maxLength={CHAT_TOPIC_MAX}
+          placeholder="예: 야간 진료, 접수 마감, 주차 (비워도 됩니다)"
+          className="ct-field mt-1 h-12"
+        />
       </div>
 
       <p className="mt-3 rounded-field bg-fill px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-faint">
         <span className="font-semibold text-ink-muted">올라갈 위치 </span>
         {scopeLabel}
         <br />
-        {/*
-          빈 방에서는 조건 고르는 줄을 감춘다(ChatRoom). 그때 "위에서 고르면"은 가리킬
-          곳이 없는 말이 된다. 안내는 화면에 실제로 있는 것만 가리켜야 한다.
-        */}
         {scopeNote ??
           (myRegion === null
             ? "지역을 고르지 않아도 올라갑니다. 어느 동네·병원인지는 글에 적어 주세요."
@@ -217,7 +184,8 @@ export function ChatComposer({
         {nickname && (
           <>
             <br />
-            <span className="font-semibold text-ink-muted">{nickname}</span> 이름으로 올라갑니다 · 로그인 없이 등록됩니다
+            <span className="font-semibold text-ink-muted">{nickname}</span> 이름으로 올라갑니다 ·
+            로그인 없이 등록됩니다
           </>
         )}
       </p>
@@ -228,7 +196,12 @@ export function ChatComposer({
         </p>
       )}
 
-      <button type="button" onClick={() => void send()} disabled={cooldown > 0} className="ct-primary mt-4">
+      <button
+        type="button"
+        onClick={() => void send()}
+        disabled={cooldown > 0}
+        className="ct-primary mt-4"
+      >
         {cooldown > 0 ? `${cooldown}초 후 보낼 수 있습니다` : "보내기"}
       </button>
     </section>

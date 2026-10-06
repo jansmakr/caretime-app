@@ -1,5 +1,4 @@
 import { formatMomentAgo } from "@/lib/relativeTime";
-import { chatTemplateText } from "./templates";
 import {
   CHAT_BODY_MAX,
   CHAT_TOPIC_MAX,
@@ -15,26 +14,21 @@ import {
 
 export const formatChatAgo = formatMomentAgo;
 
-/** 템플릿 질문만 있고 아무것도 덧붙이지 않은 상태. 그대로 보내지 않게 막는다. */
-export function isChatTemplateUntouched(body: string, category: ChatDraft["category"]): boolean {
-  const template = chatTemplateText(category);
-  if (template === "") return false;
-  return body === template;
-}
-
+/**
+ * 보낼 수 있는 글인가.
+ *
+ * 본문만 본다. 주제는 선택이고, 분류는 화면에서 고르지 않는다(DEFAULT_CATEGORY).
+ * 템플릿 검사도 없앴다 — 채울 템플릿이 더 없다.
+ */
 export function validateChatDraft(draft: ChatDraft): { ok: true } | { ok: false; reason: string } {
   if (draft.body.trim() === "") {
     return { ok: false, reason: "보낼 내용을 입력해 주세요." };
   }
   /*
-   * 주제는 받지만 **요구하지 않는다.**
-   * 전에는 '그 밖의 상황'에서 주제를 필수로 받았다. 그 칩이 기본값이 된 뒤로는
-   * 한 줄 물어보려는 사람이 칸 두 개를 채워야 했고, 그러면 첫 글이 안 올라간다.
-   * 주제는 목록에서 칩으로 보일 뿐이고, 없으면 칩이 하나 줄어드는 것이 전부다.
+   * 주제는 받지만 **요구하지 않는다.** 한 줄 물어보려는 사람에게 칸 두 개를 채우게
+   * 하면 첫 글이 안 올라간다. 주제는 목록에서 칩으로 보일 뿐이고, 없으면 칩이
+   * 하나 줄어드는 것이 전부다.
    */
-  if (isChatTemplateUntouched(draft.body, draft.category)) {
-    return { ok: false, reason: "템플릿에 상황을 한 줄 덧붙여 주세요." };
-  }
   return { ok: true };
 }
 

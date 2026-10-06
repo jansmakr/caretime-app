@@ -1,4 +1,3 @@
-import { categoryLabel } from "@/features/reports/templates";
 import type { ChatMessage, ChatScope } from "./types";
 
 /**
@@ -20,21 +19,27 @@ export function sharePlace(scope: ChatScope): string {
   ) || "우리 지역";
 }
 
-export function buildShareText(scope: ChatScope, category: ChatMessage["category"]): string {
-  return `[케어타임 실시간 현장] ${sharePlace(scope)} - ${categoryLabel(category)} 최신 현황 확인하기`;
+/*
+ * 문구에서 진료과목을 뺐다(2026-10-06). 전에는 "열상·화상"과 분류 라벨이 붙었다 —
+ * 서비스를 전 과목·전 연령으로 열었으므로 공유받은 사람에게 **대상을 좁혀 보이면**
+ * 안 된다. 분류는 화면에서 고르지도 않는다.
+ */
+export function buildShareText(scope: ChatScope, _category?: ChatMessage["category"]): string {
+  return `[케어타임 실시간 현장] ${sharePlace(scope)} 최신 현황 확인하기`;
 }
 
 export function buildRoomShareText(): string {
-  return "[케어타임 실시간 현장] 열상·화상 최신 현황 확인하기";
+  return "[케어타임 실시간 현장] 우리 동네 진료 현황 확인하기";
 }
 
 /**
- * 공유할 주소.
- * 병원이 특정된 글은 그 병원 상세로 보낸다 — 거기에 의료기관이 확인한 정보와 제보가 함께 있다.
- * 그 외에는 톡방으로 보낸다.
+ * 공유할 주소. 항상 톡방이다.
+ *
+ * 전에는 병원이 특정된 글을 그 병원 상세로 보냈다. 1차에는 그 화면이 닫혀 있어서
+ * (404) 공유 링크가 깨진 화면을 열게 된다. 2차에 병원을 다시 켤 때 되살린다.
  */
-export function buildShareUrl(origin: string, scope: ChatScope): string {
-  return scope.hospitalId ? `${origin}/hospital/${scope.hospitalId}` : `${origin}/chat`;
+export function buildShareUrl(origin: string, _scope: ChatScope): string {
+  return `${origin}/chat`;
 }
 
 /**

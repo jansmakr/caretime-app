@@ -6,7 +6,6 @@ import { SourceBadge } from "@/components/common/SourceBadge";
 import { ChatReactions } from "@/components/chat/ChatReactions";
 import { ReportButton } from "@/components/chat/ReportButton";
 import { ShareButton } from "@/components/chat/ShareButton";
-import { categoryLabel } from "@/features/reports/templates";
 import type { ReactionKey } from "@/features/chat/reactions";
 import { formatChatAgo } from "@/features/chat/service";
 import { formatPostDate, postAgeDays } from "@/features/chat/age";
@@ -52,8 +51,12 @@ export function ChatBubble({
   return (
     <article>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <span className="ct-chip bg-blue-soft text-blue-deep">{categoryLabel(message.category)}</span>
-        {message.topic && <span className="ct-chip">{message.topic}</span>}
+        {/*
+          분류 칩을 떼었다(2026-10-06). 화면에서 고르지 않으므로 모든 글이 같은 값이고,
+          같은 말이 모든 글에 한 줄씩 붙으면 읽어야 하는 줄만 늘어난다(원칙 4).
+          글쓴이가 적은 주제가 있으면 그것만 보여준다.
+        */}
+        {message.topic && <span className="ct-chip bg-blue-soft text-blue-deep">{message.topic}</span>}
         {message.mine && (
           <span className="ct-chip bg-confirmed-soft text-confirmed-ink">내 글</span>
         )}

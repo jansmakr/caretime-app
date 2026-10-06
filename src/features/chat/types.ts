@@ -18,8 +18,20 @@ import type { ReactionCounts, ReactionKey } from "./reactions";
  *   - 진단·권고를 담는 필드를 두지 않는다. (Release Blocker 7)
  */
 
-/** 제보와 같은 3분할을 쓴다. 라벨이 갈라지지 않게 reports 의 표를 그대로 읽는다. */
+/**
+ * 글 분류. **화면에서는 고르지 않는다.**
+ *
+ * 전에는 작성창에 칩 셋(찢어진 상처·화상·그 밖)이 있었다. 그것이 대상을 좁혔다 —
+ * 열·구토로 온 사람이 그 셋을 보고 "내 건 해당 안 되나" 하고 멈춘다. 서비스는
+ * 전 과목·전 연령으로 연다(2026-10-06).
+ *
+ * 컬럼과 타입은 남긴다. 모든 글이 DEFAULT_CATEGORY 로 들어가고, 2차에 분류가 다시
+ * 필요해지면 그때 쓴다. 지우면 되살릴 때 migration 이 또 필요하다.
+ */
 export type ChatCategory = ReportCategory;
+
+/** 화면에서 고르지 않으므로 모든 글이 이 값이다. */
+export const DEFAULT_CATEGORY: ChatCategory = "other";
 
 /**
  * 이 글이 어느 지역·어느 병원 이야기인지.

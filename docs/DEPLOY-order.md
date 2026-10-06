@@ -122,12 +122,17 @@ select * from public.purge_health();
 같은 이름으로 두 번 걸면 덮어쓴다(`cron.schedule` 은 이름이 같으면 갱신한다).
 그래서 이미 걸려 있어도 위 두 줄을 그냥 실행해도 된다.
 
-## F. 수동 병원 2곳
+## F. 수동 병원 — **1차에 넣지 않는다**
 
-- [ ] `npm run sql:manual-hospitals -- --out manual.sql` 로 뽑아 콘솔 SQL 로 넣었다
-      (`import:manual-hospitals` 는 로컬 전용 가드가 있어 운영에 쓰지 않는다.
-       `>` 로 받으면 한글 주석이 깨진다 — `--out` 을 쓴다)
-- [ ] `select id, name, tel from hospitals where id like 'm%';` → 2행, 전화번호가 맞다
+병원 목록·상세를 닫았으므로(`showHospitalDirectory = false`) 병원을 넣어도 **보이는
+자리가 없다.** 2차에 병원을 다시 켤 때 함께 넣는다.
+
+그때 쓸 것은 그대로 남아 있다 — `data/manual-hospitals.json`,
+`npm run sql:manual-hospitals -- --out manual.sql`(운영 콘솔에 붙여 넣는 SQL),
+migration `20261003`(그 SQL 이 쓰는 컬럼을 만든다). 리허설에서 두 번 실행해도 2행인
+것까지 확인해 뒀다.
+
+- [ ] (1차에서는 건너뛴다)
 
 ## G. 환경변수 (Vercel Project Settings → Environment Variables)
 
@@ -209,7 +214,7 @@ curl -s https://<운영주소>/api/guest
 - [ ] 그 글이 다른 브라우저(시크릿 창)에서도 보인다
 - [ ] 쓴 브라우저에서 그 글 옆 **[삭제] → [지운다]** 로 지워진다. 시크릿 창에서도 사라진다
 - [ ] 전화번호가 섞인 글은 거절된다 (예: `010-1234-5678` 을 적어 본다)
-- [ ] `/hospital/<수동 병원 id>` — 주소·전화가 맞다. 전화 버튼이 눌린다
+- [ ] `/search`, `/hospital/<아무 id>` — **404** (1차에 닫힘)
 - [ ] `/partner`, `/partner/login` — **404**
 - [ ] `/terms`, `/privacy` — 본문이 나온다. 하단 동의 링크도 보인다.
       시행일 전이면 "YYYY-MM-DD 부터 시행됩니다" 가 위에 붙는다
@@ -259,14 +264,9 @@ supabase db reset --no-seed --local
 docker exec supabase_db_caretime psql -U postgres -d postgres   -c "select count(*) as 가상 from hospitals where name like '가상%';"   -c "select count(*) as 병원 from hospitals;"
 # → 가상 0 / 병원 0
 
-# 3. 수동 병원 2곳 — **운영에 붙여 넣을 그 SQL 로** 넣는다
-npm run sql:manual-hospitals -- --out manual.sql
-docker exec -i supabase_db_caretime psql -U postgres -d postgres < manual.sql
-# → 2행. 한 번 더 실행해도 2행이어야 한다(두 번 눌리는 일이 흔하다)
+# 3. 적용 후 확인 질의들 (아래 「적용 후 확인」 절 전체)
 
-# 4. 적용 후 확인 질의들 (아래 「적용 후 확인」 절 전체)
-
-# 5. 화면이 뜨는가
+# 4. 화면이 뜨는가
 npm run build && npm run start   # 다른 포트를 쓸 때는 next start -p 3001
 ```
 
@@ -294,7 +294,8 @@ npm run build && npm run start   # 다른 포트를 쓸 때는 next start -p 300
 ### 리허설 결과 — 2026-10-02
 
 migration 전부만 올린 DB(`db reset --no-seed`)에 수동 병원 2곳을 운영용 SQL 로 넣고
-운영 빌드를 띄워 확인했다.
+운영 빌드를 띄워 확인했다. **병원 투입은 그 뒤 1차 범위에서 빠졌다**(2026-10-03) —
+아래 표의 "수동 병원 SQL" 줄은 2차에 다시 쓸 때의 기록으로 남겨 둔다.
 
 | 무엇 | 결과 |
 |---|---|
