@@ -168,6 +168,15 @@ delete from public.field_reports where id = '<글 id>';
 ⚠️ **되돌릴 수 없다.** Free 요금제에는 백업이 없다(docs/DATA-INVENTORY.md).
 2) 를 건너뛰지 않는다.
 
+삭제 요청으로 글을 지우기 전에 그 글의 신고 기록이 `moderation_actions` 에 남아
+있는지 확인한다. 본문은 사라져도 처리 이력은 남아야 한다.
+
+```sql
+select action, reason_code, created_at
+  from public.moderation_actions
+ where target_id = '<글 id>' order by created_at;
+```
+
 ⚠️ 지운 글은 **읽고 있는 사람 화면에서 바로 사라지지 않는다.** 실시간 신호는
 insert·update 트리거에서 나오고 delete 에는 트리거가 없다. 공개 중단을 먼저
 확실히 해야 하면 `update … set visibility = 'REMOVED'` 를 먼저 하고 (화면에서
