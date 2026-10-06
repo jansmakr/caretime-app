@@ -147,8 +147,14 @@ export const isDemoContentAllowed: boolean =
 /**
  * 가상 제보·가상 대화·가공된 반응 수·가상 상대시각.
  * 차단되면 목록은 실제 빈 상태가 된다. 0건으로 꾸미지 않는다.
+ *
+ * ⚠️ **이 플래그만 운영 빌드에서 환경변수로 열 수 없다.**
+ * 다른 데모 플래그(거리·배지)는 `NEXT_PUBLIC_DEMO_CONTENT` 로 켤 수 있지만 이것은
+ * 아니다. 지어낸 글은 **실제 병원 이름이 들어가면 그 병원에 대한 허위 정보**이고,
+ * 가상 병원 이름을 쓰면 "모두 가상 데이터" 배너를 되살린다. 둘 다 이미 겪었다.
+ * Vercel 설정 한 줄로 되살아나는 자리에 두지 않는다 — 운영은 빈 방으로 시작한다.
  */
-export const showDemoReports = isDemoContentAllowed;
+export const showDemoReports = isDemoContentAllowed && process.env.NODE_ENV !== "production";
 
 /**
  * 공식 출처 배지(🟢 의료기관 직접확인 · 🟡 운영자 전화확인).

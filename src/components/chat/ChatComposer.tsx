@@ -117,7 +117,7 @@ export function ChatComposer({
 
   return (
     <section className="ct-card p-5">
-      <h2 className="ct-section-title">현장 상황 묻기 · 답하기</h2>
+      <h2 className="ct-section-title">묻거나 알려주기</h2>
 
       {/*
         금지 문구를 맨 위에서 **버튼 근처로 내렸다.** 첫 글을 쓰려는 사람이 처음 보는
@@ -131,7 +131,7 @@ export function ChatComposer({
           onChange={(e) => setBody(e.target.value)}
           rows={5}
           maxLength={CHAT_BODY_MAX}
-          placeholder="지금 상황을 적어 주세요. 어느 동네·병원인지 함께 적으면 더 도움이 됩니다."
+          placeholder="지금 상황이든, 전에 겪은 일이든 적어 주세요. 어느 동네·병원인지 함께 적으면 더 도움이 됩니다."
           className="mt-1 w-full resize-none rounded-field bg-fill px-4 py-3 text-[15px] leading-relaxed
                      text-ink transition placeholder:text-ink-faint
                      focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue"
