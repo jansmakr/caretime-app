@@ -40,8 +40,6 @@ const ACTIVE = {
   description:
     "같은 동네 보호자에게 지금 상황을 묻고, 본 것을 알려주세요. 지역을 고르지 않아도 글을 남길 수 있습니다.",
   button: "우리 동네 현장톡 열기 →",
-  /** 실제 제보를 보여줄 때만 붙는 고지. 준비 중에는 보여 줄 제보가 없어 달지 않는다. */
-  notice: "이용자 제보입니다. 방문 전 병원에 전화로 확인해 주세요.",
 } as const;
 
 export function LiveTalkBanner({
@@ -103,15 +101,11 @@ export function LiveTalkBanner({
       </Link>
 
       {/*
-        안내 문구는 링크 밖에 둔다. 면책 고지는 클릭 대상이 아니다.
-        준비 중에는 보여 줄 제보가 없어 "이용자 제보입니다"를 달지 않는다 —
-        없는 제보를 있다고 읽히게 만들지 않기 위해서다.
+        "이용자 제보입니다. 방문 전 전화로 확인해 주세요"를 여기서 뗐다(2026-10-06).
+        **홈에는 글 목록이 없다.** 가리킬 제보가 없는 자리에서 그 문장은 무엇을
+        두고 하는 말인지 알 수 없다 — 작성창의 "위에서 고르면"과 같은 종류의 실수다.
+        같은 고지는 글이 실제로 있는 /chat 맨 위에 붙어 있다(LiveInfoNotice).
       */}
-      {isFieldTalkSharingLive && (
-        <p className="mt-2 break-keep px-1 text-[12px] leading-relaxed text-ink-faint">
-          {ACTIVE.notice}
-        </p>
-      )}
     </section>
   );
 }

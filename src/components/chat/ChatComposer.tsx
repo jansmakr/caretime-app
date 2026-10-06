@@ -7,7 +7,6 @@ import { sendChatMessage } from "@/features/chat/store";
 import { COOLDOWN_SECONDS, useChatNickname, useCooldownSeconds } from "@/features/chat/useChatRoom";
 import {
   CHAT_BODY_MAX,
-  CHAT_TOPIC_MAX,
   DEFAULT_CATEGORY,
   EMPTY_SCOPE,
   type ChatScope,
@@ -49,7 +48,6 @@ export function ChatComposer({
   /** 어디로 올라가는지 설명하는 한 줄. 넘기면 이 문구를 쓴다. */
   scopeNote?: string;
 }) {
-  const [topic, setTopic] = useState("");
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const cooldown = useCooldownSeconds(lastSentAt);
@@ -82,7 +80,8 @@ export function ChatComposer({
     const draft = {
       // 모든 글이 같은 값으로 들어간다. 화면에서 고르지 않는다.
       category: DEFAULT_CATEGORY,
-      topic: topic.trim() === "" ? null : topic,
+      // 주제 칸이 없다. 쓸 말은 본문에 들어간다.
+      topic: null,
       body,
       scope: myScope(),
     };
@@ -105,25 +104,27 @@ export function ChatComposer({
     }
 
     setBody("");
-    setTopic("");
     setError(null);
     onSent("등록되었습니다");
   }
 
-  const scopeLabel = myRegion === null ? "지역 미지정" : regionLabel(myRegion);
+  /*
+   * "지역 미지정"은 관리자 말이고, 뭘 안 고른 잘못처럼 읽힌다. 안 골라도 올라가는
+   * 것이 사실이므로 **괜찮다고 말하는 문구**를 쓴다.
+   */
+  const scopeLabel = myRegion === null ? "지역 없이" : regionLabel(myRegion);
   const left = CHAT_BODY_MAX - body.length;
 
   return (
     <section className="ct-card p-5">
       <h2 className="ct-section-title">현장 상황 묻기 · 답하기</h2>
-      <p className="mt-1.5 break-keep text-[13.5px] leading-relaxed text-ink-muted">
-        직접 확인한 사실만 적어 주세요. 진단이나 치료 판단은 적지 않습니다.
-      </p>
 
-      <div className="mt-4">
-        <label htmlFor={`${ids}-body`} className="text-[12.5px] font-semibold text-ink-faint">
-          무엇이든
-        </label>
+      {/*
+        금지 문구를 맨 위에서 **버튼 근처로 내렸다.** 첫 글을 쓰려는 사람이 처음 보는
+        것이 "하지 마라" 두 개면 손이 멈춘다. 같은 문장이 올리기 직전에는 "확인"으로
+        읽힌다.
+      */}
+      <div className="mt-3">
         <textarea
           id={`${ids}-body`}
           value={body}
@@ -136,8 +137,8 @@ export function ChatComposer({
                      focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue"
         />
         <div className="mt-1 flex items-start justify-between gap-3">
-          <p className="text-[11.5px] leading-relaxed text-ink-faint">
-            이름·연락처처럼 개인을 알 수 있는 정보는 적지 마세요.
+          <p className="break-keep text-[11.5px] leading-relaxed text-ink-faint">
+            이름과 연락처는 적지 마세요
           </p>
           {/*
             남은 글자를 보여준다. 음성으로 말하면 길어지기 쉬워서 "몇 자 썼나"보다
@@ -155,23 +156,10 @@ export function ChatComposer({
       </div>
 
       {/*
-        주제는 **선택**이다. 목록에서 칩으로 보일 뿐이고, 비워도 보낼 수 있다 —
-        한 줄 물어보려는 사람에게 칸 두 개를 채우게 하면 첫 글이 안 올라간다.
-        본문보다 아래에 둔다. 위에 두면 먼저 채워야 하는 것처럼 읽힌다.
+        주제 칸을 없앴다(원칙 10). 자유 입력이라 분류가 되지 않고, 쓸 말은 본문에 다
+        들어간다 — 칸을 하나 더 두면 "채워야 하나"를 한 번 더 판단하게 된다.
+        목록의 칩도 함께 사라진다.
       */}
-      <div className="mt-3">
-        <label htmlFor={`${ids}-topic`} className="text-[12.5px] font-semibold text-ink-faint">
-          주제 (선택)
-        </label>
-        <input
-          id={`${ids}-topic`}
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          maxLength={CHAT_TOPIC_MAX}
-          placeholder="예: 야간 진료, 접수 마감, 주차 (비워도 됩니다)"
-          className="ct-field mt-1 h-12"
-        />
-      </div>
 
       <p className="mt-3 rounded-field bg-fill px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-faint">
         <span className="font-semibold text-ink-muted">올라갈 위치 </span>
@@ -179,8 +167,8 @@ export function ChatComposer({
         <br />
         {scopeNote ??
           (myRegion === null
-            ? "지역을 고르지 않아도 올라갑니다. 어느 동네·병원인지는 글에 적어 주세요."
-            : "내 지역으로 올라갑니다. 다른 동네 이야기는 글에 적어 주세요.")}
+            ? "구를 고르면 같은 동네 사람이 찾아 읽습니다. 안 골라도 올라갑니다."
+            : "다른 동네 이야기는 글에 적어 주세요.")}
         {nickname && (
           <>
             <br />
@@ -196,13 +184,20 @@ export function ChatComposer({
         </p>
       )}
 
+      <p className="mt-4 break-keep text-[13px] leading-relaxed text-ink-muted">
+        직접 확인한 사실만 적어 주세요. 진단이나 치료 판단은 적지 않습니다.
+      </p>
+
+      {/*
+        "보내기"는 1:1 로 전하는 느낌이다. 글은 쌓여서 뒤에 오는 사람이 읽는다.
+      */}
       <button
         type="button"
         onClick={() => void send()}
         disabled={cooldown > 0}
-        className="ct-primary mt-4"
+        className="ct-primary mt-2"
       >
-        {cooldown > 0 ? `${cooldown}초 후 보낼 수 있습니다` : "보내기"}
+        {cooldown > 0 ? `${cooldown}초 후 올릴 수 있습니다` : "올리기"}
       </button>
     </section>
   );

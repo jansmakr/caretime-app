@@ -16,7 +16,7 @@ export function EmergencyCallout() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex h-8 shrink-0 items-center rounded-pill bg-limited-soft px-3 text-[14px] font-bold text-limited-ink active:brightness-95"
+        className="flex h-11 min-w-[44px] shrink-0 items-center rounded-pill bg-limited-soft px-3.5 text-[14px] font-bold text-limited-ink active:brightness-95"
       >
         119
       </button>

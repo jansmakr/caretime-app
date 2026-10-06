@@ -12,7 +12,7 @@ export function AppHeader({ title, backHref }: { title?: string; backHref?: stri
             <Link
               href={backHref}
               aria-label="뒤로"
-              className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink active:bg-fill"
+              className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink active:bg-fill"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
                 <path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
