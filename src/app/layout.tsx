@@ -17,6 +17,19 @@ export const metadata: Metadata = {
    * 등록된 의료기관이 2곳인 것을 모르고 온다. 여는 시점은 사람이 따로 정한다.
    */
   robots: { index: isSearchIndexingOpen, follow: isSearchIndexingOpen },
+
+  /*
+   * 홈 화면 바로가기(app/manifest.ts). iOS 사파리는 manifest 의 아이콘을 쓰지 않고
+   * apple-touch-icon 을 본다 — 안 주면 화면을 캡처한 그림이 아이콘이 된다.
+   */
+  manifest: "/manifest.webmanifest",
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: {
+    capable: true,
+    title: "현장톡",
+    // 상태표시줄을 머리띠 색과 같이 둔다. 다르면 위쪽에 띠가 하나 더 보인다.
+    statusBarStyle: "default",
+  },
 };
 
 export const viewport: Viewport = {

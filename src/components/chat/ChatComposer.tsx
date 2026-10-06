@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
+import { RateLimitedError, ReportRejectedError } from "@/features/chat/repository";
 import { COOLDOWN_SECONDS, useChatNickname, useCooldownSeconds } from "@/features/chat/useChatRoom";
 import {
   CHAT_BODY_MAX,
@@ -98,8 +99,15 @@ export function ChatComposer({
         setError(`잠시 후 다시 보낼 수 있습니다. (${cooldown || COOLDOWN_SECONDS}초)`);
         return;
       }
-    } catch {
-      setError("보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } catch (e) {
+      /*
+       * 서버가 거절한 이유를 **그대로 보여 준다.** "보내지 못했습니다"만 뜨면
+       * 무엇을 고쳐야 할지 모르고 그냥 나간다 — 개인정보가 걸린 것인지, 욕설이
+       * 걸린 것인지, 서버가 죽은 것인지가 전부 같은 문장이 된다.
+       */
+      if (e instanceof ReportRejectedError) setError(e.message);
+      else if (e instanceof RateLimitedError) setError(e.message);
+      else setError("보내지 못했습니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
 
@@ -184,8 +192,18 @@ export function ChatComposer({
         </p>
       )}
 
+      {/*
+        올리기 직전의 확인 두 줄.
+        둘째 줄을 "차단됩니다"로 쓰지 않는다 — 욕설은 서버가 거르지만 문맥 비방
+        ("○○병원 불친절해요")은 통과한다. 통과하는 것을 막는다고 적으면 거짓이
+        되고, 거짓인 경고는 다음 경고까지 안 읽히게 만든다(features/p0/abuse).
+      */}
       <p className="mt-4 break-keep text-[13px] leading-relaxed text-ink-muted">
         직접 확인한 사실만 적어 주세요. 진단이나 치료 판단은 적지 않습니다.
+        <br />
+        <span className="font-semibold text-ink">
+          의료기관·의료진을 비방하는 글, 욕설은 올릴 수 없습니다.
+        </span>
       </p>
 
       {/*

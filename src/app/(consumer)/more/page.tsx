@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { InstallHint } from "@/components/common/InstallHint";
 import { LEGAL_DOC_PATH, loadLegalDocument } from "@/features/legal/documents";
 import { showPartnerEntry } from "@/lib/demoContent";
 
@@ -52,6 +53,12 @@ export default function MorePage() {
               </li>
             ),
           )}
+          {/*
+            홈에서 안내를 닫은 사람이 나중에 마음을 바꿨을 때 찾아올 자리다.
+            여기서는 닫는 버튼이 없고, 설치할 길이 있을 때만 줄이 생긴다.
+          */}
+          <InstallHint variant="row" />
+
           <li className="flex items-center justify-between px-5 py-4">
             <span className="text-[16px] font-medium text-ink-muted">의료기관 정보 등록</span>
             <span className="rounded-pill bg-fill px-2.5 py-1 text-[12px] font-semibold text-ink-faint">

@@ -9,6 +9,7 @@ import {
 } from "@/features/chat/guestSession";
 import { checkRate, isDuplicateBody } from "@/features/p0/limits";
 import { findPiiExcludingKnown } from "@/features/p0/pii";
+import { findAbuse } from "@/features/p0/abuse";
 import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { areWritesOpen } from "@/lib/demoContent";
@@ -103,6 +104,16 @@ export async function POST(request: NextRequest) {
 
   const pii = findPiiExcludingKnown(body, knownPhones);
   if (pii) return fail(422, pii.message, freshToken);
+
+  /*
+   * 욕설. 개인정보와 같은 자리에서 막는다 — 올라간 뒤에 지우면 이미 읽혔다.
+   *
+   * **문맥 비방은 여기서 안 걸린다.** "○○병원 불친절해요"에는 욕이 없다. 그건
+   * 신고 → 격리가 맡는다. 작성창 문구도 거기에 맞춰 "올릴 수 없습니다"까지만 쓴다
+   * (features/p0/abuse 의 주석).
+   */
+  const abuse = findAbuse(body);
+  if (abuse) return fail(422, abuse.message, freshToken);
   // 시군구만 있으면 어디인지 알 수 없다. DB 의 CHECK 와 같은 규칙을 여기서 먼저 본다.
   if (sigungu !== null && sido === null) return fail(400, "지역이 올바르지 않습니다.", freshToken);
 

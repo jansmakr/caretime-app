@@ -153,6 +153,17 @@ export async function fetchFieldReports(
  *
  * 닉네임은 서버가 정한다. 화면이 보낸 값을 쓰지 않는다.
  */
+/**
+ * 글을 고치면 다시 올릴 수 있는 거절(4xx). 서버가 적어 보낸 이유를 그대로 들고 간다.
+ * 네트워크·서버 고장과 구분하려고 따로 둔다 — 그쪽은 사용자가 고칠 것이 없다.
+ */
+export class ReportRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReportRejectedError";
+  }
+}
+
 export class RateLimitedError extends Error {
   constructor(readonly retryAfterSeconds: number) {
     super("잠시 후 다시 보낼 수 있습니다.");
@@ -185,7 +196,16 @@ export async function insertFieldReport(draft: ChatDraft, now: Date = new Date()
   }
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(payload.error ?? "저장하지 못했습니다.");
+    const message = payload.error ?? "저장하지 못했습니다.";
+    /*
+     * 4xx 는 **글을 고치면 되는 거절**이다(개인정보·욕설·빈 글). 서버가 무엇이
+     * 걸렸는지 적어 보내므로 그 말을 그대로 화면까지 가져간다 — "보내지 못했습니다"
+     * 만 뜨면 무엇을 고쳐야 할지 모르고 그냥 나간다.
+     *
+     * 5xx·네트워크 실패는 사용자가 고칠 것이 없다. 그때는 다시 해 보라고만 한다.
+     */
+    if (response.status >= 400 && response.status < 500) throw new ReportRejectedError(message);
+    throw new Error(message);
   }
 
   const saved = (await response.json()) as { id: string; handle: string; createdAt: string };

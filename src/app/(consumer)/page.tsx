@@ -3,6 +3,7 @@ import { AppHeader } from "@/components/layout/AppHeader";
 import { StageNotice } from "@/components/common/StageNotice";
 import { DiscoveryForm } from "@/components/home/DiscoveryForm";
 import { MyRegionGate } from "@/components/home/MyRegionGate";
+import { InstallHint } from "@/components/common/InstallHint";
 import { showCareConditionForm, showHospitalDirectory } from "@/lib/demoContent";
 
 /*
@@ -60,6 +61,14 @@ export default function HomePage() {
          * 배너는 본문 흐름 안에 두고 하단 고정·팝업으로 만들지 않는다.
          */}
         <MyRegionGate />
+
+        {/*
+          홈 화면 바로가기. **한 줄이고, 닫으면 다시 안 뜬다.**
+          밤에 아이콘 하나로 열리는 것이 이 서비스에서는 기능이라 첫 화면에서도
+          찾을 수 있게 둔다. 다만 배너로 키우지 않는다 — 지금 할 일은 글이다.
+          설치할 길이 없는 브라우저에서는 아무것도 그리지 않는다.
+        */}
+        <InstallHint />
 
         {/*
          * 병원 목록으로 가는 길은 1차에 없다. 글을 병원이 아니라 구에 걸기로 했고,
