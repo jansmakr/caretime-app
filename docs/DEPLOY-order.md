@@ -145,7 +145,7 @@ Production·Preview 양쪽에 같은 값을 넣는다 — Preview 가 운영 DB 
 | `NEXT_PUBLIC_SUPABASE_URL` | 운영 프로젝트 URL | Mock 으로 돈다(병원 0곳) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 운영 anon 키 | 같음 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 운영 service_role 키 | **쓰기 라우트가 전부 실패한다** |
-| `CARETIME_WRITES` | 공개 전에는 `closed`, 공개일에 지운다 | 화면 플래그를 따른다(열림) |
+| `CARETIME_WRITES` | **넣지 않는다** (H-2 를 쓸 때만 `closed`) | 화면 플래그를 따른다(열림) |
 | `NEXT_PUBLIC_DEMO_CONTENT` | **넣지 않는다** | 꺼짐(원하는 상태) |
 | `NEXT_PUBLIC_FIELD_TALK_LIVE` | **넣지 않는다** | 켜짐(원하는 상태) |
 | `GUEST_LIMIT_POSTS` 외 3개 | 넣지 않는다 | PRD 기본값 |
@@ -160,17 +160,45 @@ Production·Preview 양쪽에 같은 값을 넣는다 — Preview 가 운영 DB 
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` 가 운영 프로젝트 값이다
 - [ ] **`NEXT_PUBLIC_DEMO_CONTENT` 가 없다.** 있으면 가상 병원·가상 제보가 켜진다
 - [ ] `NEXT_PUBLIC_FIELD_TALK_LIVE` 가 없다 (기본 켜짐)
-- [ ] **`CARETIME_WRITES=closed`** — 공개일 전까지. 아래 「공개 전 기간」 참고
+- [ ] `CARETIME_WRITES` **를 넣지 않는다.** 주소를 공유하지 않는 것으로 충분하다
+      (쓰기를 닫아야 하는 경우는 H-2 뿐이고, 시행일에 배포하면 해당 없다)
 - [ ] 로컬 테스트 변수(`E2E_PARTNER_EMAIL`·`E2E_PARTNER_PASSWORD`)를 운영에 넣지 않았다
 
 ## H. 배포와 리전
+
+**확인은 `*.vercel.app` 주소로 한다.** 베타 기간에는 `caretime.kr` 을 Vercel 에
+붙이지 않는다(공개 주소를 아직 열지 않는다). 아래에서 `<배포주소>` 는 배포가 끝나면
+Vercel 이 알려 주는 `caretime-xxxx.vercel.app` 이다.
 
 - [ ] `vercel.json` 이 저장소에 있다 (`{ "regions": ["icn1"] }`)
 - [ ] 배포가 리전 때문에 거부되지 않았다 — 무료 요금제는 리전을 **하나만** 고를 수 있다.
       거부되면 그 메시지를 그대로 남긴다
 - [ ] 배포 후 함수 리전이 실제로 서울인지 본다:
-      `vercel inspect <배포 URL>` 또는 Project → Functions 탭의 Region 표시 → `icn1`
+      `vercel inspect <배포주소>` 또는 Project → Functions 탭의 Region 표시 → `icn1`
 - [ ] 미국 리전으로 떨어졌으면 **방침의 국외 이전 조항이 필요해진다.** 그대로 두지 않는다
+- [ ] Settings → Domains 에 `caretime.kr` · `www.caretime.kr` 이 **없다**
+
+### ★ 배포 직후 noindex 확인 — 아니면 배포 실패로 본다
+
+```bash
+curl -s <배포주소> | grep -o 'content="[^"]*index[^"]*"'
+# → content="noindex, nofollow"     이 줄이 아니면 **배포 실패다.** 주소를 공유하지 않는다.
+
+curl -sI <배포주소> | grep -i x-robots-tag
+# → x-robots-tag: noindex, nofollow   (미들웨어가 붙인다. 메타와 둘 다 본다)
+```
+
+- [ ] 위 두 줄을 실제로 쳤고 둘 다 `noindex` 였다
+
+**이 확인이 없어서 실제로 사고가 났다.** 저장소에는 `noindex` 가 있었지만 배포된
+것은 더 오래된 빌드여서 운영 주소가 `index, follow` 를 내보내고 있었고, 그동안
+홈이 구글에 색인됐다(2026-09-27). 화면은 여러 번 띄워 읽었다 — **robots 메타는
+눈에 보이지 않는다.** 그래서 눈이 아니라 `curl` 로 본다.
+
+색인된 뒤에 `robots.txt` 로 막는 것은 **거꾸로다.** 크롤을 막으면 구글이 `noindex`
+를 읽을 수 없어서 이미 들어간 색인이 그대로 남는다. 색인을 빼는 길은 `noindex` 를
+읽히게 두는 것이고, 그러려면 그 주소가 응답해야 한다. 주소를 떼면 못 읽힌다 —
+이미 색인된 `www.caretime.kr` 은 Search Console 의 삭제 요청으로 뺀다.
 
 ## H-2. 공개 전 기간 — 배포일과 시행일이 다를 때
 
@@ -190,10 +218,10 @@ Production·Preview 양쪽에 같은 값을 넣는다 — Preview 가 운영 DB 
 - [ ] 닫혔는지 확인한다 — 글쓰기 버튼을 눌러도 올라가지 않고, 아래도 확인한다
 
 ```bash
-curl -i -X POST https://<운영주소>/api/field-reports   -H 'Content-Type: application/json'   -d '{"id":"00000000-0000-4000-8000-000000000000","category":"other","body":"닫힘 확인"}'
+curl -i -X POST https://<배포주소>/api/field-reports   -H 'Content-Type: application/json'   -d '{"id":"00000000-0000-4000-8000-000000000000","category":"other","body":"닫힘 확인"}'
 # → HTTP/2 503  {"error":"아직 준비 중입니다."}
 
-curl -s https://<운영주소>/api/guest
+curl -s https://<배포주소>/api/guest
 # → {"nickname":null,"myPostIds":[]}   세션을 만들지 않는다(쿠키도 없다)
 ```
 
@@ -207,7 +235,7 @@ curl -s https://<운영주소>/api/guest
 글을 가두는 일이 되면 안 된다. 테스트가 이 조합을 고정한다
 (`tests/writeGate.realtime.test.ts`).
 
-## I. 띄워서 읽는다 (운영 주소로)
+## I. 띄워서 읽는다 (`*.vercel.app` 주소로)
 
 - [ ] `/` — 주 버튼이 현장톡 하나다
 - [ ] `/chat` — 빈 방 안내가 나온다. **글 1건을 실제로 써 본다**
@@ -221,7 +249,7 @@ curl -s https://<운영주소>/api/guest
 - [ ] HTML 에 `가상` 이 없다
 - [ ] 맨 위에 **베타 안내**가 붙는다 (DEMO 가 아니다). `DEMO` 가 보이면
       `NEXT_PUBLIC_DEMO_CONTENT` 가 켜진 것이다
-- [ ] `curl -s <주소> | grep 'name="robots"'` → **`noindex, nofollow`**
+- [ ] robots 확인은 H 절에서 이미 했다 (메타 + 헤더 둘 다)
 
 ## J. 다음 날
 

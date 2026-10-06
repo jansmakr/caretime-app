@@ -61,9 +61,15 @@ export function isWriteFrozen(env: Record<string, string | undefined> = process.
   return isOn(env.FLAG_FEED_WRITE_FROZEN);
 }
 
-/** 데모·시드 데이터를 화면에 낼 수 있는가. 운영에서는 내지 않는다. (PRD §2.2) */
-export function allowDemoContent(env: Record<string, string | undefined> = process.env): boolean {
-  // 명시적으로 켜거나 개발 환경일 때만. 운영 빌드의 기본값은 '내지 않는다'.
-  if (isOn(env.FLAG_DEMO_CONTENT)) return true;
-  return env.NODE_ENV !== "production";
-}
+/*
+ * `allowDemoContent` 를 여기서 **없앴다** (2026-10-06).
+ *
+ * 같은 판단을 두 곳에서 하고 있었다 — 이 함수는 `FLAG_DEMO_CONTENT` 를 봤고,
+ * 실제 화면은 `lib/demoContent` 의 `isDemoContentAllowed`(`NEXT_PUBLIC_DEMO_CONTENT`)
+ * 를 본다. 이 함수를 쓰는 곳은 한 곳도 없었다. 그런데 이름과 환경변수가 그럴듯해서
+ * **Vercel 에 `FLAG_DEMO_CONTENT` 를 넣으면 가상 글이 꺼진다고 믿게 만든다.**
+ * 노출을 가리는 판정점은 하나여야 한다(CLAUDE.md) — `lib/demoContent.ts` 다.
+ *
+ * 가상 글이 나오는 길은 지금 한 줄이다:
+ *   isDemoContentAllowed → showDemoReports → useChatRoom 의 seedChatMessages
+ */

@@ -121,6 +121,52 @@ describe("비인증 요청", () => {
   }, TEST_MS);
 });
 
+describe("색인 금지 — 눈에 보이지 않아서 빠뜨린 것", () => {
+  /*
+   * 실제로 겪은 일: 저장소에는 noindex 가 있었는데 배포된 것은 더 오래된 빌드여서
+   * 운영 주소가 `index, follow` 를 내보내고 있었고, 그동안 홈이 구글에 색인됐다.
+   * 화면은 여러 번 띄워 읽었지만 **robots 메타는 눈에 보이지 않는다.**
+   *
+   * 그래서 사람이 보는 것에 맡기지 않고 여기서 고정한다. 보호자 화면 전부를 본다 —
+   * 한 화면만 보면 다음에 추가되는 화면이 빠진다.
+   */
+  const GUARDIAN_PATHS = ["/", "/chat", "/more", "/terms", "/privacy"];
+
+  it("★ 응답 헤더에 noindex 가 있다 — curl -I 한 줄로 확인되는 자리", async () => {
+    for (const path of GUARDIAN_PATHS) {
+      const res = await fetch(`${BASE}${path}`, { redirect: "manual" });
+      expect(res.headers.get("x-robots-tag"), path).toBe("noindex, nofollow");
+    }
+  }, TEST_MS);
+
+  it("★ HTML 의 robots 메타도 noindex 다", async () => {
+    for (const path of GUARDIAN_PATHS) {
+      const html = await (await fetch(`${BASE}${path}`)).text();
+      const meta = html.match(/<meta name="robots" content="([^"]*)"/);
+      expect(meta?.[1], path).toBe("noindex, nofollow");
+    }
+  }, TEST_MS);
+
+  it("★ 색인을 여는 것은 플래그 하나다 — 환경변수가 빠져서 열리는 길이 없다", async () => {
+    /*
+     * isSearchIndexingOpen 은 상수다(lib/demoContent). 환경변수로 켜지지 않으므로
+     * "Vercel 설정이 빠졌을 때 index 로 떨어지는" 경로가 없다. 닫히는 쪽이 기본이다.
+     * 이 테스트는 그 사실을 코드로 붙든다 — 누가 env 로 바꾸면 깨진다.
+     */
+    const { isSearchIndexingOpen } = await import("@/lib/demoContent");
+    expect(isSearchIndexingOpen).toBe(false);
+
+    const source = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/demoContent.ts", "utf8"),
+    );
+    const line = source
+      .split(/\r?\n/)
+      .find((l) => l.includes("export const isSearchIndexingOpen"));
+    expect(line, "선언 줄을 찾지 못했다").toBeDefined();
+    expect(line).not.toContain("process.env");
+  }, TEST_MS);
+});
+
 describe("로그인 후", () => {
   it("★ 미들웨어는 세션을 통과시킨다 — 404 는 권한이 아니라 닫힌 화면이다", async () => {
     /*
