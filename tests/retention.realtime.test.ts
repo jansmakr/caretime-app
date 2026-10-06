@@ -347,7 +347,14 @@ describe("게스트 세션 — 글은 남고 연결만 끊긴다", () => {
     await purge();
 
     expect(await sql<unknown[]>(`guest_sessions?id=eq.${session}&select=id`)).toEqual([]);
-    // 반응은 세션과 함께 사라진다. 공개되는 것은 익명 합계뿐이고 글은 이미 공개 기간이 지났다.
+    /*
+     * 반응은 세션과 함께 사라진다(cascade).
+     *
+     * ⚠️ 전에 적어 둔 이유("글은 이미 공개 기간이 지났다")는 이제 **사실이 아니다.**
+     * 글은 영구 공개다(20261007). 그래서 2년 된 글의 반응 수가 누른 사람의 세션이
+     * 정리될 때마다 조용히 줄어든다. 받아들인 쪽이다 — 데이터가 남는 것보다 지워지는
+     * 것이 낫고, 줄어드는 것은 익명 합계뿐이다. 방침에도 그대로 적는다.
+     */
     expect(await sql<unknown[]>(`field_report_reactions?report_id=eq.${post}&select=key`)).toEqual([]);
   }, TEST_MS);
 });

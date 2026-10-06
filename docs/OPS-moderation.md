@@ -76,9 +76,9 @@ insert into public.moderation_actions (report_id, target_type, target_id, action
 values ('<신고 id>', 'post', '<글 id>', 'RESTORE', 'reviewed_ok');
 ```
 
-⚠️ 공개 창은 따로다. `public_until` 이 이미 지났으면 되살려도 목록에 돌아오지 않는다
-(공개 뷰가 `visibility` 와 `public_until` 을 함께 본다). 24시간이 지난 글을 되살리는
-것은 기록상 복구이고, 보호자 화면에는 나타나지 않는다.
+⚠️ 전에는 `public_until` 이 지난 글을 되살려도 목록에 돌아오지 않았다. 지금은
+`public_until` 이 전부 null 이어서(migration 20261007) **되살리면 그대로 보인다.**
+오래된 글을 되살릴 때도 보호자 화면에 나타난다는 뜻이다.
 
 ### 신고가 맞다 (글을 내린 채로 둔다)
 
@@ -88,8 +88,9 @@ insert into public.moderation_actions (report_id, target_type, target_id, action
 values ('<신고 id>', 'post', '<글 id>', 'REMOVE', 'reviewed_violation');
 ```
 
-행은 보관 기간(작성 30일) 안에 `purge_expired()` 가 지운다. 손으로 지우지 않는다 —
-처리 중인 신고가 걸린 글을 지우면 이의 제기 때 볼 것이 없다.
+⚠️ **행은 아무도 지우지 않는다.** 글의 자동 삭제를 껐다(migration 20261007) —
+`purge_expired()` 는 현장톡 글을 건드리지 않는다. 내린 글의 본문은 DB 에 남는다.
+완전히 없애야 하는 경우(개인정보가 적혔다·본인이 삭제를 요구했다)는 아래 ⑤ 를 본다.
 
 ### 반복 신고자인지 본다
 
@@ -130,6 +131,66 @@ select * from public.purge_expired(); -- 기간이 지난 행 삭제
 ```
 
 ---
+
+## ⑤ 본문을 완전히 없앤다 — **운영자만 할 수 있는 일**
+
+언제 하는가:
+
+- 보호자가 **자기 글을 지워 달라고 요구**했다. 화면의 [삭제]를 못 쓰는 경우다
+  (쿠키를 지웠다·다른 기기다·30일 넘게 안 들어와 세션이 정리됐다)
+- 글에 **개인정보가 적혔다**. 쓰기 검사가 전화번호를 거르지만 다 거르지 못한다
+- 법적 요구로 없애야 한다
+
+### 왜 운영자밖에 못 하는가
+
+화면의 [삭제]는 `visibility = 'REMOVED'` 로 바꿀 뿐이고, **본문은 DB 에 남는다.**
+글의 자동 삭제를 껐기 때문이다(migration 20261007). 그리고 그 [삭제] 자체가
+게스트 세션에 묶여 있어서 **쿠키를 잃으면 본인도 못 누른다.** 그래서 이 창구가
+개인정보보호법상 삭제 요구를 받는 유일한 길이다 — 방침에 적는 연락처가 이것이다.
+
+### 순서 — **기록을 먼저 남기고 지운다**
+
+```sql
+-- 1) 무엇을 지웠는지 먼저 남긴다. 지운 뒤에는 글 id 밖에 쓸 수 없다.
+--    moderation_actions.target_id 에는 외래키가 없다. 글이 사라져도 이 줄은 남는다.
+--    reason_code: 본인 요구 → 'subject_erasure' · 개인정보 → 'pii_erasure'
+insert into public.moderation_actions (target_type, target_id, action, reason_code)
+values ('post', '<글 id>', 'REMOVE', 'subject_erasure');
+
+-- 2) 본문을 확인한다. 지우면 되돌릴 수 없다.
+select id, created_at, sido, sigungu, handle, body
+  from public.field_reports where id = '<글 id>';
+
+-- 3) 지운다. 반응(field_report_reactions)은 cascade 로 함께 사라진다.
+delete from public.field_reports where id = '<글 id>';
+```
+
+⚠️ **되돌릴 수 없다.** Free 요금제에는 백업이 없다(docs/DATA-INVENTORY.md).
+2) 를 건너뛰지 않는다.
+
+⚠️ 지운 글은 **읽고 있는 사람 화면에서 바로 사라지지 않는다.** 실시간 신호는
+insert·update 트리거에서 나오고 delete 에는 트리거가 없다. 공개 중단을 먼저
+확실히 해야 하면 `update … set visibility = 'REMOVED'` 를 먼저 하고 (화면에서
+즉시 사라진다) 그다음 1)~3) 을 한다.
+
+기록 자체는 1년 뒤 `purge_expired()` 가 지운다(`moderation_actions`, 기준 `created_at`).
+
+### 본인인지 어떻게 확인하는가 — **정해야 한다**
+
+익명 글이라 증명할 수단이 없다. 글 id 와 내용은 그 글을 읽은 누구나 안다. 그래서
+"본인 확인"은 원리상 불가능하고, 둘 중 하나를 고르는 일이다:
+
+| 고르는 쪽 | 잘못되면 |
+|---|---|
+| 요구를 받으면 지운다 | 남이 남의 글을 지우게 할 수 있다. 잃는 것은 공개 글 하나 |
+| 확인될 때만 지운다 | 확인할 방법이 없으므로 **사실상 삭제 요구를 거절하는 것**이다 |
+
+권고는 **지우는 쪽**이다. 글에는 개인정보가 없고(쓰기 검사가 거른다) 잘못 지워서
+잃는 것은 공개 글 하나인데, 막아서 잃는 것은 법이 보장한 권리다. 비대칭이 크다.
+남용 신호(한 사람이 여러 글을 지워 달라고 한다)는 ⑤ 의 `moderation_actions` 기록으로
+드러난다 — 그때 기준을 올린다.
+
+**이 표의 선택은 사용자 결정이다.** 정해지면 방침에 그 문장을 그대로 적는다.
 
 ## 알림은 없다
 
