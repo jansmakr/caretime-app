@@ -4,6 +4,7 @@ import { StageNotice } from "@/components/common/StageNotice";
 import { DiscoveryForm } from "@/components/home/DiscoveryForm";
 import { MyRegionGate } from "@/components/home/MyRegionGate";
 import { InstallHint } from "@/components/common/InstallHint";
+import { LegalFooter } from "@/components/legal/LegalFooter";
 import { showCareConditionForm, showHospitalDirectory } from "@/lib/demoContent";
 
 /*
@@ -89,6 +90,13 @@ export default function HomePage() {
         )}
 
       </main>
+
+      {/*
+        약관·방침 한 줄. **홈에만 있다.** 개인정보보호법 제30조 2항의 "쉽게 확인할
+        수 있도록"이 첫 화면 링크를 뜻하기 때문이다. 사업자 정보 4줄은 /more 로
+        옮겼다 — 그쪽은 파는 곳에 걸리는 의무라 우리에게 해당하지 않는다.
+      */}
+      <LegalFooter />
     </>
   );
 }

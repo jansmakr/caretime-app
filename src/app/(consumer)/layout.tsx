@@ -1,4 +1,3 @@
-import { LegalFooter } from "@/components/legal/LegalFooter";
 import { SearchSessionProvider } from "@/features/search-session/SearchSessionProvider";
 import { DiscoveryProvider } from "@/features/discovery/DiscoveryProvider";
 
@@ -14,9 +13,15 @@ import { DiscoveryProvider } from "@/features/discovery/DiscoveryProvider";
  * 이동 경로는 화면 안에 있다: 홈의 주 버튼 → 현장톡, 현장톡 아래 '진료정보 찾기'
  * → 홈, 헤더의 뒤로 버튼, 푸터의 약관·방침 링크. /more 라우트는 남겨 둔다.
  *
- * 사업자 정보와 약관·방침 링크는 여기 한 곳에 둔다. 화면마다 붙이면 어느 화면에는
- * 없게 된다 — 글을 쓸 수 있는 화면이 셋이고 앞으로 늘어난다. 사업자 정보는 항상
- * 보이고, 약관·방침 링크는 문서가 준비된 뒤에 보인다(LegalFooter).
+ * ── 푸터를 여기서 뺐다 (2026-10-06) ────────────────────────
+ * 전에는 모든 보호자 화면 아래에 사업자 정보 4줄 + 약관·방침 줄이 붙었다. 둘을
+ * 갈랐다.
+ *   · 사업자 정보 → /more 로 옮겼다(components/legal/CompanyInfo). 전자상거래법의
+ *     초기화면 표시 의무는 파는 곳에 걸리고, 우리는 팔지 않는다.
+ *   · 약관·방침 한 줄 → **홈에만** 둔다(LegalFooter). 개인정보보호법 제30조 2항의
+ *     "쉽게 확인할 수 있도록"은 첫 화면 링크를 뜻한다. 메뉴 안으로만 옮기면 두 번
+ *     들어가게 된다.
+ * 다른 화면에서는 머리띠의 "더보기"가 길을 준다.
  */
 export default function ConsumerLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,7 +29,6 @@ export default function ConsumerLayout({ children }: { children: React.ReactNode
       <DiscoveryProvider>
         <div className="mx-auto min-h-dvh max-w-app pb-[calc(16px+env(safe-area-inset-bottom))]">
           {children}
-          <LegalFooter />
         </div>
       </DiscoveryProvider>
     </SearchSessionProvider>

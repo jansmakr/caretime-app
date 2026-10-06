@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { InstallHint } from "@/components/common/InstallHint";
+import { CompanyInfo } from "@/components/legal/CompanyInfo";
 import { LEGAL_DOC_PATH, loadLegalDocument } from "@/features/legal/documents";
 import { showPartnerEntry } from "@/lib/demoContent";
 
@@ -33,7 +34,7 @@ export default function MorePage() {
 
   return (
     <>
-      <AppHeader title="더보기" />
+      <AppHeader title="더보기" showMore={false} />
       <main className="space-y-3 px-4 pb-6 pt-3">
         <ul className="ct-card divide-y divide-fill overflow-hidden">
           {legal.map((item) =>
@@ -82,6 +83,9 @@ export default function MorePage() {
           </p>
         </section>
         )}
+
+        {/* 사업자 정보. 첫 화면에서 내려온 자리다(components/legal/CompanyInfo). */}
+        <CompanyInfo />
 
         <Link href="/" className="ct-secondary w-full">
           진료정보 찾기로 돌아가기
