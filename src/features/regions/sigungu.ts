@@ -110,6 +110,22 @@ export function isKnownRegion(region: { sido: string; sigungu: string | null }):
   return SIGUNGU_BY_SIDO[sido].includes(region.sigungu);
 }
 
+/**
+ * 고르기가 **끝났는가.**
+ *
+ * 구 목록이 있는 시도(지금 서울)는 구까지 골라야 끝난 것이다. 시/도만 고른 상태는
+ * 고르는 중이고, 그걸 저장하면 "내 지역 서울"이 되어 **이미 고른 것처럼 보인다** —
+ * 그러면 "내 지역 보기"가 서울 전체가 되고, 설계는 구 단위다.
+ *
+ * 구 목록이 없는 시도(부산 등, 아직 목록을 안 넣었다)는 시/도가 끝난 상태다.
+ * 그 사람에게 없는 구를 고르라고 할 수 없다.
+ */
+export function isRegionComplete(region: MyRegion | null): boolean {
+  if (region === null) return false;
+  if (!hasSigunguList(region.sido)) return true;
+  return region.sigungu !== null;
+}
+
 /** 화면에 한 줄로 적을 이름. "서울 강서구" · "부산". */
 export function regionLabel(region: MyRegion): string {
   return region.sigungu === null ? region.sido : `${region.sido} ${region.sigungu}`;

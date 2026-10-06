@@ -37,8 +37,11 @@ const PREPARING = {
  */
 const ACTIVE = {
   hook: "지금 열었나요? 얼마나 기다리나요?",
-  description:
-    "같은 동네 보호자에게 지금 상황을 묻고, 본 것을 알려주세요. 지역을 고르지 않아도 글을 남길 수 있습니다.",
+  /*
+   * "지역을 고르지 않아도 글을 남길 수 있습니다"를 뺐다(원칙 4). 작성창에 이미
+   * 같은 말이 있고, 아직 쓰려는 것도 아닌 사람에게 미리 할 말이 아니다.
+   */
+  description: "같은 동네 보호자에게 지금 상황을 묻고, 본 것을 알려주세요.",
   button: "우리 동네 현장톡 열기 →",
 } as const;
 
@@ -67,7 +70,7 @@ export function LiveTalkBanner({
     <section className="mt-5">
       <Link
         href={href}
-        aria-label={`실시간 병원 상황 공유${isFieldTalkSharingLive ? "" : " · 준비 중"} · ${copy.button.replace(" →", "")}`}
+        aria-label={`${copy.hook}${isFieldTalkSharingLive ? "" : " · 준비 중"} · ${copy.button.replace(" →", "")}`}
         className="ct-card block min-h-[100px] p-4 transition active:scale-[0.99] active:brightness-[0.98]"
       >
         {tags.length > 0 && (
@@ -80,16 +83,18 @@ export function LiveTalkBanner({
           </div>
         )}
 
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-bold text-blue-deep">
-          실시간 병원 상황 공유
-          {!isFieldTalkSharingLive && (
-            /* 상태 표시. 색만으로 구분하지 않고 글자로 적는다. */
-            <span className="rounded-pill bg-fill px-2 py-0.5 text-[11.5px] font-bold text-ink-muted">
-              준비 중
-            </span>
-          )}
-        </p>
-        <p className="mt-0.5 break-keep text-[18px] font-extrabold leading-tight">{copy.hook}</p>
+        {/*
+          "실시간 병원 상황 공유" 라벨을 뺐다(원칙 10). 병원 목록이 있을 때 쓰던
+          말이고, 아래 제목이 이미 그 일을 다 말한다. 라벨이 제목 위에 한 줄 더
+          읽게 만들었다.
+         */}
+        {!isFieldTalkSharingLive && (
+          /* 상태 표시. 색만으로 구분하지 않고 글자로 적는다. */
+          <p className="mb-1 inline-flex rounded-pill bg-fill px-2 py-0.5 text-[11.5px] font-bold text-ink-muted">
+            준비 중
+          </p>
+        )}
+        <p className="break-keep text-[18px] font-extrabold leading-tight">{copy.hook}</p>
         <p className="mt-1.5 break-keep text-[13.5px] leading-snug text-ink-muted">
           {copy.description}
         </p>

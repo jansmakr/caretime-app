@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { SIDO_LIST } from "@/features/reports/regions";
-import { isKnownRegion, type MyRegion } from "./sigungu";
+import { isKnownRegion, isRegionComplete, type MyRegion } from "./sigungu";
 
 /**
  * 내 지역을 **이 브라우저에만** 기억한다.
@@ -41,7 +41,15 @@ export function readMyRegion(): MyRegion | null {
      * 저장되고 어느 필터에도 걸리지 않는다. 그래서 읽을 때 한 번 본다.
      */
     const region: MyRegion = { sido, sigungu };
-    return isKnownRegion(region) ? region : null;
+    if (!isKnownRegion(region)) return null;
+
+    /*
+     * 덜 고른 값은 **안 고른 것으로 읽는다.** 전에는 시/도만 고른 상태가 그대로
+     * 저장돼서 홈에 "내 지역 서울"로 떴다 — 고른 것처럼 보이는데 "내 지역 보기"는
+     * 서울 전체가 된다. 지금은 RegionPicker 가 끝난 값만 넘기지만, 그 전에 저장된
+     * 값이 브라우저에 남아 있다. 여기서 걸러 다시 묻는다.
+     */
+    return isRegionComplete(region) ? region : null;
   } catch {
     return null;
   }

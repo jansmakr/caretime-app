@@ -76,16 +76,24 @@ export function MyRegionGate() {
       */}
       {loaded &&
         (region === null ? (
+          /*
+           * "나중에"를 누른 사람에게만 보인다. 길을 하나 준다 — 눌러서 고를 수 있는
+           * 링크다. "여기서는 못 한다"는 안내가 아니다.
+           */
           <p className="mt-2 break-keep px-1 text-[12.5px] leading-relaxed text-ink-faint">
-            지역을 고르지 않았습니다. 전국 글이 보이고, 쓰는 글에는 지역이 붙지 않습니다.{" "}
+            전국 글을 보고 있습니다.{" "}
             <Link href="/chat" className="font-semibold text-blue underline">
-              현장톡에서 고르기
+              내 지역 고르기
             </Link>
           </p>
         ) : (
+          /*
+           * "현장톡에서 바꿀 수 있습니다"를 뺐다. **홈에서는 못 바꾼다는 안내였다.**
+           * 바꿀 수 있는 자리(현장톡의 "내 지역 바꾸기")에서 할 말이고, 그 자리에
+           * 이미 버튼이 있다. 여기서는 지금 걸린 값만 말한다.
+           */
           <p className="mt-2 break-keep px-1 text-[12.5px] leading-relaxed text-ink-faint">
-            내 지역 <span className="font-semibold text-ink-muted">{regionLabel(region)}</span> ·
-            현장톡에서 바꿀 수 있습니다
+            내 지역 <span className="font-semibold text-ink-muted">{regionLabel(region)}</span>
           </p>
         ))}
     </>
