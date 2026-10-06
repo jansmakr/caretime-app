@@ -23,7 +23,15 @@ export const metadata: Metadata = {
    * apple-touch-icon 을 본다 — 안 주면 화면을 캡처한 그림이 아이콘이 된다.
    */
   manifest: "/manifest.webmanifest",
-  icons: { apple: "/apple-touch-icon.png" },
+  icons: {
+    /*
+     * 탭 아이콘. manifest 와 별개다 — manifest 의 아이콘은 설치된 바로가기용이고
+     * 브라우저 탭은 이 link 를 본다.
+     */
+    icon: [{ url: "/favicon-64.png", sizes: "64x64", type: "image/png" }],
+    // iOS 사파리는 manifest 의 아이콘을 쓰지 않는다. 안 주면 화면 캡처가 아이콘이 된다.
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     title: "현장톡",

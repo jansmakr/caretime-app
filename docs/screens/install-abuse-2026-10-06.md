@@ -152,6 +152,24 @@
 119 대신 눌리면 안 된다), **빨간 십자 없음**(적십자 표장은 법으로 보호된다),
 글자 없음(작은 크기에서 안 읽히고 깎일 때 먼저 잘린다).
 
-사용자가 보낼 최종 파일 5개가 오면 `public/` 의 것을 그것으로 바꾼다.
-그 전까지는 `scripts/gen-icons.mjs` 가 만든 것이 들어가 있고, 색·모양은 결정과
-같게 맞춰 두었다.
+**사람이 그린 최종 파일 5개로 바꿨다**(2026-10-06). 치수와 바탕색을 확인하고
+눈으로 본 뒤에 넣었다 — 바탕 `#1C5FD8`, 빨간 십자 없음, 글자 없음, ER 표기 없음.
+
+| 파일 | 크기 | 쓰임 |
+|---|---|---|
+| `public/icon-192.png` | 192 | 설치된 바로가기 (manifest) |
+| `public/icon-512.png` | 512 | 같음, 큰 판 |
+| `public/icon-maskable-512.png` | 512 | 안드로이드가 모양대로 깎을 때 쓰는 여유 판. 보낸 파일명 `icon-512-maskable.png` 를 이 이름으로 바꿔 넣었다 |
+| `public/apple-touch-icon.png` | 180 | iOS. manifest 아이콘을 안 본다 |
+| `public/favicon-64.png` | 64 | **브라우저 탭.** manifest 대상이 아니라 `layout.tsx` 의 `icons.icon` 으로 건다 |
+
+띄워서 확인했다 — 다섯 파일 전부 200, HTML 에 세 줄이 들어간다.
+
+```
+<link rel="icon" href="/favicon-64.png" sizes="64x64" type="image/png"/>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+```
+
+`scripts/gen-icons.mjs` 는 남겨 두되 **머리에 경고를 붙였다** — 아무 생각 없이
+돌리면 최종 파일을 덮어쓴다. 치수·규칙 기준으로만 쓴다.
