@@ -140,15 +140,53 @@ migration `20261003`(그 SQL 이 쓰는 컬럼을 만든다). 리허설에서 �
 Production·Preview 양쪽에 같은 값을 넣는다 — Preview 가 운영 DB 를 가리키게 두지
 않으려면 Preview 는 비워 두거나 따로 판단한다.
 
+**일곱 개 중 값을 넣는 것은 셋뿐이다.** 나머지 넷은 **안 넣는 것이 설정이다** —
+없을 때의 기본값이 우리가 원하는 값이고, 넣으면 그 기본값을 끄는 일이 된다.
+
 | 이름 | 값 | 없으면 |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | 운영 프로젝트 URL | Mock 으로 돈다(병원 0곳) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 운영 anon 키 | 같음 |
-| `SUPABASE_SERVICE_ROLE_KEY` | 운영 service_role 키 | **쓰기 라우트가 전부 실패한다** |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 공개 키(publishable 또는 anon) | 같음 |
+| `SUPABASE_SERVICE_ROLE_KEY` | 비밀 키(secret 또는 service_role) | **쓰기 라우트가 전부 실패한다** |
 | `CARETIME_WRITES` | **넣지 않는다** (H-2 를 쓸 때만 `closed`) | 화면 플래그를 따른다(열림) |
 | `NEXT_PUBLIC_DEMO_CONTENT` | **넣지 않는다** | 꺼짐(원하는 상태) |
 | `NEXT_PUBLIC_FIELD_TALK_LIVE` | **넣지 않는다** | 켜짐(원하는 상태) |
 | `GUEST_LIMIT_POSTS` 외 3개 | 넣지 않는다 | PRD 기본값 |
+
+### 세 값을 어디서 복사하는가 (운영 Supabase 대시보드)
+
+supabase.com → 로그인 → **운영 프로젝트 선택** → 왼쪽 아래 **Settings**.
+
+| 넣을 곳 | 대시보드 화면 | 무엇을 복사하는가 |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Settings → **Data API** | 맨 위 **Project URL** — `https://<프로젝트ref>.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Settings → **API Keys** | **Publishable key** (`sb_publishable_…`). 옛 프로젝트면 **Legacy API Keys** 탭의 `anon` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Settings → **API Keys** | **Secret key** (`sb_secret_…`, 눌러서 Reveal). 옛 프로젝트면 Legacy 탭의 `service_role` |
+
+⚠️ **변수 이름은 바꾸지 않는다.** 코드가 이 이름으로 읽는다(`lib/supabase/config.ts`).
+값이 새 형식(`sb_publishable_…`)이어도 이름은 `..._ANON_KEY` 그대로 둔다.
+
+새 형식과 옛 형식 중 어느 것이든 된다 — 코드는 키를 supabase-js 에 그대로 넘기고
+JWT 로 해석하는 곳이 한 군데도 없다(`grep` 으로 확인). **새로 만든 프로젝트면
+publishable·secret 을 쓴다.** `anon`·`service_role` 은 2026년 말에 폐기된다.
+
+⚠️ 비밀 키는 **Reveal 을 눌러야 보인다.** 한 번 복사해서 Vercel 에만 넣고,
+채팅·문서·커밋 어디에도 붙여넣지 않는다. 노출되면 RLS 가 통째로 무의미해진다.
+
+### 환경 범위 (Vercel 의 Environment)
+
+세 개 모두 **Production** 에 넣는다. Preview·Development 는 비워 둔다 —
+PR 미리보기가 운영 DB 에 글을 쓰게 두지 않는다. 비면 Mock 으로 돌고,
+그게 미리보기에 맞는 상태다.
+
+### 넣지 않는 넷을 다시 확인한다
+
+| 이름 | 안 넣었을 때 | 넣으면 생기는 일 |
+|---|---|---|
+| `NEXT_PUBLIC_DEMO_CONTENT` | 가상 글 꺼짐 | **가상 후기가 운영에 뜬다.** 전에 실제로 겪었다 |
+| `NEXT_PUBLIC_FIELD_TALK_LIVE` | 현장톡 열림 | 끄는 쪽으로만 쓰인다 |
+| `CARETIME_WRITES` | 쓰기 열림 | `closed` 면 글쓰기가 503 |
+| `GUEST_LIMIT_*` 넷 | PRD 기본값 | 도배가 시작될 때 조이는 손잡이 |
 
 제한값 변수 넷은 `GUEST_LIMIT_POSTS` · `GUEST_LIMIT_REACTIONS` ·
 `GUEST_LIMIT_REPORTS` · `GUEST_LIMIT_DUPLICATE_MINUTES` 이고 형식은 `창초:건수` 를
