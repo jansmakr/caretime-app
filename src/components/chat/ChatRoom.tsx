@@ -212,7 +212,7 @@ export function ChatRoom({
         {NOT_A_BOOKING} {CALL_IS_SUREST}
       </p>
       <Link href="/" className="ct-secondary w-full">
-        진료정보 찾기
+        홈으로
       </Link>
 
       <Toast message={toast} />
