@@ -6,6 +6,9 @@ import { rememberDismissed, useInstall, wasDismissed } from "@/features/pwa/inst
 /**
  * 홈 화면에 추가 — **한 줄.**
  *
+ * 글자는 14px 이다. 처음에 12.5px 로 만들었는데 원칙 2 의 하한 아래였다 — 내가
+ * 만든 코드라 부채로 넘기지 않고 올렸다. 줄이 한 줄 늘어나는 것은 받아들인다.
+ *
  * 배너로 만들지 않는다. 처음 온 사람이 하려는 일은 글을 읽는 것이고, 설치는 그
  * 사람이 다시 올 때를 위한 것이다. 화면을 먹으면 지금 할 일을 가린다(원칙 1).
  *
@@ -32,10 +35,16 @@ export function InstallHint({ variant = "line" }: { variant?: "line" | "row" }) 
   if (way === "unknown" || way === "none") return null;
   if (closed) return null;
 
+  /*
+   * "크롬 권장"을 붙인다. 일부 안드로이드 브라우저(삼성 인터넷 등)로 설치하면
+   * 구글 **Play 프로텍트 경고**가 뜬다 — 설치하려던 사람이 그 화면에서 멈추고,
+   * 그 경고는 우리가 없앨 수 없다. 미리 한 줄 적어 두는 쪽이 싸다.
+   * iOS 에는 적지 않는다 — 사파리로만 설치되는 기기에 크롬을 권하면 길이 막힌다.
+   */
   const text =
     way === "ios"
       ? "아이폰은 공유 버튼 → '홈 화면에 추가'"
-      : "다음에 아이콘 하나로 바로 열 수 있습니다";
+      : "다음에 아이콘 하나로 바로 열 수 있습니다 · 크롬 권장";
 
   if (variant === "row") {
     return (
@@ -43,7 +52,7 @@ export function InstallHint({ variant = "line" }: { variant?: "line" | "row" }) 
         <span className="break-keep text-[16px] font-medium">
           홈 화면에 추가
           <br />
-          <span className="text-[13px] font-normal text-ink-faint">{text}</span>
+          <span className="text-[14px] font-normal text-ink-faint">{text}</span>
         </span>
         {way === "button" && (
           <button
@@ -60,7 +69,7 @@ export function InstallHint({ variant = "line" }: { variant?: "line" | "row" }) 
 
   return (
     <div className="mt-4 flex items-center gap-2 rounded-field bg-fill px-3.5 py-2">
-      <p className="min-w-0 flex-1 break-keep text-[12.5px] leading-snug text-ink-muted">
+      <p className="min-w-0 flex-1 break-keep text-[14px] leading-snug text-ink-muted">
         <span className="font-semibold text-ink">홈 화면에 추가</span> · {text}
       </p>
 
