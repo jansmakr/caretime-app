@@ -59,10 +59,15 @@ export function EmptyRoomLead() {
 
         증상 이름은 넣지 않는다 — 1차 지역 병원이 보는 것과 어긋나면 보기가 길을
         잘못 안내한다.
+
+        **동네 이름도 넣지 않는다**(2026-10-08). "마곡동"으로 적어 두었는데, 보기는
+        전국 어디서나 읽힌다 — 부산에서 들어온 사람이 그 줄을 보면 "여기는 서울
+        동네 이야기구나" 하고 멈춘다. 방은 하나이고 전국이다. `○○동` 으로 비워 두면
+        읽는 사람이 자기 동네를 넣어 읽는다.
       */}
       <ul className="mt-4 space-y-2 rounded-field bg-fill px-4 py-3.5">
         {[
-          "마곡동인데 지금 문 연 소아과 있나요?",
+          "○○동인데 지금 문 연 소아과 있나요?",
           "○○ 갔는데 밤 10시까지 하더라고요",
         ].map((example) => (
           <li key={example} className="text-[15px] leading-relaxed text-ink-muted">
