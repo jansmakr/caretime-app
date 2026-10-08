@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
+import { LocateButton } from "@/components/chat/LocateButton";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
 import { RateLimitedError, ReportRejectedError } from "@/features/chat/repository";
@@ -34,6 +35,7 @@ export function ChatComposer({
   myRegion,
   lastSentAt,
   onSent,
+  onPickRegion,
   scopeNote,
 }: {
   /**
@@ -46,6 +48,12 @@ export function ChatComposer({
   myRegion: MyRegion | null;
   lastSentAt: number | null;
   onSent: (message: string) => void;
+  /**
+   * "내 위치로 선택"으로 고른 지역을 저장한다. 직접 고르는 것(지역 바꾸기)과
+   * **같은 자리에 들어간다** — 고르는 길이 둘이어도 저장되는 값은 하나다.
+   * 넘기지 않으면 버튼을 그리지 않는다.
+   */
+  onPickRegion?: (region: MyRegion) => void;
   /** 어디로 올라가는지 설명하는 한 줄. 넘기면 이 문구를 쓴다. */
   scopeNote?: string;
 }) {
@@ -185,6 +193,12 @@ export function ChatComposer({
           </>
         )}
       </p>
+
+      {/*
+        지역을 아직 안 골랐을 때만 권한다. 이미 고른 사람에게 또 물으면 결정이
+        하나 늘어난다 — 바꾸는 자리는 위의 "내 지역 바꾸기"다(원칙 1·4).
+      */}
+      {onPickRegion && myRegion === null && <LocateButton onPick={onPickRegion} />}
 
       {error && (
         <p role="alert" className="mt-3 text-[13.5px] font-semibold text-limited-ink">

@@ -123,7 +123,12 @@ export function ChatRoom({
         플래그를 내리면 이쪽이 나온다 — 장애 때 쓰기만 닫는 경로다.
       */}
       {isFieldTalkSharingLive ? (
-        <ChatComposer myRegion={myRegion} lastSentAt={lastSentAt} onSent={show} />
+        <ChatComposer
+          myRegion={myRegion}
+          lastSentAt={lastSentAt}
+          onSent={show}
+          onPickRegion={saveRegion}
+        />
       ) : (
         <ComposerClosedNotice />
       )}
