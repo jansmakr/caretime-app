@@ -6,3 +6,6 @@ out
 !.env.example
 *.tsbuildinfo
 next-env.d.ts
+
+# dev 서버 전용 빌드 폴더 (운영 빌드와 섞이지 않게)
+.next-dev

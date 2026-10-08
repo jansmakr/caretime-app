@@ -54,7 +54,18 @@ export function createPartnerDemoState(now: Date): PartnerState {
       customReason: null,
       detailText: null,
       lastAdmissionClock: formatClock(new Date(new Date(regularCloseAt).getTime() - 60 * MINUTE).toISOString()),
+      /*
+       * 어제는 화상만 어려웠다. 데모에서 "어제와 동일"을 누르면 그 예외가 그대로
+       * 되살아나는 것을 볼 수 있어야 한다 — 이 화면의 핵심이 거기 있다.
+       */
+      services: { "svc-laceration": "normal", "svc-burn": "difficult", "svc-other": "normal" },
     },
+    dirtyServiceIds: [],
+    services: [
+      { serviceId: "svc-laceration", category: "laceration", status: "normal", expiresAt: null , version: null },
+      { serviceId: "svc-burn", category: "burn", status: "normal", expiresAt: null , version: null },
+      { serviceId: "svc-other", category: "other", status: "normal", expiresAt: null , version: null },
+    ],
     liveStatus: {
       hospitalId: id,
       capabilityId: null,

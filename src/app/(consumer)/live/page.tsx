@@ -1,27 +1,26 @@
-import Link from "next/link";
-import { AppHeader } from "@/components/layout/AppHeader";
+import { redirect } from "next/navigation";
+import { chatHref } from "@/features/chat/urlFilter";
 
-export default function LivePage() {
-  return (
-    <>
-      <AppHeader title="실시간" />
-      <main className="px-4 pt-10">
-        <div className="ct-card px-6 py-10 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-soft text-blue" aria-hidden>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-              <path d="M3 12h4l2.5-6 5 12 2.5-6H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <p className="mt-4 text-[18px] font-bold">실시간 정보 공유는 5단계에서 열립니다.</p>
-          <p className="mt-2 text-[15px] leading-relaxed text-ink-muted">
-            보호자가 남긴 현장 정보는 의료기관의 공식 정보와 분리해서 보여줄 예정입니다.
-          </p>
-          {/* 이 자리가 열리기 전에 현장톡이 먼저 생겼다. 막다른 화면으로 두지 않는다. */}
-          <Link href="/chat" className="ct-secondary mt-5 w-full">
-            실시간 현장톡 열기
-          </Link>
-        </div>
-      </main>
-    </>
+/**
+ * /live → /chat 리다이렉트.
+ *
+ * 하단 메뉴에 '실시간'(5단계 자리표시자)과 '현장톡'이 나란히 있어 중복이었다.
+ * 메뉴에서는 빼되 이 경로로 공유된 기존 링크가 깨지지 않도록 화면은 남겨 리다이렉트한다.
+ *
+ * 넘기는 조건은 허용목록을 통과한 지역뿐이다(`chatHref` 가 검증한다). 잘못된 값은
+ * 조용히 버리고 /chat 으로 보낸다. 위치·나이·개인 건강 조건은 받지 않는다.
+ * 병원·카테고리 조건은 1차에 없으므로 넘기지 않는다 — 받아도 쓸 곳이 없다.
+ */
+export default async function LiveRedirectPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  redirect(
+    chatHref({
+      sido: typeof params.sido === "string" ? params.sido : null,
+      sigungu: typeof params.sigungu === "string" ? params.sigungu : null,
+    }),
   );
 }

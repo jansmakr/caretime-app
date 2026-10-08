@@ -7,6 +7,7 @@ import type {
   HospitalView,
   IncomingAggregate,
   LimitReasonCode,
+  LiveStatusCode,
 } from "@/features/hospitals/types";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -18,17 +19,21 @@ import {
   saveTodayHours,
   setContactStatus,
   setLimitReason,
+  setServiceStatus,
   setTodayMode,
   setWaitingHeadcount,
 } from "./service";
 import {
   PartnerSetupError,
   SLICE_OF_TABLE,
+  StatusConflictError,
   applyHospitalChange,
-  fetchMembership,
+  fetchMemberships,
+  type Membership,
   loadPartnerState,
   saveSlice,
   type PartnerSlice,
+  type StatusConflict,
 } from "./supabaseBackend";
 import type { HoursSaveError, IncomingVisit, PartnerState } from "./types";
 
@@ -47,7 +52,17 @@ const TICK_MS = 30_000;
 /** 대기 스테퍼 연타를 한 번의 저장으로 묶는 시간. */
 const WAITING_DEBOUNCE_MS = 600;
 
-export type PartnerPhase = "loading" | "signed_out" | "no_membership" | "ready" | "error";
+/**
+ * choose_hospital: 소속이 여러 곳이라 사용자가 골라야 하는 상태.
+ * 한 곳이면 이 상태를 거치지 않고 바로 ready 로 간다.
+ */
+export type PartnerPhase =
+  | "loading"
+  | "signed_out"
+  | "choose_hospital"
+  | "no_membership"
+  | "ready"
+  | "error";
 
 interface PartnerContextValue {
   source: "demo" | "supabase";
@@ -56,6 +71,10 @@ interface PartnerContextValue {
   notice: string | null;
   dismissNotice: () => void;
   connection: RealtimeConnection | "off";
+  /** 로그인한 사용자의 소속 기관 전부. 선택 화면이 쓴다. */
+  memberships: Membership[];
+  /** 여러 곳 중 고른 기관. 한 곳이면 자동으로 정해진다. */
+  selectHospital: (hospitalId: string) => void;
   hospital: HospitalView | null;
   state: PartnerState | null;
   visits: IncomingVisit[];
@@ -66,6 +85,15 @@ interface PartnerContextValue {
   confirmSameAsYesterday: () => void;
   setTodayMode: (mode: "limited" | "difficult") => void;
   setLimitReason: (code: LimitReasonCode | null) => void;
+  /** 항목 하나만 바꾼다. 나머지는 그대로 두고 대표 상태를 다시 접는다. */
+  setServiceStatus: (serviceId: string, status: LiveStatusCode) => void;
+  /**
+   * 다른 사람이 먼저 바꿨을 때의 안내. 화면이 이걸 띄우고 행동 하나를 준다.
+   * 자동으로 다시 읽지 않는다 — 조용히 덮어쓰거나 조용히 버리면 둘 다 사고다.
+   */
+  conflict: StatusConflict | null;
+  /** 사용자가 [최신 상태 보기]를 눌렀을 때. 그때 비로소 서버 값으로 맞춘다. */
+  resolveConflict: () => void;
   saveTodayHours: (input: { closeClock: string; admissionClock: string | null }) => HoursSaveError | null;
   setContactStatus: (status: ContactStatusCode) => void;
   /** 대기 인원 증감. 연타해도 누락되지 않게 이전 값 기준으로 더한다. */
@@ -85,12 +113,14 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
   const source = isSupabaseConfigured ? "supabase" : "demo";
   const [phase, setPhase] = useState<PartnerPhase>("loading");
   const [notice, setNotice] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<StatusConflict | null>(null);
   const [connection, setConnection] = useState<RealtimeConnection | "off">("off");
   const [hospital, setHospital] = useState<HospitalView | null>(null);
   const [state, setState] = useState<PartnerState | null>(null);
   const [visits, setVisits] = useState<IncomingVisit[]>([]);
   const [now, setNow] = useState(() => new Date());
   const [hospitalId, setHospitalId] = useState<string | null>(null);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
 
   // 연타·동시 저장에서 항상 최신 값을 기준으로 계산하기 위한 거울. 렌더를 기다리지 않는다.
   const stateRef = useRef<PartnerState | null>(null);
@@ -134,6 +164,7 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       userIdRef.current = userId;
       hospitalIdRef.current = null;
       setHospitalId(null);
+      setMemberships([]);
       replaceState(null);
       setHospital(null);
       if (!userId) {
@@ -142,14 +173,20 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       }
       setPhase("loading");
       try {
-        const membership = await fetchMembership(client);
+        const found = await fetchMemberships(client);
         if (cancelled) return;
-        if (!membership) {
+        setMemberships(found);
+        if (found.length === 0) {
           setPhase("no_membership");
           return;
         }
-        hospitalIdRef.current = membership.hospitalId;
-        setHospitalId(membership.hospitalId);
+        if (found.length > 1) {
+          // 겸직 직원. 어느 기관으로 들어갈지 본인이 고른다. 첫 행을 임의로 쓰지 않는다.
+          setPhase("choose_hospital");
+          return;
+        }
+        hospitalIdRef.current = found[0].hospitalId;
+        setHospitalId(found[0].hospitalId);
       } catch (e) {
         if (cancelled) return;
         setNotice(errorText(e));
@@ -246,6 +283,20 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
         // 재연결: 끊겨 있던 사이의 변경을 다시 읽는다. 입력 저장 중이면 덮어쓰지 않고 다음 기회로 미룬다.
         if (status === "live" && stateRef.current && !busy()) void load();
       },
+      /*
+       * 항목별 상태가 다른 기기에서 바뀌었다. 행을 받지 않고 전체를 다시 읽는다 —
+       * 대표 상태는 항목 전체를 봐야 접힌다.
+       * 내 저장이 진행 중이면 미룬다. 방금 누른 값을 서버 왕복 중에 덮어쓰지 않게.
+       */
+      () => {
+        if (cancelled || !stateRef.current || busy()) return;
+        void load();
+      },
+      /*
+       * 병원 계정은 원본 표를 구독한다. broadcast 토픽은 승인된 병원만 들을 수 있는데,
+       * 승인 전에도 병원은 자기 화면을 여러 기기에서 같이 봐야 한다.
+       */
+      "postgres_changes",
     );
 
     return () => {
@@ -254,6 +305,12 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       setConnection("off");
     };
   }, [source, hospitalId, reload, replaceState]);
+
+  const resolveConflict = useCallback(() => {
+    setConflict(null);
+    const id = hospitalIdRef.current;
+    if (id) void reload(id, "replace").catch(() => undefined);
+  }, [reload]);
 
   const persist = useCallback(
     async (slices: PartnerSlice[]) => {
@@ -274,6 +331,15 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
             if (settled && latest) replaceState(applyHospitalChange(latest, change, new Date()));
           } catch (e) {
             inflight.current[slice] -= 1;
+            /*
+             * 동시수정은 "저장 실패"가 아니다. 다른 사람이 먼저 바꾼 것이고, 무엇이
+             * 달라졌는지 알려 주면 사용자가 판단할 수 있다. 여기서 자동으로 다시 읽으면
+             * 방금 누른 값이 말없이 사라진다.
+             */
+            if (e instanceof StatusConflictError) {
+              setConflict(e.conflict);
+              return;
+            }
             setNotice(`저장하지 못했습니다. 최신 상태로 다시 불러왔습니다. (${errorText(e)})`);
             const id = hospitalIdRef.current;
             if (id) void reload(id, "replace").catch(() => undefined);
@@ -344,6 +410,21 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
     await getBrowserSupabase().auth.signOut();
   }, []);
 
+  /**
+   * 소속 기관 선택. 목록에 없는 id 는 받지 않는다 —
+   * 화면에서 넘어온 값을 그대로 믿고 다른 기관으로 들어가지 않게 한다.
+   * (실제 차단은 RLS 가 하지만, 헛요청을 보내지 않는다)
+   */
+  const selectHospital = useCallback(
+    (id: string) => {
+      if (!memberships.some((m) => m.hospitalId === id)) return;
+      hospitalIdRef.current = id;
+      setHospitalId(id);
+      setPhase("loading");
+    },
+    [memberships],
+  );
+
   const incoming = useMemo(
     () => (state ? aggregateIncoming(state.hospitalId, visits, now) : null),
     [state, visits, now],
@@ -356,6 +437,8 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       notice,
       dismissNotice: () => setNotice(null),
       connection,
+      memberships,
+      selectHospital,
       hospital,
       state,
       visits,
@@ -366,12 +449,16 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
       confirmSameAsYesterday: () => apply(confirmSameAsYesterday, ["live", "hours"]),
       setTodayMode: (mode) => apply((s, t) => setTodayMode(s, mode, t), ["live"]),
       setLimitReason: (code) => apply((s, t) => setLimitReason(s, code, t), ["live"]),
+      conflict,
+      resolveConflict,
+      setServiceStatus: (serviceId, status) =>
+        apply((s, t) => setServiceStatus(s, serviceId, status, t), ["live"]),
       saveTodayHours: saveHours,
       setContactStatus: (status) => apply((s, t) => setContactStatus(s, status, t), ["contact"]),
       stepWaitingHeadcount: (delta) =>
         apply((s, t) => setWaitingHeadcount(s, (s.waiting.headcount ?? 0) + delta, t), ["waiting"]),
     }),
-    [source, phase, notice, connection, hospital, state, visits, incoming, now, signIn, signOut, apply, saveHours],
+    [source, phase, notice, connection, memberships, selectHospital, hospital, state, visits, incoming, now, signIn, signOut, apply, saveHours, conflict, resolveConflict],
   );
 
   return <PartnerContext.Provider value={value}>{children}</PartnerContext.Provider>;

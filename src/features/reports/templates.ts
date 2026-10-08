@@ -1,3 +1,4 @@
+import { CATEGORY_LABEL_GUARDIAN } from "@/features/hospitals/labels";
 import type { ReportCategory } from "./types";
 
 /**
@@ -8,6 +9,11 @@ import type { ReportCategory } from "./types";
  * 예시 답을 미리 넣으면 확인하지 않은 내용이 그대로 제보로 올라간다.
  *
  * 기타는 템플릿이 없다. 대신 주제 직접 입력 + 자유 서술이다.
+ *
+ * 칩 이름은 보호자용 표(CATEGORY_LABEL_GUARDIAN)를 읽는다. 여기 "열상"을 직접 적어
+ * 두었더니 보호자 화면에 한자어가 나갔다(원칙 7 위반). 병원 화면은 같은 항목을
+ * "열상"으로 부르고, 그 표는 CATEGORY_LABEL_PARTNER 다. 두 표가 섞이지 않게
+ * tests/guardianWords.test.ts 가 감시한다.
  */
 
 export interface CategoryMeta {
@@ -24,21 +30,21 @@ export interface CategoryMeta {
 export const REPORT_CATEGORIES: CategoryMeta[] = [
   {
     value: "laceration",
-    label: "열상",
+    label: CATEGORY_LABEL_GUARDIAN.laceration,
     hint: "찢어짐·봉합",
     template: ["· 봉합 가능 여부: ", "· 소아 진료 여부: ", "· 대기 상황: "].join("\n"),
     needsTopic: false,
   },
   {
     value: "burn",
-    label: "화상",
+    label: CATEGORY_LABEL_GUARDIAN.burn,
     hint: "드레싱·처치",
     template: ["· 응급 드레싱 가능 여부: ", "· 소요 시간: "].join("\n"),
     needsTopic: false,
   },
   {
     value: "other",
-    label: "기타",
+    label: CATEGORY_LABEL_GUARDIAN.other,
     hint: "직접 입력",
     template: "",
     needsTopic: true,

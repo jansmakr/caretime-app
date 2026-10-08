@@ -123,24 +123,76 @@ export interface IncomingAggregate {
 
 /** 공공데이터에서 온 기본정보. 병원이 수정할 수 없다. */
 export interface PublicHospitalData {
-  hpid: string; // 국립중앙의료원 기관ID
+  /** 국립중앙의료원 기관ID. 손으로 넣은 병원에는 없다. */
+  hpid: string | null;
   name: string;
   address: string;
   tel: string;
-  lat: number;
-  lng: number;
+  /**
+   * 좌표. **1차에서는 선택이다.**
+   *
+   * 필요한 곳은 거리순 정렬과 지도인데 1차 현장톡에는 둘 다 없다. 0,0 으로 채우지
+   * 않는다 — 계산에 들어가면 조용히 틀린 거리가 나온다. 모르는 것은 null 이다.
+   * (지도·거리 정렬을 붙일 때 필요해진다 — docs/OPEN-QUESTIONS.md)
+   */
+  lat: number | null;
+  lng: number | null;
   syncedAt: string;
+}
+
+/**
+ * 항목별 공식 상태 (service_statuses). 병원당 여러 줄이다.
+ *
+ * 기존 HospitalLiveStatus(병원당 한 줄)와 **병존**한다. 옮기는 중이기 때문이다.
+ *   services   : 항목별 목록. 아직 화면에 노출하지 않는다. (턴 1.6 에서 연다)
+ *   liveStatus : 그 목록을 가장 보수적으로 접은 대표 하나. 화면이 지금 읽는 값이다.
+ * 접기 규칙은 features/hospitals/serviceStatus.ts 에 있다.
+ *
+ * status 가 null 이면 병원이 이 항목에 아직 아무 값도 게시하지 않은 것이다.
+ * 없는 값을 '가능'으로 읽지 않기 위해 null 을 그대로 들고 온다.
+ */
+export interface HospitalServiceStatus {
+  serviceId: string;
+  category: "laceration" | "burn" | "other";
+  serviceCode: string;
+  /** null = 미게시. 만료 판정은 읽는 시점에 한다(serviceStatus.effectiveStatusOf). */
+  status: "AVAILABLE" | "LIMITED" | "CLOSED" | "PAUSED" | null;
+  waitBucket: "UNKNOWN" | "LE30" | "FROM30TO60" | "GE60";
+  validUntil: string | null;
+  updatedAt: string | null;
+  reopenAt: string | null;
+  /**
+   * 동시 수정 compare-and-swap 용. 화면은 쓰지 않는다.
+   * null = 모름. 보호자 공개 경로(service_statuses_public 뷰)는 이 값을 내보내지 않는다.
+   * CAS 를 하려면 병원 계정으로 원본 테이블을 다시 읽어야 한다.
+   */
+  version: number | null;
 }
 
 /** 화면 조립용 뷰 모델. 각 조각은 출처를 잃지 않은 채로 들어온다. */
 export interface HospitalView {
   id: string;
   publicData: PublicHospitalData;
-  distanceKm: number;
-  travelMinutes: number;
+  /**
+   * 고정 데모 출발점 기준 직선거리. 좌표가 없으면 null.
+   *
+   * 사용자 위치가 아니다. 운영 화면에서는 숨긴다(lib/demoContent.showDemoDistance).
+   * 0 으로 채우지 않는다 — 0km 는 "바로 옆"이라는 뜻이 되고 그건 거짓이다.
+   */
+  distanceKm: number | null;
+  travelMinutes: number | null;
   capabilities: HospitalCapability[];
   hours: HospitalHours | null;
+  /**
+   * 병원 대표 상태. services 를 가장 보수적으로 접은 값이다.
+   * service_statuses 이행 전에는 옛 hospital_live_status 에서 그대로 온다.
+   */
   liveStatus: HospitalLiveStatus | null;
+  /**
+   * 항목별 공식 상태 목록. **아직 화면에 노출하지 않는다.**
+   * 이행 전에는 빈 배열이다. 턴 1.6 에서 카드·상세가 이 값을 읽는다.
+   */
+  services: HospitalServiceStatus[];
   contactStatus: HospitalContactStatus | null;
   waiting: HospitalWaitingStatus | null;
   incoming: IncomingAggregate | null;

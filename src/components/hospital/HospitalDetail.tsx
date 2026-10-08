@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { DemoNotice } from "@/components/common/DemoNotice";
+import { StageNotice } from "@/components/common/StageNotice";
 import { SourceBadge } from "@/components/common/SourceBadge";
 import { StatusPill } from "@/components/common/StatusPill";
 import {
@@ -15,16 +15,16 @@ import { useHospitalLive } from "@/features/hospitals/useHospitalLive";
 import { admissionHeadline, getAdmissionWindow } from "@/lib/hours";
 import { CALL_IS_SUREST, NOT_A_BOOKING, VISIT_INTENT_DISCLAIMER } from "@/lib/copy";
 import { AdmissionBlock } from "@/components/search/AdmissionBlock";
-import { ReportFeed } from "@/components/hospital/ReportFeed";
-import { ReportForm } from "@/components/hospital/ReportForm";
-import {
-  describeStatus,
-  describeTimePlan,
-  formatAgo,
-  getFreshness,
-  isExpired,
-} from "@/lib/freshness";
+import { deriveStatusView } from "@/features/hospitals/statusView";
 import { CONTACT_TEXT, REASON_TEXT } from "@/features/hospitals/labels";
+import {
+  showAdmissionHours,
+  showArrivalIntent,
+  showDemoDistance,
+  showOfficialSourceBadge,
+  showServiceBreakdown,
+  showTravelEstimate,
+} from "@/lib/demoContent";
 
 /**
  * 병원 상세. 서버가 읽은 값으로 렌더한 뒤, Supabase 연결 시 병원 직접입력 4개 테이블을 실시간 구독한다.
@@ -42,50 +42,81 @@ export function HospitalDetail({
   const { hospital, now, connection } = useHospitalLive(initial, renderedAt, realtime);
 
   const live = hospital.liveStatus;
-  const expired = live ? isExpired(live, now) : true;
-  const status = describeStatus(live, now);
-  const timePlan = expired ? null : describeTimePlan(live);
+  // 카드(목록)와 같은 함수를 쓴다. 같은 병원·같은 now 면 두 화면의 문구가 같아야 한다.
+  const {
+    expired,
+    status,
+    timePlan,
+    verifiedAgo,
+    publicSyncedAgo,
+    urgency,
+    downgraded,
+    noGuidance,
+    breakdown,
+  } = deriveStatusView(hospital, now);
+  // 만료됐거나, 만료 전이라도 확인 후 30분이 지나 표시를 내린 경우. 둘 다 상태를 보장하지 못한다.
+  const unreliable = expired || downgraded;
   const waiting = describeWaitingForUser(hospital, now);
-  const admission = getAdmissionWindow(hospital.hours, hospital.travelMinutes, now);
+  // 이동 시간 추정을 못 믹을 때는 0 을 넣는다. 그러면 마감 판정이 '마감 시각 vs 지금'만 본다.
+  const admission = getAdmissionWindow(
+    hospital.hours,
+    // 좌표가 없으면 이동시간도 없다. 0 을 넘기면 마감 판정이 '마감 시각 vs 지금'만 본다.
+    showTravelEstimate ? (hospital.travelMinutes ?? 0) : 0,
+    now,
+  );
 
   return (
     <>
       <AppHeader title={hospital.publicData.name} backHref="/search" />
-      <DemoNotice />
+      <StageNotice />
 
       <main className="space-y-3 px-4 pb-6 pt-3">
         {/* 계층 ①② — 공공 기본정보. 병원이 수정할 수 없는 값. */}
         <section className="ct-card p-5">
           <SourceBadge
             source="public"
-            verifiedAgo={formatAgo(getFreshness(hospital.publicData.syncedAt, now).minutesAgo)}
+            verifiedAgo={publicSyncedAgo}
           />
           <dl className="mt-3 space-y-2.5 text-[15px]">
             <Row label="주소">{hospital.publicData.address}</Row>
             <Row label="전화">{hospital.publicData.tel}</Row>
-            <Row label="거리">
-              {hospital.distanceKm.toFixed(1)}km · 약 {hospital.travelMinutes}분
-            </Row>
+            {/*
+              거리는 고정 데모 출발점 기준이라 '내 주변' 거리가 아니다. 운영에서는 숨긴다.
+              좌표가 없는 병원은 이 줄 자체가 없다 — "거리 정보 없음" 같은 빈 줄을 만들지
+              않는다. 없는 것을 자리로 남기면 읽을 줄만 늘어난다(원칙 4).
+            */}
+            {showDemoDistance && hospital.distanceKm !== null && (
+              <Row label="거리">
+                {hospital.distanceKm.toFixed(1)}km
+                {hospital.travelMinutes !== null && ` · 약 ${hospital.travelMinutes}분`}
+              </Row>
+            )}
           </dl>
         </section>
 
-        {/* 오늘 진료시간 — 내원 마감을 종료시각보다 크게 둔다. */}
-        <section className="ct-card p-5">
-          <h2 className="ct-section-title">오늘 진료시간</h2>
-          <AdmissionBlock
-            window={admission}
-            headline={admissionHeadline(admission, hospital.travelMinutes)}
-          />
-          {admission.note && (
-            <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">{admission.note}</p>
-          )}
-          {admission.state === "unknown" && (
-            <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">
-              이 의료기관은 내원 마감 시각을 아직 등록하지 않았습니다. 진료 종료 직전에는 접수가
-              어려울 수 있으니 전화로 확인해 주세요.
-            </p>
-          )}
-        </section>
+        {/*
+          오늘 진료시간 — 내원 마감을 종료시각보다 크게 둔다.
+          1차에서는 내린다. 확인된 진료시간이 한 곳도 없어 항상 "정보 없음"이고,
+          읽을 것이 없는 줄이 자리를 차지한다. (lib/demoContent.showAdmissionHours)
+        */}
+        {showAdmissionHours && (
+          <section className="ct-card p-5">
+            <h2 className="ct-section-title">오늘 진료시간</h2>
+            <AdmissionBlock
+              window={admission}
+              headline={admissionHeadline(admission, hospital.travelMinutes ?? 0, showTravelEstimate)}
+            />
+            {admission.note && (
+              <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">{admission.note}</p>
+            )}
+            {admission.state === "unknown" && (
+              <p className="mt-3 text-[14.5px] leading-relaxed text-ink-muted">
+                이 의료기관은 내원 마감 시각을 아직 등록하지 않았습니다. 진료 종료 직전에는 접수가
+                어려울 수 있으니 전화로 확인해 주세요.
+              </p>
+            )}
+          </section>
+        )}
 
         {/* 계층 ③ — 진료기능. 구조 데이터라 시간에 따라 변하지 않는다. */}
         <section className="ct-card p-5">
@@ -117,11 +148,9 @@ export function HospitalDetail({
               현재 상태
               <LiveIndicator connection={connection} />
             </h2>
-            {live && !expired && (
-              <SourceBadge
-                source={live.verifiedBy}
-                verifiedAgo={formatAgo(getFreshness(live.verifiedAt, now).minutesAgo)}
-              />
+            {/* 검증된 기관 제공 근거가 없으면 공식 배지를 만들지 않는다. (lib/demoContent) */}
+            {showOfficialSourceBadge && live && !expired && verifiedAgo !== null && (
+              <SourceBadge source={live.verifiedBy} verifiedAgo={verifiedAgo} />
             )}
           </div>
 
@@ -130,20 +159,65 @@ export function HospitalDetail({
             {timePlan && <span className="text-[13.5px] text-ink-muted">{timePlan}</span>}
           </div>
 
-          {expired && (
-            <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
-              마지막 확인 이후 시간이 지나 현재 상태를 보장할 수 없습니다. 방문 전에 전화로
-              확인해 주세요.
-            </p>
+          {/*
+            항목별 상태. 항목이 하나뿐이거나 전부 같은 상태면 그리지 않는다 —
+            같은 말을 여러 줄로 쓰는 것이고, 읽어야 하는 줄만 늘어난다(원칙 4·10).
+            판정은 deriveServiceBreakdown 이 하고, 여기서는 받은 줄만 그린다.
+
+            문구는 보호자의 말이다(원칙 7). "열상"·"capability" 같은 말을 쓰지 않는다.
+            병원 화면은 같은 항목을 "열상"으로 부른다 — 표가 두 벌인 이유다.
+
+            1차에서는 내린다. 이 3분할은 "야간 소아 외상" 설계에서 나왔는데 1차 지역의
+            달빛어린이병원이 실제로 보는 것은 발열·구토·중이염이다. 어긋난 표를 병원별
+            상태로 보여 주면 보호자가 맞지 않는 칸을 읽고 판단한다.
+            판정 규칙(deriveServiceBreakdown)은 그대로다 — 표시만 닫았다.
+          */}
+          {showServiceBreakdown && breakdown.lines.length > 0 && (
+            <dl className="mt-3 divide-y divide-line rounded-field bg-fill px-4 py-1">
+              {breakdown.lines.map((line) => (
+                <div key={line.category} className="flex items-center justify-between gap-3 py-2.5">
+                  <dt className="text-[15px] text-ink-muted">{line.label}</dt>
+                  <dd
+                    className={`text-[16px] font-bold ${
+                      line.status === "AVAILABLE"
+                        ? "text-confirmed-ink"
+                        : line.status === "UNKNOWN"
+                          ? "text-ink-faint"
+                          : "text-limited-ink"
+                    }`}
+                  >
+                    {line.statusText}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           )}
 
-          {live && !expired && live.reasonCode && (
+          {/*
+            믿을 상태가 없을 때 무엇을 말하는가.
+            전화가 가능하면 전화를 시킨다. 전화도 어렵다면 시킬 수 있는 일이 없으므로
+            없다는 사실만 말한다 — "전화로 확인해 주세요"는 그 경우 빈 말이다.
+          */}
+          {noGuidance ? (
+            <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
+              이 의료기관은 전화 문의가 어렵다고 알려왔습니다.
+            </p>
+          ) : (
+            unreliable && (
+              <p className="mt-3 text-[14px] leading-relaxed text-ink-muted">
+                마지막 확인 이후 시간이 지나 현재 상태를 보장할 수 없습니다. 방문 전에 전화로
+                확인해 주세요.
+              </p>
+            )
+          )}
+
+          {live && !unreliable && live.reasonCode && (
             <p className="mt-3 text-[15px]">
               <span className="text-ink-faint">사유 </span>
               <span className="font-semibold">{live.customReason ?? REASON_TEXT[live.reasonCode]}</span>
             </p>
           )}
-          {live && !expired && live.detailText && (
+          {live && !unreliable && live.detailText && (
             <p className="mt-1 text-[14.5px] text-ink-muted">{live.detailText}</p>
           )}
 
@@ -165,37 +239,41 @@ export function HospitalDetail({
           )}
         </section>
 
-        {/* 계층 ⑤ — 보호자 실시간 제보. 병원 직접확인 카드와 다른 카드로 둔다.
-            읽는 자리(피드)와 쓰는 자리(폼) 양쪽에 유의사항 배너가 고정으로 붙는다. */}
-        <ReportFeed hospital={hospital} renderedAt={renderedAt} now={now} />
-        <ReportForm hospital={hospital} />
+        {/*
+          계층 ⑤ — 보호자 현장톡은 여기 없다.
 
-        {/* 계층 ⑥ — 내원예정. 4단계에서 열린다. 지금은 자리만 만들어 둔다. */}
-        <section className="ct-card p-5">
-          <h2 className="ct-section-title">내원 예정 알리기</h2>
-          <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
-            도착 예정 시간을 의료기관에 미리 알리는 기능입니다. 4단계에서 열립니다.
-          </p>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-caution">{VISIT_INTENT_DISCLAIMER}</p>
-          <button type="button" disabled className="ct-primary mt-4">
-            내원 예정 알리기
-          </button>
-        </section>
+          1차에서 글을 **병원이 아니라 구에 걸기로** 했다. 병원별 방이 없으므로 이
+          화면에 끼울 방도 없다. 현장톡은 전국 하나의 방이고 지역으로 좁혀 본다.
+          병원을 다시 붙이는 2차에 "이 의료기관 글만 보기"를 그 방의 필터로 되살린다 —
+          화면을 또 만드는 것이 아니라 필터 하나를 더하는 일이다.
+          (지운 컴포넌트: HospitalFieldTalk. git 기록에 있다)
+        */}
 
-        {hospital.isParticipating && (
-          <p className="px-1 pt-1 text-[13px] leading-relaxed text-ink-faint">
-            환자 편의를 위해 진료정보 공유에 참여하는 의료기관입니다. 실제 상황은 변경될 수
-            있습니다.
-          </p>
-        )}
-
+        {/*
+          전에는 여기서 /chat?hospitalId= 으로 내보냈다. 이제 그 방이 이 화면 안에
+          있으므로 같은 방으로 가는 문을 두 개 두지 않는다 — 눌러도 방금 읽은 글이
+          다시 나온다. 다른 지역·병원으로 가는 길은 현장톡 카드 안에 있다.
+        */}
         <div className="space-y-2 pt-1">
-          <a href={`tel:${hospital.publicData.tel}`} className="ct-primary">
-            전화로 확인하기
-          </a>
-          <Link href="/search" className="ct-secondary w-full">
-            목록으로
-          </Link>
+          {urgency.callDiscouraged ? (
+            <div className="flex gap-2">
+              <a href={`tel:${hospital.publicData.tel}`} className="ct-secondary">
+                그래도 전화
+              </a>
+              <Link href="/search" className="ct-secondary">
+                다른 곳 보기
+              </Link>
+            </div>
+          ) : (
+            <>
+              <a href={`tel:${hospital.publicData.tel}`} className="ct-primary">
+                전화로 확인하기
+              </a>
+              <Link href="/search" className="ct-secondary w-full">
+                목록으로
+              </Link>
+            </>
+          )}
         </div>
         <p className="px-1 text-[13px] leading-relaxed text-ink-faint">
           {NOT_A_BOOKING} {CALL_IS_SUREST}

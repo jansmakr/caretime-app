@@ -1,52 +1,16 @@
 /**
- * 보호자 실시간 제보 (사용자 공유 계층).
+ * 보호자 공유 계층의 공통 타입.
  *
  * 설계 규칙: 이 타입은 병원 직접확인 계층과 절대 합쳐지지 않는다.
- *   UserReport 는 HospitalLiveStatus / HospitalWaitingStatus 로 승격되는 경로가 없고,
- *   source 는 "user" 리터럴로 고정이라 다른 출처로 바뀔 수 없다.
+ *   보호자가 쓴 글이 HospitalLiveStatus / HospitalWaitingStatus 로 승격되는 경로가 없다.
  *   (README 「8단계 CI lint 룰」 1번 — 사용자 입력이 hospital_live_status 에 write 하는 경로 금지)
  *
- * 그래서 이 모듈은 features/hospitals 의 쓰기 함수를 import 하지 않는다.
- * 읽기 전용으로 HospitalView 타입만 참조한다(자동완성 목록 구성).
+ * 전에는 여기에 제보 작성 폼이 쓰는 타입(ReportDraft·UserReport·ReportTarget)이 함께
+ * 있었다. 그 폼과 보관소는 현장톡(features/chat)과 **다른 저장소**였고, 그래서
+ * 같은 사람이 같은 병원에 대해 쓴 글이 어디에 썼느냐로 남는지가 갈렸다.
+ * 하나로 합치면서 그 타입들을 지웠다 — 남겨 두면 두 번째 저장소를 다시 만들게 된다.
+ * 지금 글의 타입은 features/chat/types 하나다(ChatDraft·ChatMessage).
  */
 
-import type { Sido } from "./regions";
-
-/** 제보 카테고리 3분할. 늘리기 전에 "정말 이 칩이 필요한가"를 먼저 본다. */
+/** 글 카테고리 3분할. 늘리기 전에 "정말 이 칩이 필요한가"를 먼저 본다. */
 export type ReportCategory = "laceration" | "burn" | "other";
-
-/**
- * 제보 대상 의료기관.
- * listed: 목록(공공/참여 의료기관)에서 고른 병원. hospitalId 가 있다.
- * manual: 목록에 없어 보호자가 직접 적은 병원. hospitalId 가 없고, 끝까지 없다.
- *         수기 입력을 나중에 특정 병원으로 자동 연결하지 않는다 — 오연결은 되돌릴 수 없다.
- */
-export interface ReportTarget {
-  kind: "listed" | "manual";
-  hospitalId: string | null;
-  hospitalName: string;
-  sido: Sido | null;
-  sigungu: string | null;
-}
-
-/** 작성 폼이 들고 있는 값. 아직 시각도 id 도 없다. */
-export interface ReportDraft {
-  target: ReportTarget;
-  category: ReportCategory;
-  /** "기타"에서만 쓰는 증상·주제 직접 입력. 나머지 카테고리에서는 null. */
-  topic: string | null;
-  body: string;
-  /** 보호자가 센 현재 대기 인원. null = 확인하지 못함(추정값을 넣지 않는다). */
-  waitingHeadcount: number | null;
-}
-
-export interface UserReport extends ReportDraft {
-  id: string;
-  /** 항상 "user". SourceBadge 가 비어 있는 점선 원으로 그린다. */
-  source: "user";
-  createdAt: string; // ISO8601
-}
-
-export const REPORT_BODY_MAX = 500;
-export const REPORT_TOPIC_MAX = 30;
-export const REPORT_WAITING_MAX = 99;

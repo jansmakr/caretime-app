@@ -2,6 +2,7 @@ import { addDays, kstDateTime, kstServiceDate } from "@/lib/kst";
 import type {
   ContactStatusCode,
   HospitalCapability,
+  HospitalServiceStatus,
   HospitalContactStatus,
   HospitalHours,
   HospitalLiveStatus,
@@ -12,6 +13,7 @@ import type {
   LiveStatusCode,
 } from "./types";
 import { DEMO_ORIGIN, distanceKm, estimateTravelMinutes } from "./location";
+import { representativeLiveStatus } from "./serviceStatus";
 
 /**
  * DB 행 ↔ 도메인 타입 변환.
@@ -25,8 +27,8 @@ export interface HospitalRow {
   name: string;
   address: string;
   tel: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   synced_at: string;
   is_participating: boolean;
   regular_open: string | null; // "09:00:00" (KST)
@@ -85,6 +87,48 @@ export interface WaitingStatusRow {
   verified_at: string;
 }
 
+/**
+ * 항목별 공식 상태 행. (migration 20260926120000)
+ *
+ * 보호자 경로는 원본 테이블이 아니라 service_statuses_public 뷰를 읽는다.
+ * 뷰는 만료되지 않은 행만, 참여 병원만, 그리고 updated_by·version 을 뺀 컬럼만 준다.
+ * 그래서 version 이 optional 이다 — 공개 경로에서는 오지 않는다.
+ */
+export interface ServiceStatusRow {
+  hospital_id: string;
+  service_id: string;
+  status: "AVAILABLE" | "LIMITED" | "CLOSED" | "PAUSED";
+  wait_bucket: "UNKNOWN" | "LE30" | "FROM30TO60" | "GE60";
+  reason_code: string | null;
+  reopen_at: string | null;
+  valid_until: string;
+  updated_at: string;
+  /** 동시수정 CAS 용. 공개 뷰에는 없다. 쓰려면 병원 계정으로 원본을 읽어야 한다. */
+  version?: number;
+}
+
+/**
+ * 항목 카탈로그 행. 상태가 아니라 "이 병원에 이 항목이 있다"는 사실이다.
+ * 원본 hospital_services 와 공개 뷰 hospital_services_public 의 컬럼 이름이 같아
+ * 두 경로가 같은 타입을 쓴다.
+ */
+export interface HospitalServiceRow {
+  id: string;
+  hospital_id: string;
+  category: "laceration" | "burn" | "other";
+  service_code: string;
+  reported_age_min: number | null;
+  reported_age_max: number | null;
+  capability_note: string | null;
+  profile_verified_at: string | null;
+}
+
+/** 공개 뷰가 내보내는 컬럼. version·updated_by 는 없다. */
+export const SERVICE_STATUS_PUBLIC_COLUMNS =
+  "hospital_id,service_id,status,wait_bucket,reason_code,reopen_at,valid_until,updated_at";
+export const HOSPITAL_SERVICE_PUBLIC_COLUMNS =
+  "id,hospital_id,category,service_code,reported_age_min,reported_age_max,capability_note,profile_verified_at";
+
 export const LIVE_STATUS_COLUMNS =
   "hospital_id,capability_id,status,reason_code,custom_reason,detail_text,starts_at,expected_resume_at,recheck_at,verified_by,verified_at,expires_at";
 export const DAILY_HOURS_COLUMNS =
@@ -140,11 +184,34 @@ export function toWaiting(row: WaitingStatusRow): HospitalWaitingStatus {
   };
 }
 
-/** 병원 전체 상태를 우선하고, 없으면 진료기능별 상태 중 하나를 쓴다. */
-export function pickLiveStatus(rows: LiveStatusRow[]): HospitalLiveStatus | null {
-  const row = rows.find((r) => r.capability_id === null) ?? rows[0];
-  return row ? toLiveStatus(row) : null;
+/**
+ * 항목 행 → 도메인. 상태가 게시되지 않은 항목도 **목록에서 빼지 않는다.**
+ * 빼면 "항목이 없는 병원"과 "항목은 있는데 아직 안 누른 병원"을 구분할 수 없다.
+ * 전자는 접수 개념이 없고, 후자는 눌러 주기를 기다리는 상태다.
+ */
+export function toServiceStatuses(
+  catalog: HospitalServiceRow[],
+  statuses: ServiceStatusRow[],
+): HospitalServiceStatus[] {
+  const byService = new Map(statuses.map((s) => [s.service_id, s]));
+  return catalog.map((row) => {
+    const status = byService.get(row.id) ?? null;
+    return {
+      serviceId: row.id,
+      category: row.category,
+      serviceCode: row.service_code,
+      status: status?.status ?? null,
+      waitBucket: status?.wait_bucket ?? "UNKNOWN",
+      validUntil: status?.valid_until ?? null,
+      updatedAt: status?.updated_at ?? null,
+      reopenAt: status?.reopen_at ?? null,
+      // 공개 뷰에는 version 이 없다. 0 같은 거짓 값을 넣지 않고 모른다고 둔다.
+      version: status?.version ?? null,
+    };
+  });
 }
+
+
 
 /**
  * 오늘 진료시간 = 평소 진료시간(병원 테이블) + 오늘 진료일 행(있으면).
@@ -179,14 +246,6 @@ export function toTodayHours(
 }
 
 // ─── 실시간 변경 적용 (보호자 화면·파트너 화면 공용) ───────────
-
-export function withLiveStatusRow(view: HospitalView, row: LiveStatusRow): HospitalView {
-  // 병원 전체 상태가 이미 있으면 진료기능별 변경으로 덮어쓰지 않는다.
-  if (row.capability_id !== null && view.liveStatus && view.liveStatus.capabilityId === null) {
-    return view;
-  }
-  return { ...view, liveStatus: toLiveStatus(row) };
-}
 
 export function withDailyHoursRow(view: HospitalView, row: DailyHoursRow, now: Date): HospitalView {
   if (!view.hours || row.service_date !== kstServiceDate(now)) return view;
@@ -234,7 +293,10 @@ export function mergeFresher(current: HospitalView, fresh: HospitalView): Hospit
 
 export interface HospitalJoinedRow extends HospitalRow {
   hospital_capabilities: HospitalCapabilityRow[] | null;
-  hospital_live_status: LiveStatusRow[] | null;
+  /** 항목 카탈로그(공개 뷰). 상태가 없는 항목도 여기 들어 있다 — 접기의 분모다. */
+  hospital_services_public: HospitalServiceRow[] | null;
+  /** 만료되지 않은 항목별 상태(공개 뷰). 카탈로그보다 적을 수 있다. */
+  service_statuses_public: ServiceStatusRow[] | null;
   hospital_daily_hours: DailyHoursRow[] | DailyHoursRow | null;
   hospital_contact_status: ContactStatusRow[] | ContactStatusRow | null;
   hospital_waiting_status: WaitingStatusRow[] | WaitingStatusRow | null;
@@ -247,13 +309,28 @@ function one<T>(v: T[] | T | null): T | null {
 }
 
 export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView {
-  const km = distanceKm(DEMO_ORIGIN, { lat: row.lat, lng: row.lng });
+  /*
+   * 좌표가 없으면 거리를 계산하지 않는다. null 을 넣고 계산하면 NaN 이 되고,
+   * NaN 은 조용히 흘러가서 "NaNkm" 이나 빈 칸으로 나타난다. 모르는 것은 null 이다.
+   */
+  const km =
+    row.lat === null || row.lng === null
+      ? null
+      : distanceKm(DEMO_ORIGIN, { lat: row.lat, lng: row.lng });
   const capabilities = [...(row.hospital_capabilities ?? [])].sort((a, b) => a.sort_order - b.sort_order);
   const contact = one(row.hospital_contact_status);
   const waiting = one(row.hospital_waiting_status);
   const daily = Array.isArray(row.hospital_daily_hours)
     ? (row.hospital_daily_hours.find((d) => d.service_date === kstServiceDate(now)) ?? null)
     : row.hospital_daily_hours;
+
+  // 항목별 상태. 카탈로그(항목의 존재)와 상태를 따로 읽어 합친다.
+  // 상태 뷰는 만료된 행을 빼고 주므로, 여기서 status=null 이 된 항목은
+  // "아직 안 누름"과 "눌렀지만 만료됨"을 합친 것이다. 둘 다 결론은 모름이라 같게 다룬다.
+  const services = toServiceStatuses(
+    row.hospital_services_public ?? [],
+    row.service_statuses_public ?? [],
+  );
 
   return {
     id: row.id,
@@ -266,15 +343,24 @@ export function toHospitalView(row: HospitalJoinedRow, now: Date): HospitalView 
       lng: row.lng,
       syncedAt: row.synced_at,
     },
-    distanceKm: Math.round(km * 10) / 10,
-    travelMinutes: estimateTravelMinutes(km),
+    distanceKm: km === null ? null : Math.round(km * 10) / 10,
+    travelMinutes: km === null ? null : estimateTravelMinutes(km),
     capabilities: capabilities.map(toCapability),
     hours: toTodayHours(row, daily, now),
-    liveStatus: pickLiveStatus(row.hospital_live_status ?? []),
+    /*
+     * 대표 상태는 항목별 상태를 접은 결과 하나다.
+     *
+     * 옛 출처(hospital_live_status)는 더 읽지 않는다. 병원 쓰기가 service_statuses 로
+     * 옮겨졌기 때문이다(features/partner/supabaseBackend.saveSlice). 두 출처를 보수적으로
+     * 병합하던 이행 코드는 지웠다 — 임시 코드를 오래 두면 영구화된다.
+     * 테이블 자체는 남아 있다(읽기 정책도 그대로). 과거 값을 봐야 할 일이 있으면 그때 읽는다.
+     */
+    liveStatus: representativeLiveStatus(row.id, services, now),
     contactStatus: contact ? toContact(contact) : null,
     waiting: waiting ? toWaiting(waiting) : null,
     // 내원예정은 5단계(Visit Intent)에서 테이블이 생긴다. 그 전까지 보호자 화면에 표시하지 않는다.
     incoming: null,
+    services,
     isParticipating: row.is_participating,
   };
 }

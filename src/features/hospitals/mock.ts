@@ -114,6 +114,8 @@ export const MOCK_HOSPITALS: HospitalView[] = [
       verifiedAt: minutesAgo(14),
     },
     incoming: { hospitalId: "h_001", within10: 2, within30: 8, within60: 11 },
+    // 항목별 상태는 아직 없다. migration 이 service_statuses 를 비워 두는 것과 같은 상태다.
+    services: [],
     isParticipating: true,
   },
   {
@@ -170,6 +172,8 @@ export const MOCK_HOSPITALS: HospitalView[] = [
     },
     waiting: { hospitalId: "h_002", level: "crowded", headcount: 11, verifiedAt: minutesAgo(22) },
     incoming: { hospitalId: "h_002", within10: 1, within30: 3, within60: 6 },
+    // 항목별 상태는 아직 없다. migration 이 service_statuses 를 비워 두는 것과 같은 상태다.
+    services: [],
     isParticipating: true,
   },
   {
@@ -227,6 +231,8 @@ export const MOCK_HOSPITALS: HospitalView[] = [
     },
     waiting: null,
     incoming: { hospitalId: "h_003", within10: 0, within30: 2, within60: 4 },
+    // 항목별 상태는 아직 없다. migration 이 service_statuses 를 비워 두는 것과 같은 상태다.
+    services: [],
     isParticipating: true,
   },
   {
@@ -279,6 +285,8 @@ export const MOCK_HOSPITALS: HospitalView[] = [
     contactStatus: null,
     waiting: null,
     incoming: null,
+    // 항목별 상태는 아직 없다. migration 이 service_statuses 를 비워 두는 것과 같은 상태다.
+    services: [],
     isParticipating: true,
   },
   {
@@ -310,6 +318,8 @@ export const MOCK_HOSPITALS: HospitalView[] = [
     contactStatus: null,
     waiting: null,
     incoming: null,
+    // 항목별 상태는 아직 없다. migration 이 service_statuses 를 비워 두는 것과 같은 상태다.
+    services: [],
     isParticipating: false,
   },
 ];

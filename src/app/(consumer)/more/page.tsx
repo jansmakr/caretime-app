@@ -1,28 +1,78 @@
 import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
+import { InstallHint } from "@/components/common/InstallHint";
+import { CompanyInfo } from "@/components/legal/CompanyInfo";
+import { LEGAL_DOC_PATH, loadLegalDocument } from "@/features/legal/documents";
+import { showPartnerEntry } from "@/lib/demoContent";
 
-const ITEMS = [
-  { label: "의료기관 정보 등록", note: "7단계" },
-  { label: "서비스 안내", note: "1단계" },
-  { label: "개인정보 처리방침", note: "2단계" },
-];
+/** 방침 파일을 읽으므로 정적 생성하지 않는다. */
+export const dynamic = "force-dynamic";
 
+/**
+ * 더보기.
+ *
+ * 약관·방침은 **준비되지 않아도 줄을 둔다.** 여기서는 "아직 없다"는 사실까지 적는
+ * 것이 맞다 — 찾으러 온 사람에게 아무 줄도 안 보이면 어디에 있는지 계속 찾는다.
+ * 본문이 없는 동안에는 링크로 만들지 않고 '준비 중'으로 둔다.
+ *
+ * 1차에는 참여 병원이 0곳이라 의료기관 등록 줄도 '준비 중'이다. (lib/demoContent)
+ */
 export default function MorePage() {
+  const legal = (["terms", "privacy"] as const).map((id) => {
+    const doc = loadLegalDocument(id);
+    return {
+      href: LEGAL_DOC_PATH[id],
+      label: doc.title || (id === "terms" ? "이용약관" : "개인정보 처리방침"),
+      ready: doc.hasBody,
+      note: doc.hasBody
+        ? doc.effectiveDate === null
+          ? "시행일 미정"
+          : `시행 ${doc.effectiveDate}`
+        : "준비 중",
+    };
+  });
+
   return (
     <>
-      <AppHeader title="더보기" />
+      <AppHeader title="더보기" showMore={false} />
       <main className="space-y-3 px-4 pb-6 pt-3">
         <ul className="ct-card divide-y divide-fill overflow-hidden">
-          {ITEMS.map((item) => (
-            <li key={item.label} className="flex items-center justify-between px-5 py-4">
-              <span className="text-[16px] font-medium">{item.label}</span>
-              <span className="rounded-pill bg-fill px-2.5 py-1 text-[12px] font-semibold text-ink-faint">
-                {item.note} 예정
-              </span>
-            </li>
-          ))}
+          {legal.map((item) =>
+            item.ready ? (
+              <li key={item.href}>
+                <Link href={item.href} className="flex items-center justify-between px-5 py-4 active:bg-fill">
+                  <span className="text-[16px] font-medium">{item.label}</span>
+                  <span className="text-[12.5px] font-semibold text-ink-faint">{item.note} ›</span>
+                </Link>
+              </li>
+            ) : (
+              <li key={item.href} className="flex items-center justify-between px-5 py-4">
+                <span className="text-[16px] font-medium text-ink-muted">{item.label}</span>
+                <span className="rounded-pill bg-fill px-2.5 py-1 text-[12px] font-semibold text-ink-faint">
+                  {item.note}
+                </span>
+              </li>
+            ),
+          )}
+          {/*
+            홈에서 안내를 닫은 사람이 나중에 마음을 바꿨을 때 찾아올 자리다.
+            여기서는 닫는 버튼이 없고, 설치할 길이 있을 때만 줄이 생긴다.
+          */}
+          <InstallHint variant="row" />
+
+          <li className="flex items-center justify-between px-5 py-4">
+            <span className="text-[16px] font-medium text-ink-muted">의료기관 정보 등록</span>
+            <span className="rounded-pill bg-fill px-2.5 py-1 text-[12px] font-semibold text-ink-faint">
+              준비 중
+            </span>
+          </li>
         </ul>
 
+        {/*
+          참여 의료기관 안내. 1차에는 참여 병원이 0곳이라 내린다 —
+          "공유해 주고 있습니다"가 사실이 아니다. (lib/demoContent.showPartnerEntry)
+        */}
+        {showPartnerEntry && (
         <section className="ct-card p-5">
           <h2 className="ct-section-title">CareTime 참여 의료기관 안내</h2>
           <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
@@ -32,6 +82,10 @@ export default function MorePage() {
             마음으로 이용해 주세요.
           </p>
         </section>
+        )}
+
+        {/* 사업자 정보. 첫 화면에서 내려온 자리다(components/legal/CompanyInfo). */}
+        <CompanyInfo />
 
         <Link href="/" className="ct-secondary w-full">
           진료정보 찾기로 돌아가기

@@ -7,9 +7,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:realtime": "vitest run --config vitest.realtime.config.ts",
+    "test:watch": "vitest",
+    "seed:localuser": "tsx scripts/seed-local-testuser.ts",
+    "check:manual-hospitals": "tsx scripts/check-manual-hospitals.ts",
+    "import:manual-hospitals": "tsx scripts/import-manual-hospitals.ts",
+    "sql:manual-hospitals": "tsx scripts/import-manual-hospitals.ts --sql",
+    "gen:sigungu": "tsx scripts/gen-sigungu.ts",
+    "_note:sql-manual-hospitals": "파일로 받을 때는 -- --out manual.sql 을 쓴다. PowerShell 의 > 는 한글 주석을 깨뜨린다"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "2.116.0",
     "next": "15.5.25",
     "react": "19.0.8",
@@ -22,7 +32,9 @@
     "autoprefixer": "10.4.20",
     "postcss": "8.5.28",
     "tailwindcss": "3.4.17",
-    "typescript": "5.7.3"
+    "tsx": "^4.19.2",
+    "typescript": "5.7.3",
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "next": {

@@ -52,7 +52,7 @@ export function ShareButton({
       type="button"
       onClick={() => void handle()}
       disabled={pending}
-      className="inline-flex shrink-0 items-center gap-1 rounded-pill bg-fill px-2.5 py-1.5
+      className="inline-flex min-h-[44px] shrink-0 items-center gap-1 rounded-pill bg-fill px-3
                  text-[12.5px] font-semibold text-ink-muted transition active:scale-[0.97] active:brightness-95"
     >
       공유 <span aria-hidden>🔗</span>

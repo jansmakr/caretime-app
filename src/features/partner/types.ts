@@ -6,6 +6,7 @@ import type {
   LiveStatusCode,
   LimitReasonCode,
 } from "@/features/hospitals/types";
+import type { CareCategory } from "@/features/hospitals/labels";
 import type { ExtractedFacts } from "@/features/search-session/types";
 
 /**
@@ -15,6 +16,30 @@ import type { ExtractedFacts } from "@/features/search-session/types";
  * 입력 화면과 보호자 화면이 같은 모양의 데이터를 보고 있어야
  * "병원이 누른 것"과 "보호자가 본 것"이 어긋나지 않는다.
  */
+
+/**
+ * 항목별 상태.
+ *
+ * 주 3버튼은 독립된 주장이 아니라 **이 값들을 한꺼번에 세팅하는 것**이다. 저장되는 것은
+ * 항목값이고, 화면 위의 "오늘 어려움"은 그것을 접은 결과다. 그래서 주 버튼을 누른 뒤
+ * 항목 하나를 바꾸는 것은 모순이 아니라 더 정확해지는 것이다.
+ *
+ * status 는 화면이 쓰는 옛 4값이다. 병원은 이 말로 입력한다.
+ */
+export interface PartnerServiceStatus {
+  serviceId: string;
+  category: CareCategory;
+  status: LiveStatusCode;
+  /** 이 항목의 만료 시각. 아직 누르지 않았으면 null. */
+  expiresAt: string | null;
+  /**
+   * 읽은 시점의 version. 아직 행이 없으면 null.
+   *
+   * 저장할 때 이 값을 함께 보내고, DB 는 version 이 다르면 쓰지 않는다.
+   * 비교를 애플리케이션에서 하지 않는다 — 읽고 비교하고 쓰는 사이에 다른 사람이 끼어든다.
+   */
+  version: number | null;
+}
 
 /** 오늘 진료상태 원탭 토글. null 은 "오늘 아직 확인하지 않음". */
 export type TodayMode = "same_as_yesterday" | "limited" | "difficult";
@@ -31,6 +56,16 @@ export interface YesterdaySnapshot {
   detailText: string | null;
   /** "HH:MM". 병원이 어제 확인한 내원 마감. 미확인이면 null. */
   lastAdmissionClock: string | null;
+  /**
+   * 어제의 **항목별** 값. serviceId → 상태.
+   *
+   * 이 화면의 전부가 여기 달려 있다. 예외를 만든 병원도 다음 날은 1탭이어야 한다.
+   * 예외 비용이 처음 한 번이고 그 뒤로 1탭으로 돌아오는 것 — 그게 깨지면 나머지가
+   * 아무리 좋아도 병원이 안 쓴다.
+   *
+   * 기록이 없는 항목은 이 표에 없다. 그 항목은 status(병원 전체 값)를 쓴다.
+   */
+  services: Record<string, LiveStatusCode>;
 }
 
 export interface PartnerState {
@@ -41,6 +76,18 @@ export interface PartnerState {
   contact: HospitalContactStatus;
   /** 현재 대기. 내원예정(IncomingVisit)과 별개 필드이며 합산하지 않는다. */
   waiting: HospitalWaitingStatus;
+  /** 항목별 상태. 저장되는 실체다. liveStatus 는 이것을 접은 결과다. */
+  services: PartnerServiceStatus[];
+  /**
+   * 이번 동작이 건드린 항목. 저장은 **이것만** 쓴다.
+   *
+   * 전 항목을 매번 쓰면 당직자 둘이 서로 다른 항목을 만져도 부딪힌다. 화상을 바꾼
+   * 사람과 봉합을 바꾼 사람이 서로 튕기면 아무도 이 화면을 안 쓴다.
+   *
+   * 주 3버튼은 병원 전체에 대한 주장이라 전 항목을 담는다. 항목 하나를 바꾸면 그 하나다.
+   * 서버에 저장되는 값이 아니다 — 화면이 들고 있는 "지금 무엇을 저장하려는가"다.
+   */
+  dirtyServiceIds: string[];
   yesterday: YesterdaySnapshot;
 }
 

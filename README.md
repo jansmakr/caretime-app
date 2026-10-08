@@ -20,6 +20,33 @@ npm run typecheck
 Node.js 18.18 이상이 필요합니다. `.env.local` 없이 실행하면 Mock 데이터로 동작합니다.
 Supabase 연결은 아래 「2단계 — Supabase 연결」을 따르세요.
 
+## 테스트
+
+묶음이 둘이고 **전제가 다릅니다.**
+
+```bash
+npm run test            # 빠른 묶음. 순수 로직 + 로컬 DB HTTP 조회 (약 5초)
+npm run test:realtime   # 느린 묶음. 웹소켓·서버 응답 본문 (약 30초)
+```
+
+`npm run test` 는 `supabase start` 로 로컬 스택이 떠 있어야 합니다.
+
+`npm run test:realtime` 은 **그 위에 `npm run build` 가 먼저 돌아 있어야 합니다.**
+미들웨어 테스트가 실제로 서버를 띄워 응답 본문을 봅니다 — "화면이 가려지는가"가 아니라
+"본문이 없는가"를 확인하는 것이 그 테스트의 목적이라 빌드된 서버가 필요합니다.
+
+순서:
+
+```bash
+supabase start
+npm run seed:localuser   # db reset 뒤에는 다시
+npm run build
+npm run test
+npm run test:realtime
+```
+
+빌드를 잊고 돌리면 테스트가 그 이유를 말하고 실패합니다. "테스트가 깨졌다"로 읽지 마세요.
+
 ---
 
 ## ⚠️ Mock 정책

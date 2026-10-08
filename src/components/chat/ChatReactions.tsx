@@ -39,7 +39,7 @@ export function ChatReactions({
             aria-pressed={on}
             aria-label={`${reaction.label}${on ? " 취소" : ""}`}
             onClick={() => onToggle(reaction.key)}
-            className={`inline-flex items-center gap-1 rounded-pill px-2.5 py-1.5 text-[12.5px] transition active:scale-[0.96] ${
+            className={`inline-flex min-h-[44px] items-center gap-1 rounded-pill px-3 text-[12.5px] transition active:scale-[0.96] ${
               on ? `font-bold ring-1 ring-inset ${ON[reaction.tone]}` : "bg-fill font-semibold text-ink-muted"
             }`}
           >
