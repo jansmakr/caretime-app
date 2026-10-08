@@ -54,15 +54,16 @@ export function LegalPage({ id, fallbackTitle }: { id: LegalDocId; fallbackTitle
                 방침과 실제가 갈라진다.
               */}
               <p className="mt-2 text-[14.5px] leading-relaxed text-ink-muted">
-                지금 저장하는 것은 글 내용과 서버가 만든 별명뿐입니다. 글은 24시간 동안
-                공개되고 30일 뒤 지워집니다. 이름·연락처·위치는 저장하지 않습니다.
+                지금 저장하는 것은 글 내용과 서버가 만든 별명뿐입니다. 올린 글은
+                기간이 지나도 지워지지 않고 쌓입니다. 이름·연락처·위치는 저장하지
+                않습니다.
               </p>
             </>
           )}
         </section>
 
         <Link href="/" className="ct-secondary w-full">
-          진료정보 찾기로 돌아가기
+          홈으로
         </Link>
       </main>
     </>

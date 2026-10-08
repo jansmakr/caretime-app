@@ -88,7 +88,7 @@ export default function MorePage() {
         <CompanyInfo />
 
         <Link href="/" className="ct-secondary w-full">
-          진료정보 찾기로 돌아가기
+          홈으로
         </Link>
       </main>
     </>
