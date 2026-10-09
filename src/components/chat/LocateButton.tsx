@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { canLocate, locateMyRegion, type LocateOutcome } from "@/features/regions/geolocate";
-import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
+import { canLocate, locateMyRegion } from "@/features/regions/geolocate";
+import { type MyRegion } from "@/features/regions/sigungu";
 
 /**
  * "내 위치로 선택".
@@ -12,70 +12,43 @@ import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
  * 카카오 SDK 도 그때 받아 온다. 쓸 생각이 없는 사람의 브라우저가 카카오에
  * 접속하는 일이 없어야 한다.
  *
- * ── 찾은 값을 바로 넣지 않는다 ──────────────────────────────
- * "서울 강서구가 맞나요?"를 한 번 묻는다. 위치는 틀릴 수 있고(건물 안·지하),
- * 틀린 지역이 조용히 붙으면 그 글을 읽은 사람이 헛걸음한다. 확인은 한 번뿐이고
- * 누르면 줄이 사라진다 — 화면에 남는 결정을 늘리지 않는다(원칙 1·4).
+ * ── 확인 창을 두지 않는다 ───────────────────────────────────
+ * 찾으면 **바로 적용한다.** 한 번 더 묻는 창을 두면 급한 사람이 결정을 두 번
+ * 하게 되고(원칙 1), 대부분은 그냥 "맞아요"를 누른다 — 그 누름은 확인이 아니라
+ * 장애물이다. 대신 **바꾸는 길을 바로 옆에 둔다**(작성창의 "바꾸기").
+ * 틀렸을 때 고치는 비용이 한 번 누르는 것이면 미리 묻지 않아도 된다.
  *
  * ── 실패해도 글쓰기는 그대로다 ──────────────────────────────
  * 권한 거부·시간 초과·SDK 실패 어느 쪽이든 **한 줄 안내로 끝난다.** 직접 고르는
- * 길(지역 바꾸기)은 늘 열려 있고, 지역 없이도 글은 올라간다.
+ * 길은 늘 열려 있고, 지역 없이도 글은 올라간다.
  *
  * 키가 없으면 버튼 자체를 그리지 않는다. 눌러도 안 되는 버튼을 만들지 않는다.
  */
 export function LocateButton({ onPick }: { onPick: (region: MyRegion) => void }) {
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<LocateOutcome | null>(null);
+  /*
+   * 들고 있는 것은 **실패 사유 한 줄**뿐이다. 좌표도, 좌표에서 나온 숫자도 여기
+   * 들어오지 않는다 — locateMyRegion 이 돌려주는 값에 숫자가 없다
+   * (features/regions/geolocate 의 LocateOutcome).
+   */
+  const [failed, setFailed] = useState<string | null>(null);
 
   if (!canLocate()) return null;
 
   async function run() {
     setBusy(true);
-    setOutcome(null);
-    /*
-     * 좌표는 여기까지 올라오지 않는다. locateMyRegion 이 돌려주는 것은 지역
-     * 이름뿐이고(features/regions/geolocate), 그래서 상태에 담길 수가 없다.
-     */
+    setFailed(null);
+
     const result = await locateMyRegion();
-    setOutcome(result);
     setBusy(false);
+
+    if (result.kind === "matched" || result.kind === "sido-only") {
+      // 찾았으면 바로 적용한다. 바꾸는 것은 바로 옆에서 할 수 있다.
+      onPick(result.region);
+      return;
+    }
+    setFailed(result.reason);
   }
-
-  /** 확인을 받아야 하는 결과인가. 맞으면 그 지역을 돌려준다. */
-  const pending =
-    outcome?.kind === "matched" || outcome?.kind === "sido-only" ? outcome.region : null;
-
-  if (pending) {
-    return (
-      <div className="mt-2 rounded-field bg-blue-soft px-3.5 py-3">
-        <p className="break-keep text-[14px] font-semibold leading-relaxed text-blue-deep">
-          {regionLabel(pending)} 이(가) 맞나요?
-        </p>
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              onPick(pending);
-              setOutcome(null);
-            }}
-            className="min-h-[44px] flex-1 rounded-field bg-blue px-4 text-[15px] font-bold text-white"
-          >
-            맞아요
-          </button>
-          <button
-            type="button"
-            onClick={() => setOutcome(null)}
-            className="min-h-[44px] flex-1 rounded-field px-4 text-[15px] font-semibold text-ink-muted"
-          >
-            직접 고를게요
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const failed =
-    outcome?.kind === "failed" || outcome?.kind === "unmatched" ? outcome.reason : null;
 
   return (
     <div className="mt-2">
