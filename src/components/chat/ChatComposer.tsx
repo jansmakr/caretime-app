@@ -2,6 +2,8 @@
 
 import { useId, useState } from "react";
 import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
+import { LocateButton } from "@/components/chat/LocateButton";
+import { RegionPicker } from "@/components/chat/RegionPicker";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
 import { RateLimitedError, ReportRejectedError } from "@/features/chat/repository";
@@ -34,6 +36,7 @@ export function ChatComposer({
   myRegion,
   lastSentAt,
   onSent,
+  onPickRegion,
   scopeNote,
 }: {
   /**
@@ -46,10 +49,18 @@ export function ChatComposer({
   myRegion: MyRegion | null;
   lastSentAt: number | null;
   onSent: (message: string) => void;
+  /**
+   * "내 위치로 선택"으로 고른 지역을 저장한다. 직접 고르는 것(지역 바꾸기)과
+   * **같은 자리에 들어간다** — 고르는 길이 둘이어도 저장되는 값은 하나다.
+   * 넘기지 않으면 버튼을 그리지 않는다.
+   */
+  onPickRegion?: (region: MyRegion) => void;
   /** 어디로 올라가는지 설명하는 한 줄. 넘기면 이 문구를 쓴다. */
   scopeNote?: string;
 }) {
   const [body, setBody] = useState("");
+  /** 지역을 고치는 칸을 펼쳤는가. 평소 접혀 있다 — 한 번 정하면 거의 안 바꾼다. */
+  const [editingRegion, setEditingRegion] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cooldown = useCooldownSeconds(lastSentAt);
 
@@ -185,6 +196,48 @@ export function ChatComposer({
           </>
         )}
       </p>
+
+      {/*
+        ── 지역을 정하는 자리. 작성창 안에 둔다 ──────────────────
+        전에는 바꾸려면 위로 올라가 필터의 "내 지역 바꾸기"를 눌러야 했다. 위치로
+        고른 값이 틀렸을 때 **고치는 비용이 거기까지 올라가는 것**이면, 확인 창을
+        미리 띄워야 한다. 고치는 길을 옆에 두면 미리 묻지 않아도 된다.
+
+        · 아직 안 골랐으면 → [내 위치로 선택]
+        · 골랐으면 → [바꾸기] 한 줄. 누를 때만 고르는 칸이 펼쳐진다(원칙 4).
+      */}
+      {onPickRegion && !editingRegion && myRegion === null && (
+        <LocateButton onPick={onPickRegion} />
+      )}
+
+      {onPickRegion && !editingRegion && myRegion !== null && (
+        <button
+          type="button"
+          onClick={() => setEditingRegion(true)}
+          className="mt-1 min-h-[44px] text-[13.5px] font-semibold text-blue"
+        >
+          올라갈 위치 바꾸기
+        </button>
+      )}
+
+      {onPickRegion && editingRegion && (
+        <div className="mt-2">
+          <RegionPicker
+            region={myRegion}
+            onChange={(next) => {
+              onPickRegion(next);
+              setEditingRegion(false);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setEditingRegion(false)}
+            className="mt-2 min-h-[44px] w-full text-[13.5px] font-semibold text-ink-muted"
+          >
+            닫기
+          </button>
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="mt-3 text-[13.5px] font-semibold text-limited-ink">
