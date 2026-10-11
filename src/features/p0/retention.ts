@@ -55,6 +55,11 @@ export const RETENTION_DAYS = {
   observations: 7,
   /** 접수 시각 기준. 다음 지역 판단 근거. */
   hospital_requests: 365,
+  /**
+   * 접수 시각 기준. **연락처가 들어 있는 유일한 표다**(병원 담당자가 스스로 적는다).
+   * 2027년 서비스 안내를 위해 받고, 그 뒤로는 들고 있을 근거가 없다.
+   */
+  partner_inquiries: 365,
   /** 접수 시각 기준. 조치 기록도 같은 기간. */
   reports: 365,
   /**

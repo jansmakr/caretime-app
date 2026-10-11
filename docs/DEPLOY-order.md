@@ -2,7 +2,8 @@
 
 **사람이 보고 실행하는 문서다.** 명령어를 그대로 복사해 쓸 수 있게 적었다.
 
-지금 migration **11개**가 로컬에만 있다. 베타 시작 직전에 올린다.
+지금 migration **12개**가 로컬에만 있다. 베타 시작 직전에 올린다.
+(13번 `20261011_partner_inquiries` 는 **따로 올린다** — 아래 별도 절)
 
 ---
 
@@ -53,7 +54,7 @@ supabase link --project-ref <운영 ref>
 supabase projects list          # LINKED 표시가 운영 쪽에 있는지 눈으로 본다
 
 # 2) 무엇이 올라가는지 본다
-supabase db push --dry-run      # → 11개 파일. 그 외에 아무것도 없어야 한다
+supabase db push --dry-run      # → 12개 파일. 그 외에 아무것도 없어야 한다
 
 # 3) 올린다
 supabase db push
@@ -70,7 +71,7 @@ supabase projects list          # LINKED 표시가 사라졌는지 확인
 
 - [ ] `supabase projects list` 로 ref 를 눈으로 확인했다
 - [ ] `supabase link --project-ref <ref>` 를 그 ref 로 했다
-- [ ] **`supabase db push --dry-run` 결과가 11개 파일이고 그 외에 없다**
+- [ ] **`supabase db push --dry-run` 결과가 12개 파일이고 그 외에 없다**
 
 ## C. 가짜 데이터가 운영에 들어가지 않는가
 
@@ -432,6 +433,68 @@ migration 전부만 올린 DB(`db reset --no-seed`)에 수동 병원 2곳을 운
 | 9 | `20261004120000_retention_purge.sql` | 보관 기간 표 + 실제 삭제 + pg_cron 04:00 KST |
 | 10 | `20261005120000_stale_reports_and_purge_health.sql` | 미처리 신고 90일 자동 종결 + 크론 상태 조회 |
 | 11 | `20261006120000_reporter_unlink.sql` | 신고한 사람의 세션을 지울 수 있게 (제약 완화) |
+| 12 | **`20261007120000_accumulate.sql`** | **글을 쌓는다** — 24시간 공개 창과 자동 삭제를 끈다. 본문 1000자. 구 인덱스 |
+
+### ⚠️ 12번이 빠져 있었다 (2026-10-11 발견)
+
+이 표에 **`20261007` 이 아예 없었다.** 표만 보고 올리면 운영에서는 글이 **24시간 뒤
+목록에서 사라지고 30일 뒤 지워진다** — 쌓기로 한 결정이 통째로 뒤집힌다. 그리고
+화면은 멀쩡해 보인다(공개 여부는 읽는 시점에 판정한다). 하루 뒤에야 안다.
+
+같은 사고가 두 번째다(전에 `20261003` 이 빠져 있었다). **파일 수를 세어 표와 맞춘다:**
+
+```bash
+ls supabase/migrations/*.sql | wc -l     # 13 (아래 13번 포함)
+supabase db push --dry-run               # 이 수와 같아야 한다
+```
+
+### 13. `20261011120000_partner_inquiries.sql` — **아직 올리지 않는다**
+
+의료기관 사전 신청 표다. **사용자가 dry-run 을 본 뒤 따로 지시할 때 올린다**
+(2026-10-11 지시). 위 12개와 함께 올리지 않는다.
+
+이 표가 다른 표와 다른 점: **연락처가 들어온다.** 지금까지 저장한 것은 글 내용과
+서버가 만든 별명뿐이었다. 그래서 다르게 다룬다 — 공개 뷰 없음, RLS 정책 **0개**
+(service_role 만 읽는다), 보관 기간 1년, 동의가 false 면 DB 가 거절한다.
+
+올릴 때:
+
+```bash
+supabase db push --dry-run    # → 이 파일 하나만 나와야 한다
+supabase db push
+```
+
+올린 뒤 확인:
+
+```sql
+-- 정책이 0개여야 한다. 하나라도 있으면 연락처가 공개될 수 있다.
+select count(*) from pg_policies where tablename = 'partner_inquiries';   -- 0
+
+-- 보관 기간이 표에 들어갔는가
+select keep_days from public.retention_policy where subject = 'partner_inquiries';  -- 365
+
+-- 삭제 함수가 이 표를 지우는가 (목록에 partner_inquiries 가 있어야 한다)
+select * from public.purge_expired();
+
+-- 동의 없는 행은 들어가지 않는가 (오류가 나야 정상이다)
+insert into public.partner_inquiries (hospital_name, contact, consented)
+values ('확인용', 'x', false);
+```
+
+⚠️ 이 파일은 `purge_expired()` 를 **다시 만든다**(create or replace). 12번까지
+올린 뒤에 올려야 한다 — 먼저 올리면 12번이 덮어써서 이 표가 영영 안 지워진다.
+
+**신청을 읽는 법** (운영자, Supabase SQL Editor):
+
+```sql
+select created_at, hospital_name, contact, message
+  from public.partner_inquiries
+ where state = 'NEW'
+ order by created_at;
+
+-- 연락한 뒤
+update public.partner_inquiries set state = 'CONTACTED' where id = '<id>';
+```
 
 ### ⚠️ 4와 5는 **쌍이다**
 

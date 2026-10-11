@@ -4,6 +4,7 @@ import { StageNotice } from "@/components/common/StageNotice";
 import { DiscoveryForm } from "@/components/home/DiscoveryForm";
 import { MyRegionGate } from "@/components/home/MyRegionGate";
 import { InstallHint } from "@/components/common/InstallHint";
+import { PartnerInquiry } from "@/components/common/PartnerInquiry";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { showCareConditionForm, showHospitalDirectory } from "@/lib/demoContent";
 
@@ -70,6 +71,13 @@ export default function HomePage() {
           설치할 길이 없는 브라우저에서는 아무것도 그리지 않는다.
         */}
         <InstallHint />
+
+        {/*
+          의료기관 사전 신청. 보호자 흐름(제목 → 현장톡 버튼) 뒤에 둔다 —
+          이 화면의 주인공은 보호자이고, 병원 담당자는 드물게 온다.
+          평소에는 접힌 카드 한 장이고, 누를 때만 폼이 펼쳐진다(원칙 4).
+        */}
+        <PartnerInquiry />
 
         {/*
          * 병원 목록으로 가는 길은 1차에 없다. 글을 병원이 아니라 구에 걸기로 했고,
