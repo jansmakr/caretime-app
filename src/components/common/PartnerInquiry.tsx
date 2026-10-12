@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useId, useState } from "react";
 import { LEGAL_DOC_PATH } from "@/features/legal/paths";
-import { RETENTION_DAYS } from "@/features/p0/retention";
+import { RETENTION_DAYS, formatRetention } from "@/features/p0/retention";
 import { partnerChatUrl } from "@/lib/demoContent";
 
 /**
@@ -163,7 +163,7 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
           <br />
           이용 목적: 사전 신청 접수와 서비스 시작 안내
           <br />
-          보관 기간: 접수 후 {RETENTION_DAYS.partner_inquiries}일 (이후 삭제)
+          보관 기간: 접수 후 {formatRetention(RETENTION_DAYS.partner_inquiries)} (이후 삭제)
           <br />
           동의하지 않으셔도 됩니다. 다만 동의하지 않으시면 접수되지 않습니다.
           <br />

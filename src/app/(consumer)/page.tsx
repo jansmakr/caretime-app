@@ -18,7 +18,7 @@ import { showCareConditionForm, showHospitalDirectory } from "@/lib/demoContent"
 /*
  * 단, 약관·방침 한 줄(LegalFooter)은 **오늘 날짜로** "시행 전 / 동의하는 것으로
  * 봅니다"를 가른다. 정적으로 굳으면 빌드한 날의 판정이 시행일 뒤에도 남는다 —
- * 2026-10-19 이 지나도 재배포 전까지 "시행 전"이라고 적힌다. 한 시간마다 다시 그린다.
+ * 2026-10-26 이 지나도 재배포 전까지 "시행 전"이라고 적힌다. 한 시간마다 다시 그린다.
  */
 export const revalidate = 3600;
 

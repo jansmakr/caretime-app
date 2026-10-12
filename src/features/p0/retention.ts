@@ -123,3 +123,11 @@ export function isStalePost(input: { observedAt: string | null; now: Date }): bo
   if (Number.isNaN(observed)) return true;
   return input.now.getTime() - observed >= POST_CURRENT_REFERENCE_MS;
 }
+
+/**
+ * 화면에 적는 보관 기간. 365 의 배수면 "1년"처럼 연 단위로 쓴다 — 방침 문서가
+ * "1년"이라고 적으므로 화면도 같은 말을 써야 한다. 숫자는 여전히 RETENTION_DAYS 에서 온다.
+ */
+export function formatRetention(days: number): string {
+  return days % 365 === 0 ? `${days / 365}년` : `${days}일`;
+}
