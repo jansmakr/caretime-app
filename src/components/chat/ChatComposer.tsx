@@ -144,8 +144,18 @@ export function ChatComposer({
         읽힌다.
       */}
       <div className="mt-3">
+        {/*
+          음성 입력 안내 한 줄. **새 기능이 아니다** — 휴대폰 키보드에 이미 있는 마이크를
+          알려 주는 것뿐이다. 아이를 안고 있으면 한 손으로 글자를 치기 어렵고, 어르신은
+          그 버튼이 있는 줄 모른다. 마이크 권한을 우리가 묻지 않고, 소리도 받지 않는다.
+          390px 에서 한 줄에 들어가는 길이로 맞췄다(원칙 4).
+        */}
+        <p id={`${ids}-voice`} className="break-keep text-[16px] leading-snug text-ink-muted">
+          키보드의 🎤를 누르고 말해도 됩니다
+        </p>
         <textarea
           id={`${ids}-body`}
+          aria-describedby={`${ids}-voice`}
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={5}
