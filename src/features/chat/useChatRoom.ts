@@ -5,8 +5,6 @@ import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchFieldReports } from "./repository";
 import { withMyReactions } from "./reactions";
-import { seedChatMessages } from "./seed";
-import { showDemoReports } from "@/lib/demoContent";
 import { filterMessages, mergeRoomMessages } from "./service";
 import {
   connectChat,
@@ -24,7 +22,8 @@ import { CHAT_COOLDOWN_MS, type ChatFilter, type ChatMessage, type ChatMessageVi
 /**
  * 현장톡 목록 · 반응 · 쿨다운.
  *
- * 데모 대화(renderedAt 기준 고정 오프셋) + 이번 브라우저에서 보낸 글을 합쳐 최신순으로 돌려준다.
+ * 서버가 읽어 온 글 + 이번 브라우저에서 보낸 글을 합쳐 최신순으로 돌려준다. 가상 대화는 없다.
+ * (renderedAt 은 부르는 쪽 모양을 바꾸지 않으려고 남겨 둔 인자다. 지금은 쓰지 않는다.)
  * 보내거나 반응을 누르면 store 가 알려 주므로 새로고침 없이 반영된다.
  *
  * 필터는 목록에만 적용하고 전체 건수는 따로 돌려준다 — 빈 목록이 "글이 없다"인지
@@ -42,11 +41,6 @@ export function useChatRoom(
   initialMyPostIds: string[] = [],
 ) {
   const snapshot = useSyncExternalStore(subscribeChat, getChatSnapshot, getChatSnapshotOnServer);
-  // 운영에서는 가상 대화를 렌더하지 않는다. 빈 상태를 0건으로 꾸미지 않기 위해 목록만 비운다.
-  const seeded = useMemo(
-    () => (showDemoReports ? seedChatMessages(renderedAt) : []),
-    [renderedAt],
-  );
 
   // 저장된 닉네임은 브라우저에만 있다. 첫 렌더가 아니라 마운트 후에 올린다.
   useEffect(() => {
@@ -117,7 +111,9 @@ export function useChatRoom(
     const merged = mergeRoomMessages({
       stored: snapshot.messages,
       initial: initialMessages,
-      seeded,
+      // 가상 대화 원본을 저장소에서 지웠다(2026-10-12). 번들에 실리지 않게 하려면
+      // 플래그로 막는 것이 아니라 import 자체가 없어야 한다.
+      seeded: [],
       removedIds: snapshot.removedIds,
     });
     return merged.map((message) => {
@@ -140,7 +136,6 @@ export function useChatRoom(
     snapshot.myReactions,
     snapshot.mineIds,
     snapshot.removedIds,
-    seeded,
     initialMine,
   ]);
 

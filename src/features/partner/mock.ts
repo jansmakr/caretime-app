@@ -1,4 +1,3 @@
-import { getHospital } from "@/features/hospitals/service";
 import type { HospitalView } from "@/features/hospitals/types";
 import { formatClock } from "@/lib/freshness";
 import type { IncomingVisit, PartnerState } from "./types";
@@ -16,11 +15,11 @@ import type { IncomingVisit, PartnerState } from "./types";
 
 export const PARTNER_DEMO_HOSPITAL_ID = "h_001";
 
-export function getPartnerHospital(): HospitalView {
-  const hospital = getHospital(PARTNER_DEMO_HOSPITAL_ID);
-  if (!hospital) throw new Error(`partner demo hospital ${PARTNER_DEMO_HOSPITAL_ID} missing`);
-  return hospital;
-}
+/*
+ * 데모 병원은 **서버 레이아웃이 읽어서 넘긴다**(app/partner/layout.tsx).
+ * 여기서 hospitals/mock 을 import 하면 가상 병원 목록 전체가 클라이언트 번들에
+ * 실린다 — 라우트가 닫혀 있어도 JS 파일은 공개 주소로 받을 수 있다(2026-10-12 grep).
+ */
 
 const MINUTE = 60_000;
 
@@ -38,8 +37,7 @@ function later(now: Date, minutes: number): string {
   return new Date(now.getTime() + minutes * MINUTE).toISOString();
 }
 
-export function createPartnerDemoState(now: Date): PartnerState {
-  const hospital = getPartnerHospital();
+export function createPartnerDemoState(now: Date, hospital: HospitalView): PartnerState {
   const id = hospital.id;
   const regularOpenAt = at(now, -600);
   const regularCloseAt = at(now, 162);

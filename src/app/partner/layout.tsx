@@ -4,6 +4,9 @@ import { StageNotice } from "@/components/common/StageNotice";
 import { PartnerGate } from "@/components/partner/PartnerGate";
 import { PartnerHeader } from "@/components/partner/PartnerHeader";
 import { PartnerProvider } from "@/features/partner/PartnerProvider";
+import { PARTNER_DEMO_HOSPITAL_ID } from "@/features/partner/mock";
+import { getMockHospital } from "@/features/hospitals/mock";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { showPartnerEntry } from "@/lib/demoContent";
 
 export const metadata: Metadata = {
@@ -25,7 +28,9 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   if (!showPartnerEntry) notFound();
 
   return (
-    <PartnerProvider>
+    <PartnerProvider
+      demoHospital={isSupabaseConfigured ? null : getMockHospital(PARTNER_DEMO_HOSPITAL_ID)}
+    >
       <div className="mx-auto min-h-dvh max-w-app pb-[calc(24px+env(safe-area-inset-bottom))]">
         <PartnerHeader />
         <StageNotice />
