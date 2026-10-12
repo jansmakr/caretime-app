@@ -1,14 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useState } from "react";
+import { LEGAL_DOC_PATH } from "@/features/legal/paths";
 import { RETENTION_DAYS } from "@/features/p0/retention";
+import { partnerChatUrl } from "@/lib/demoContent";
 
 /**
  * "의료기관이신가요?" — 2027년 서비스 사전 신청.
  *
  * ── 지금 없는 것을 있다고 하지 않는다 ───────────────────────
  * 의료기관 검색 서비스는 **아직 없다.** 그래서 첫 줄에 연도를 적고, 지금 받는 것이
- * 신청뿐이라는 것을 먼저 말한다. "참여하세요"로 시작하면 이미 돌아가는 서비스에
+ * 신청뿐이라는 것을 먼저 말한다. 날짜도 "시작합니다"가 아니라 "목표"다 — 약관 §5 와
+ * 같은 말을 쓴다. 정해지지 않은 날을 정해진 것처럼 적지 않는다. "참여하세요"로 시작하면 이미 돌아가는 서비스에
  * 들어오는 것으로 읽힌다.
  *
  * ── 쓰지 않는 말 ────────────────────────────────────────────
@@ -71,10 +75,10 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
   if (sent) {
     return (
       <Shell variant={variant}>
-        <p className="break-keep text-[15px] font-bold leading-relaxed text-blue-deep">
+        <p className="break-keep text-[18px] font-bold leading-relaxed text-blue-deep">
           신청이 접수되었습니다.
         </p>
-        <p className="mt-1 break-keep text-[14px] leading-relaxed text-ink-muted">
+        <p className="mt-1 break-keep text-[16px] leading-relaxed text-ink-muted">
           준비가 되면 적어 주신 연락처로 안내드리겠습니다.
         </p>
       </Shell>
@@ -84,15 +88,15 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
   if (!open) {
     return (
       <Shell variant={variant}>
-        <p className="break-keep text-[16px] font-bold leading-snug">의료기관이신가요?</p>
-        <p className="mt-1 break-keep text-[14px] leading-relaxed text-ink-muted">
-          2027년부터 의료기관 검색 서비스를 시작합니다. 지금 미리 신청하시면 먼저
+        <p className="break-keep text-[18px] font-bold leading-snug">의료기관이신가요?</p>
+        <p className="mt-1 break-keep text-[16px] leading-relaxed text-ink-muted">
+          2027년 시작을 목표로 의료기관 검색 서비스를 준비하고 있습니다. 미리 신청하시면 먼저
           안내드립니다. <span className="font-semibold text-ink">비용 없이 신청만 받습니다.</span>
         </p>
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="ct-secondary mt-3 w-full"
+          className="ct-secondary mt-3 w-full text-[16px]"
         >
           사전 신청하기
         </button>
@@ -102,8 +106,8 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
 
   return (
     <Shell variant={variant}>
-      <p className="break-keep text-[16px] font-bold leading-snug">의료기관 사전 신청</p>
-      <p className="mt-1 break-keep text-[14px] leading-relaxed text-ink-muted">
+      <p className="break-keep text-[18px] font-bold leading-snug">의료기관 사전 신청</p>
+      <p className="mt-1 break-keep text-[16px] leading-relaxed text-ink-muted">
         2027년 서비스 준비가 되면 적어 주신 연락처로 안내드립니다. 비용 없이 신청만
         받습니다.
       </p>
@@ -116,7 +120,7 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
             onChange={(e) => setHospitalName(e.target.value)}
             maxLength={60}
             placeholder="예: ○○소아청소년과의원"
-            className="ct-field h-12 w-full text-[15px]"
+            className="ct-field h-12 w-full text-[16px]"
           />
         </Field>
 
@@ -127,7 +131,7 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
             onChange={(e) => setContact(e.target.value)}
             maxLength={120}
             placeholder="전화번호 또는 이메일"
-            className="ct-field h-12 w-full text-[15px]"
+            className="ct-field h-12 w-full text-[16px]"
           />
         </Field>
 
@@ -138,7 +142,7 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
             onChange={(e) => setMessage(e.target.value)}
             maxLength={500}
             rows={3}
-            className="ct-field w-full resize-none py-3 text-[15px]"
+            className="ct-field w-full resize-none py-3 text-[16px]"
           />
         </Field>
       </div>
@@ -152,7 +156,7 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
         DB 의 retention_policy 와 갈라진다.
       */}
       <div className="mt-4 rounded-field bg-fill px-3.5 py-3">
-        <p className="break-keep text-[13.5px] leading-relaxed text-ink-muted">
+        <p className="break-keep text-[16px] leading-relaxed text-ink-muted">
           <span className="font-semibold text-ink">개인정보 수집·이용 안내</span>
           <br />
           수집 항목: 병원명, 연락처, 남기신 말씀
@@ -162,6 +166,11 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
           보관 기간: 접수 후 {RETENTION_DAYS.partner_inquiries}일 (이후 삭제)
           <br />
           동의하지 않으셔도 됩니다. 다만 동의하지 않으시면 접수되지 않습니다.
+          <br />
+          <Link href={LEGAL_DOC_PATH.privacy} className="font-semibold text-ink underline">
+            개인정보 처리방침 1-6
+          </Link>
+          에 자세히 적었습니다.
         </p>
 
         <label className="mt-2.5 flex min-h-[44px] cursor-pointer items-center gap-2.5">
@@ -171,14 +180,14 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
             onChange={(e) => setConsented(e.target.checked)}
             className="h-6 w-6 shrink-0 accent-blue"
           />
-          <span className="break-keep text-[14.5px] font-semibold leading-snug">
+          <span className="break-keep text-[16px] font-semibold leading-snug">
             위 내용에 동의합니다
           </span>
         </label>
       </div>
 
       {error && (
-        <p role="alert" className="mt-2 break-keep text-[13.5px] font-semibold text-limited-ink">
+        <p role="alert" className="mt-2 break-keep text-[16px] font-semibold text-limited-ink">
           {error}
         </p>
       )}
@@ -192,10 +201,32 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
         {busy ? "보내는 중입니다…" : "신청 보내기"}
       </button>
 
+      {/*
+        오픈채팅. 폼을 쓰기 전에 먼저 묻고 싶은 사람의 길이다 — 주 버튼은 "신청 보내기"
+        하나로 두고 이쪽은 보조 버튼이다(원칙 1).
+        주소는 환경변수에서만 온다. 없으면 버튼도 없다 — 지어낸 주소로 보내지 않는다.
+        카카오로 넘어간다는 것을 누르기 전에 한 줄로 말한다(방침 1-6).
+      */}
+      {partnerChatUrl && (
+        <>
+          <a
+            href={partnerChatUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ct-secondary mt-2 w-full text-[16px]"
+          >
+            오픈채팅으로 문의하기
+          </a>
+          <p className="mt-1 break-keep text-[16px] leading-relaxed text-ink-muted">
+            카카오톡이 열립니다. 대화 내용은 카카오가 처리합니다.
+          </p>
+        </>
+      )}
+
       <button
         type="button"
         onClick={() => setOpen(false)}
-        className="mt-2 min-h-[44px] w-full text-[13.5px] font-semibold text-ink-muted"
+        className="mt-2 min-h-[44px] w-full text-[16px] font-semibold text-ink-muted"
       >
         닫기
       </button>
@@ -223,7 +254,7 @@ function Field({
 }) {
   return (
     <label htmlFor={id} className="block">
-      <span className="text-[13.5px] font-semibold text-ink-faint">{label}</span>
+      <span className="text-[16px] font-semibold text-ink-muted">{label}</span>
       <div className="mt-1">{children}</div>
     </label>
   );

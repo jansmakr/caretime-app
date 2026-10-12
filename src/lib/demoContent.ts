@@ -14,6 +14,9 @@
  *                                 작성창과 홈 배너의 활성 문구.
  *                                 서버 저장·제한이 준비된 뒤에 켠다.
  *
+ *   NEXT_PUBLIC_PARTNER_CHAT_URL  의료기관 사전 신청 아래 **오픈채팅 버튼**을 내는가.
+ *                                 값이 없거나 카카오 오픈채팅 주소가 아니면 숨긴다.
+ *
  * 전에는 둘이 한 값이었다. 그래서 작성창을 열려면 가짜 데이터도 같이 켜야 했다 —
  * 1차 출시(현장톡 단독)의 첫 걸림돌이 그것이었다. 둘은 서로 다른 것을 묻는다.
  * 하나는 "보여 줄 것이 진짜인가", 다른 하나는 "쓸 수 있는가"다.
@@ -153,8 +156,14 @@ export const isDemoContentAllowed: boolean =
  * 아니다. 지어낸 글은 **실제 병원 이름이 들어가면 그 병원에 대한 허위 정보**이고,
  * 가상 병원 이름을 쓰면 "모두 가상 데이터" 배너를 되살린다. 둘 다 이미 겪었다.
  * Vercel 설정 한 줄로 되살아나는 자리에 두지 않는다 — 운영은 빈 방으로 시작한다.
+ *
+ * **2026-10-12 부터 상수 false 다. 가상 대화 원본(features/chat/seed.ts)을 지웠다.**
+ * 전에는 `NODE_ENV !== "production"` 으로 막았는데, 그건 **화면에 안 그리는 것**이지
+ * 번들에서 빼는 것이 아니었다. 운영 JS 를 grep 하면 "가상아이봄의원"·"강서구맘"이
+ * 그대로 나왔다. 주소를 아는 사람은 지어낸 글을 읽을 수 있었다는 뜻이다.
+ * 되살리려면 원본을 다시 써야 한다 — 이 상수만 바꿔서는 아무것도 나오지 않는다.
  */
-export const showDemoReports = isDemoContentAllowed && process.env.NODE_ENV !== "production";
+export const showDemoReports = false;
 
 /**
  * 공식 출처 배지(🟢 의료기관 직접확인 · 🟡 운영자 전화확인).
@@ -234,4 +243,33 @@ export function areWritesOpen(): boolean {
     return value.trim().toLowerCase() !== "closed";
   }
   return isFieldTalkSharingLive;
+}
+
+/**
+ * 의료기관 사전 신청 아래의 "오픈채팅으로 문의하기" 버튼 주소.
+ *
+ *   NEXT_PUBLIC_PARTNER_CHAT_URL=https://open.kakao.com/o/...
+ *
+ * **값이 없으면 버튼이 없다.** 주소를 코드에 적어 두거나 지어내지 않는다 — 없는 방으로
+ * 보내면 병원 담당자가 "닫힌 서비스"로 읽는다.
+ *
+ * `https://open.kakao.com` 주소만 받는다. 방침 1-6 이 "오픈채팅을 쓰시면 카카오가
+ * 처리합니다"라고 적고 있어서, 다른 곳으로 가는 주소가 들어오면 방침이 틀린 말이 된다.
+ * 모양이 맞지 않으면 null — 버튼을 숨긴다. 잘못 보내는 것보다 안 보이는 것이 낫다.
+ *
+ * NEXT_PUBLIC_ 이라 빌드 시점에 박힌다. 바꾸면 다시 배포해야 한다.
+ */
+export const partnerChatUrl: string | null = parsePartnerChatUrl(
+  process.env.NEXT_PUBLIC_PARTNER_CHAT_URL,
+);
+
+export function parsePartnerChatUrl(value: string | undefined): string | null {
+  if (value === undefined || value.trim() === "") return null;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || url.hostname !== "open.kakao.com") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
