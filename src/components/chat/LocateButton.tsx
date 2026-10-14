@@ -24,7 +24,20 @@ import { type MyRegion } from "@/features/regions/sigungu";
  *
  * 키가 없으면 버튼 자체를 그리지 않는다. 눌러도 안 되는 버튼을 만들지 않는다.
  */
-export function LocateButton({ onPick }: { onPick: (region: MyRegion) => void }) {
+export function LocateButton({
+  onPick,
+  label = "내 위치로 선택",
+  variant = "plain",
+}: {
+  onPick: (region: MyRegion) => void;
+  /** 버튼 글. 현장톡 지역 시트에서는 "내 위치로 다시 선택", 전국으로 시작한 줄에서는 "📍 내 위치로 보기". */
+  label?: string;
+  /**
+   * "prominent" — 현장톡이 전국으로 시작했을 때 한 번에 누르게 눈에 띄게 둔다(2026-10-15).
+   * 그 외에는 "plain". 권한 창은 어느 쪽이든 **누른 뒤에만** 뜬다.
+   */
+  variant?: "plain" | "prominent";
+}) {
   const [busy, setBusy] = useState(false);
   /*
    * 들고 있는 것은 **실패 사유 한 줄**뿐이다. 좌표도, 좌표에서 나온 숫자도 여기
@@ -56,13 +69,17 @@ export function LocateButton({ onPick }: { onPick: (region: MyRegion) => void })
         type="button"
         onClick={() => void run()}
         disabled={busy}
-        className="min-h-[44px] w-full rounded-field bg-fill px-4 text-[15px] font-semibold text-blue disabled:text-ink-faint"
+        className={`w-full rounded-field px-4 text-[16px] font-semibold disabled:text-ink-faint ${
+          variant === "prominent"
+            ? "min-h-[48px] bg-blue-soft text-blue-deep ring-1 ring-inset ring-blue"
+            : "min-h-[44px] bg-fill text-blue"
+        }`}
       >
-        {busy ? "위치를 찾는 중입니다…" : "내 위치로 선택"}
+        {busy ? "위치를 찾는 중입니다…" : label}
       </button>
 
       {failed && (
-        <p role="alert" className="mt-1.5 break-keep text-[13.5px] leading-relaxed text-limited-ink">
+        <p role="alert" className="mt-1.5 break-keep text-[16px] leading-relaxed text-limited-ink">
           {failed}
         </p>
       )}
@@ -71,7 +88,7 @@ export function LocateButton({ onPick }: { onPick: (region: MyRegion) => void })
         약속을 버튼 바로 아래에 적는다. 방침에도 같은 내용이 있지만(1-5), 권한 창이
         뜨기 **직전에** 읽는 한 줄이 실제로 읽히는 유일한 자리다.
       */}
-      <p className="mt-1.5 break-keep text-[13.5px] leading-relaxed text-ink-faint">
+      <p className="mt-1.5 break-keep text-[16px] leading-relaxed text-ink-muted">
         위치는 지역 이름을 찾는 데만 쓰고 저장하지 않습니다
       </p>
     </div>

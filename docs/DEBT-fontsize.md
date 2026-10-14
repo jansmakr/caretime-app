@@ -46,7 +46,7 @@
 | `src/app/partner/incoming/page.tsx` | `text-[13px]` | 29 | 1 |
 | `src/app/partner/page.tsx` | `text-[13px]` | 31 | 1 |
 | `src/components/chat/ChatComposer.tsx` | `text-[11px]` | 123 | 1 |
-| `src/components/chat/ChatFilterBar.tsx` | `text-[12px]` | 56, 76, 94 | 3 |
+| ~~`src/components/chat/ChatFilterBar.tsx`~~ | `text-[12px]` | 56, 76, 94 | 3 — 2026-10-15 파일 삭제(ChatRegionBar 로 바뀜) |
 | `src/components/chat/ChatBubble.tsx` | `text-[12.5px]` | 측정 필요 | — |
 | `src/components/chat/ChatRoom.tsx` | `text-[12px]` | 124 | 1 |
 | `src/components/chat/ChatRoom.tsx` | `text-[13px]` | 92, 131, 193 | 3 |

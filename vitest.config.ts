@@ -36,4 +36,7 @@ export default defineConfig({
     // tsconfig 의 "@/*" 경로를 vitest 에서도 같은 뜻으로 쓴다.
     alias: ALIAS,
   },
+  // 컴포넌트를 서버 렌더로 그려 보는 테스트가 있다(components/chat/chatRoom.render.test).
+  // Next 와 같은 자동 JSX 변환을 쓴다 — 아니면 .tsx 마다 React 를 import 해야 한다.
+  esbuild: { jsx: "automatic" },
 });

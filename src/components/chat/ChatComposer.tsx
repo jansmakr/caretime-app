@@ -47,6 +47,9 @@ export function ChatComposer({
    * 전에는 필터를 그대로 글의 범위로 썼다. 전국을 보고 있으면 글에 지역이 안 붙고,
    * 다른 구를 보고 있으면 그 구에 붙었다. 전국 한 방에서는 "글쓴이의 구"가 맞다 —
    * 다른 구 이야기는 본문에 쓴다(병원을 본문에 쓰기로 한 것과 같다).
+   *
+   * 예외 하나(2026-10-15): /chat 은 글쓴이가 지역을 정한 적이 없으면 **지금 보는 시·도**를
+   * 넘긴다(ChatRoom 의 postRegion). "올라갈 위치"에 그대로 보이고 바로 바꿀 수 있다.
    */
   myRegion: MyRegion | null;
   lastSentAt: number | null;
@@ -216,7 +219,7 @@ export function ChatComposer({
         <br />
         {scopeNote ??
           (myRegion === null
-            ? "구를 고르면 같은 동네 사람이 찾아 읽습니다. 안 골라도 올라갑니다."
+            ? "지역을 고르면 같은 지역 사람이 찾아 읽습니다. 안 골라도 올라갑니다."
             : "다른 동네 이야기는 글에 적어 주세요.")}
         {nickname && (
           <>
@@ -237,7 +240,17 @@ export function ChatComposer({
         · 골랐으면 → [바꾸기] 한 줄. 누를 때만 고르는 칸이 펼쳐진다(원칙 4).
       */}
       {onPickRegion && !editingRegion && myRegion === null && (
-        <LocateButton onPick={onPickRegion} />
+        <>
+          <LocateButton onPick={onPickRegion} />
+          {/* 위치를 쓰고 싶지 않은 사람의 길. 전국을 보고 있을 때 시·도를 고르도록 권한다. */}
+          <button
+            type="button"
+            onClick={() => setEditingRegion(true)}
+            className="mt-2 min-h-[44px] w-full rounded-field bg-fill px-4 text-[16px] font-semibold text-blue"
+          >
+            지역 직접 고르기
+          </button>
+        </>
       )}
 
       {onPickRegion && !editingRegion && myRegion !== null && (
