@@ -1,9 +1,11 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
 import { LocateButton } from "@/components/chat/LocateButton";
 import { RegionPicker } from "@/components/chat/RegionPicker";
+import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+import { appendTranscript } from "@/features/chat/voice";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
 import { RateLimitedError, ReportRejectedError } from "@/features/chat/repository";
@@ -59,6 +61,9 @@ export function ChatComposer({
   scopeNote?: string;
 }) {
   const [body, setBody] = useState("");
+  /** 음성 인식 콜백은 누른 시점의 함수를 쥐고 있다. 최신 본문은 여기서 읽는다. */
+  const bodyRef = useRef(body);
+  bodyRef.current = body;
   /** 지역을 고치는 칸을 펼쳤는가. 평소 접혀 있다 — 한 번 정하면 거의 안 바꾼다. */
   const [editingRegion, setEditingRegion] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,14 +150,29 @@ export function ChatComposer({
       */}
       <div className="mt-3">
         {/*
-          음성 입력 안내 한 줄. **새 기능이 아니다** — 휴대폰 키보드에 이미 있는 마이크를
-          알려 주는 것뿐이다. 아이를 안고 있으면 한 손으로 글자를 치기 어렵고, 어르신은
-          그 버튼이 있는 줄 모른다. 마이크 권한을 우리가 묻지 않고, 소리도 받지 않는다.
-          390px 에서 한 줄에 들어가는 길이로 맞췄다(원칙 4).
+          ── 음성 입력 (2026-10-14) ─────────────────────────────
+          아이를 안고 있으면 한 손으로 글자를 치기 어렵고, 어르신은 키보드 마이크가
+          있는 줄 모른다. 그래서 **화면에 버튼을 둔다.** 누르면 브라우저가 마이크 권한을
+          묻고, 말한 내용이 입력칸 뒤에 붙는다. 바로 올라가지 않는다 — 읽고 고친 뒤
+          "올리기"를 누른다. 소리는 우리 서버에 오지 않는다(features/chat/voice, 방침 1-7).
+          지원하지 않는 브라우저에서는 전처럼 키보드 🎤 안내 한 줄을 둔다.
         */}
-        <p id={`${ids}-voice`} className="break-keep text-[16px] leading-snug text-ink-muted">
-          키보드의 🎤를 누르고 말해도 됩니다
-        </p>
+        <div id={`${ids}-voice`}>
+          <VoiceInputButton
+            onTranscript={(text) => {
+              // 듣는 동안 손으로 고친 글도 지키도록 최신 값(bodyRef) 위에 붙인다.
+              const next = appendTranscript(bodyRef.current, text, CHAT_BODY_MAX);
+              bodyRef.current = next.body;
+              setBody(next.body);
+              setError(next.truncated ? `${CHAT_BODY_MAX}자까지만 들어갑니다. 뒷부분이 잘렸어요.` : null);
+            }}
+            fallback={
+              <p className="break-keep text-[16px] leading-snug text-ink-muted">
+                키보드의 🎤를 누르고 말해도 됩니다
+              </p>
+            }
+          />
+        </div>
         <textarea
           id={`${ids}-body`}
           aria-describedby={`${ids}-voice`}
@@ -161,7 +181,7 @@ export function ChatComposer({
           rows={5}
           maxLength={CHAT_BODY_MAX}
           placeholder="지금 상황이든, 전에 겪은 일이든 적어 주세요. 어느 동네·병원인지 함께 적으면 더 도움이 됩니다."
-          className="mt-1 w-full resize-none rounded-field bg-fill px-4 py-3 text-[15px] leading-relaxed
+          className="mt-2 w-full resize-none rounded-field bg-fill px-4 py-3 text-[15px] leading-relaxed
                      text-ink transition placeholder:text-ink-faint
                      focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue"
         />

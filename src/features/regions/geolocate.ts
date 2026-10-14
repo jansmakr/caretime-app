@@ -162,7 +162,10 @@ function loadSdk(): Promise<KakaoMaps> {
   });
 }
 
-/** 브라우저에게 좌표를 묻는다. **버튼을 눌렀을 때만 불린다.** */
+/**
+ * 브라우저에게 좌표를 묻는다. 버튼을 눌렀을 때, 또는 **이미 허락된 경우에만**
+ * 화면을 열 때 불린다(isLocationAllowed). 처음 온 사람에게 먼저 묻지 않는다.
+ */
 function askPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) return reject(new Error("unsupported"));
@@ -192,6 +195,40 @@ function toNames(maps: KakaoMaps, lat: number, lng: number): Promise<RegionNames
       });
     });
   });
+}
+
+/**
+ * 이 사이트에 위치 권한을 **이미 허락했는가.** 묻지 않고 확인만 한다.
+ *
+ * 권한 상태 조회(Permissions API)는 권한 창을 띄우지 않는다. "granted" 일 때만 true 다.
+ * 처음 온 사람("prompt")·거부한 사람("denied")·조회를 못 하는 브라우저는 모두 false —
+ * 그 사람들에게는 화면을 열자마자 권한 창을 띄우지 않는다. 급한 사람에게 첫 화면부터
+ * 결정을 하나 더 얹는 일이고(원칙 1), 브라우저도 누르지 않은 권한 요청을 막거나
+ * 조용히 묻지 않게 바꾼다.
+ */
+export async function isLocationAllowed(): Promise<boolean> {
+  try {
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return false;
+    const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
+    return status.state === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 자동으로 찾아도 되는가. **순수 함수다** — 테스트가 이 판정을 붙든다.
+ *
+ * 저장된 지역이 있으면 찾지 않는다. 사용자가 직접 고른 값을 위치가 덮으면,
+ * 다른 동네에 잠깐 들른 날 글이 엉뚱한 구에 붙는다.
+ */
+export function shouldAutoLocate(input: {
+  regionLoaded: boolean;
+  hasRegion: boolean;
+  keyConfigured: boolean;
+  permissionGranted: boolean;
+}): boolean {
+  return input.regionLoaded && !input.hasRegion && input.keyConfigured && input.permissionGranted;
 }
 
 /**

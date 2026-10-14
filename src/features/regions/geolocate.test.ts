@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchRegion, normalizeSido } from "./geolocate";
+import { matchRegion, normalizeSido, shouldAutoLocate } from "./geolocate";
 
 /**
  * 추측하지 않는다는 것을 고정한다.
@@ -145,3 +145,23 @@ function codeOf(path: string): string {
     .replace(/\/\*[\s\S]*?\*\//g, " ") // 블록 주석
     .replace(/(^|[^:])\/\/.*$/gm, "$1"); // 줄 주석 (URL 의 // 는 건드리지 않는다)
 }
+
+describe("shouldAutoLocate — 이미 허락한 사람에게만, 고른 값은 덮지 않는다", () => {
+  const base = { regionLoaded: true, hasRegion: false, keyConfigured: true, permissionGranted: true };
+
+  it("허락했고 지역이 비어 있으면 찾는다", () => {
+    expect(shouldAutoLocate(base)).toBe(true);
+  });
+  it("처음 온 사람(권한 미허락)에게는 묻지 않는다", () => {
+    expect(shouldAutoLocate({ ...base, permissionGranted: false })).toBe(false);
+  });
+  it("저장된 지역이 있으면 덮지 않는다", () => {
+    expect(shouldAutoLocate({ ...base, hasRegion: true })).toBe(false);
+  });
+  it("저장소를 읽기 전에는 판단하지 않는다", () => {
+    expect(shouldAutoLocate({ ...base, regionLoaded: false })).toBe(false);
+  });
+  it("지도 키가 없으면 찾지 않는다", () => {
+    expect(shouldAutoLocate({ ...base, keyConfigured: false })).toBe(false);
+  });
+});

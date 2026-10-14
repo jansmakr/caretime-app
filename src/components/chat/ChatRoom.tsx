@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { LiveInfoNotice } from "@/components/common/LiveInfoNotice";
 import { Toast, useToast } from "@/components/common/Toast";
@@ -11,6 +11,8 @@ import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useMyRegion } from "@/features/regions/myRegion";
+import { useAutoLocate } from "@/features/regions/useAutoLocate";
+import { type MyRegion } from "@/features/regions/sigungu";
 import { regionLabel } from "@/features/regions/sigungu";
 import { isFilterActive } from "@/features/chat/service";
 import { buildRoomShareText } from "@/features/chat/share";
@@ -70,6 +72,20 @@ export function ChatRoom({
     initialMyPostIds,
   );
   const { message: toast, show } = useToast();
+
+  /*
+   * 위치 권한을 이미 허락한 사람은 지역을 알아서 채운다(features/regions/useAutoLocate).
+   * 채웠으면 한 줄로 알린다 — 모르는 사이에 글에 지역이 붙으면 안 된다.
+   * 바꾸는 길은 작성창의 "올라갈 위치 바꾸기"다.
+   */
+  const autoPick = useCallback(
+    (picked: MyRegion) => {
+      saveRegion(picked);
+      show(`지역을 내 위치(${regionLabel(picked)})로 골랐어요. 작성창에서 바꿀 수 있어요.`);
+    },
+    [saveRegion, show],
+  );
+  useAutoLocate({ regionLoaded, region: myRegion, onPick: autoPick });
 
   useEffect(() => {
     setNow(new Date());

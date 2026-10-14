@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { LocateButton } from "@/components/chat/LocateButton";
 import { RegionPicker } from "@/components/chat/RegionPicker";
 import { HomeLiveTalkBanner } from "@/components/home/HomeLiveTalkBanner";
 import { useMyRegion } from "@/features/regions/myRegion";
+import { useAutoLocate } from "@/features/regions/useAutoLocate";
 import { regionLabel } from "@/features/regions/sigungu";
 
 /**
@@ -13,15 +14,18 @@ import { regionLabel } from "@/features/regions/sigungu";
  * 왜 묻는가: 전국 하나의 방이고, 글에는 글쓴이의 구가 붙는다. 그 값을 모르면 글이
  * 지역 없이 올라가고, 뒤에 오는 사람이 "내 동네 글"로 좁혀 볼 수 없다.
  *
- * GPS 를 쓰지 않는다. 좌표는 수집 항목이고 동의 화면이 따로 필요하며, 우리가 필요한
- * 것은 구 하나다. 고른 값은 **이 기기에만** 남는다(localStorage, 서버로 가지 않는다).
+ * 좌표를 받지 않는다. "내 위치로 선택"(2026-10-14 홈에도 추가)은 기기에서 카카오로
+ * 좌표를 보내 **구 이름만** 받아 오고 좌표는 버린다(features/regions/geolocate).
+ * 위치 권한을 이미 허락한 사람은 누르지 않아도 채워진다(useAutoLocate).
+ * 고른 값은 **이 기기에만** 남는다(localStorage, 서버로 가지 않는다).
  *
  * ── 이 화면의 결정은 하나다 ─────────────────────────────────
  * 아직 안 고른 사람에게는 **고르는 것만** 보인다. 현장톡 버튼과 나란히 두면 "건너뛰고
  * 들어갈까"를 먼저 판단하게 되고, 그러면 대부분 건너뛴다 — 지역 없는 글이 쌓인다
  * (원칙 1).
  *
- * 다만 **막아 세우지 않는다.** "나중에 고르기"가 있고, 누르면 평소 화면이 나온다.
+ * 다만 **막아 세우지 않는다.** "고르지 않고 현장톡 보기"가 있고, 누르면 바로 방으로 간다
+ * (안 고른 것은 저장하지 않는다 — 다음에 들어오면 한 번 더 묻는다).
  * 급한 사람을 지역 선택 앞에 세워 두는 것이 가장 나쁘다(원칙 10).
  *
  * ── 첫 HTML 에는 배너를 그린다 ──────────────────────────────
@@ -36,32 +40,33 @@ import { regionLabel } from "@/features/regions/sigungu";
  */
 export function MyRegionGate() {
   const { region, loaded, save } = useMyRegion();
-  /*
-   * "나중에"는 **이 방문 동안만** 기억한다. 저장하면 "안 고르겠다"가 영구 설정이 되고
-   * 다시 물어볼 길이 없어진다. 다음에 들어오면 한 번 더 보이는 쪽이 낫다.
-   */
-  const [skipped, setSkipped] = useState(false);
+  useAutoLocate({ regionLoaded: loaded, region, onPick: save });
 
-  if (loaded && region === null && !skipped) {
+  if (loaded && region === null) {
     return (
       <section className="ct-card mt-5 p-5">
         <h3 className="break-keep text-[18px] font-bold leading-snug">어느 지역에 계세요?</h3>
         <p className="mt-1.5 break-keep text-[14px] leading-relaxed text-ink-muted">
-          글에 지역이 붙어서 같은 동네 보호자가 찾아 읽을 수 있습니다. 위치 정보는 쓰지
-          않고, 고른 지역은 이 기기에만 저장됩니다.
+          글에 지역이 붙어서 같은 동네 보호자가 찾아 읽을 수 있습니다. 고른 지역은 이
+          기기에만 저장됩니다.
         </p>
+
+        <LocateButton onPick={save} />
 
         <div className="mt-4">
           <RegionPicker region={null} onChange={save} />
         </div>
 
-        <button
-          type="button"
-          onClick={() => setSkipped(true)}
-          className="mt-3 min-h-[44px] w-full text-[13.5px] font-semibold text-ink-faint"
+        {/*
+          건너뛰는 길이 곧 현장톡으로 가는 길이다(2026-10-14). "나중에 고르기"는 무엇이
+          다음에 나오는지 말하지 않았다 — 급한 사람에게는 "현장톡"이라는 말이 보여야 한다.
+        */}
+        <Link
+          href="/chat"
+          className="mt-3 flex min-h-[44px] w-full items-center justify-center text-[16px] font-semibold text-blue"
         >
-          나중에 고르기
-        </button>
+          고르지 않고 현장톡 보기 →
+        </Link>
       </section>
     );
   }

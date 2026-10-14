@@ -24,7 +24,7 @@ import { partnerChatUrl } from "@/lib/demoContent";
  * 평소에는 버튼 하나다. 누를 때만 폼이 펼쳐진다(원칙 4). 이 화면의 주인공은
  * 보호자이고, 병원 담당자는 드물게 온다. 드문 쪽이 자리를 먹으면 안 된다.
  */
-export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" }) {
+export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" | "quiet" }) {
   const [open, setOpen] = useState(false);
   const [hospitalName, setHospitalName] = useState("");
   const [contact, setContact] = useState("");
@@ -82,6 +82,28 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
           준비가 되면 적어 주신 연락처로 안내드리겠습니다.
         </p>
       </Shell>
+    );
+  }
+
+  /*
+   * ── 홈에서는 한 줄로 낮춘다 (2026-10-14) ───────────────────
+   * 접힌 카드도 제목 18px·설명 두 줄·파란 버튼이라, 지역을 아직 안 고른 첫 화면에서는
+   * **현장톡보다 눈에 띄었다.** 홈의 주인공은 현장톡이다(원칙 1). 그래서 홈에서는 카드도
+   * 버튼 칠도 없이 맨 아래 한 줄 링크로 둔다. 누르면 아래의 설명·폼이 그대로 펼쳐진다.
+   * 더보기("row")는 목록 안이라 그대로 둔다.
+   */
+  if (!open && variant === "quiet") {
+    return (
+      <section className="mt-8 border-t border-line pt-4">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex min-h-[44px] w-full items-center justify-between gap-3 text-left"
+        >
+          <span className="break-keep text-[16px] text-ink-muted">의료기관 담당자이신가요?</span>
+          <span className="shrink-0 text-[16px] font-semibold text-ink-muted underline">사전 신청 안내</span>
+        </button>
+      </section>
     );
   }
 
@@ -234,7 +256,7 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
   );
 }
 
-function Shell({ variant, children }: { variant: "card" | "row"; children: React.ReactNode }) {
+function Shell({ variant, children }: { variant: "card" | "row" | "quiet"; children: React.ReactNode }) {
   // 더보기 안에서는 바깥 카드가 이미 있으므로 테두리를 또 두르지 않는다.
   return variant === "row" ? (
     <li className="px-5 py-4">{children}</li>
