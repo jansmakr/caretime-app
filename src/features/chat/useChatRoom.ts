@@ -5,8 +5,6 @@ import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchFieldReports } from "./repository";
 import { withMyReactions } from "./reactions";
-import { seedChatMessages } from "./seed";
-import { showDemoReports } from "@/lib/demoContent";
 import { filterMessages, mergeRoomMessages } from "./service";
 import {
   connectChat,
@@ -21,10 +19,16 @@ import {
 } from "./store";
 import { CHAT_COOLDOWN_MS, type ChatFilter, type ChatMessage, type ChatMessageView } from "./types";
 
+/** 화면을 보고 있는 동안 다시 읽는 간격. 구독이 살아 있으면 대부분 아무것도 바뀌지 않는다. */
+export const LIVE_REFRESH_MS = 30_000;
+/** 돌아왔을 때 이보다 짧게 지났으면 다시 읽지 않는다. */
+const RETURN_MIN_GAP_MS = 5_000;
+
 /**
  * 현장톡 목록 · 반응 · 쿨다운.
  *
- * 데모 대화(renderedAt 기준 고정 오프셋) + 이번 브라우저에서 보낸 글을 합쳐 최신순으로 돌려준다.
+ * 서버가 읽어 온 글 + 이번 브라우저에서 보낸 글을 합쳐 최신순으로 돌려준다. 가상 대화는 없다.
+ * (renderedAt 은 부르는 쪽 모양을 바꾸지 않으려고 남겨 둔 인자다. 지금은 쓰지 않는다.)
  * 보내거나 반응을 누르면 store 가 알려 주므로 새로고침 없이 반영된다.
  *
  * 필터는 목록에만 적용하고 전체 건수는 따로 돌려준다 — 빈 목록이 "글이 없다"인지
@@ -42,11 +46,6 @@ export function useChatRoom(
   initialMyPostIds: string[] = [],
 ) {
   const snapshot = useSyncExternalStore(subscribeChat, getChatSnapshot, getChatSnapshotOnServer);
-  // 운영에서는 가상 대화를 렌더하지 않는다. 빈 상태를 0건으로 꾸미지 않기 위해 목록만 비운다.
-  const seeded = useMemo(
-    () => (showDemoReports ? seedChatMessages(renderedAt) : []),
-    [renderedAt],
-  );
 
   // 저장된 닉네임은 브라우저에만 있다. 첫 렌더가 아니라 마운트 후에 올린다.
   useEffect(() => {
@@ -107,6 +106,63 @@ export function useChatRoom(
   }, [filter.sido, filter.sigungu, filter.recentOnly]);
 
   /*
+   * ── 최신 글이 계속 보이게 (2026-10-14) ──────────────────────
+   * 새 글은 실시간 구독으로 들어온다. 그런데 휴대폰 화면이 꺼지거나 다른 앱을 보는
+   * 동안 연결이 끊기면 **그 사이 글을 놓친다** — 다시 켜도 목록은 끊긴 시점에 멈춰
+   * 있고, 화면은 멀쩡해 보인다. "지금 문 연 곳"을 묻는 방에서 그 멈춤은 고장이다.
+   *
+   * 그래서 구독과 별개로 지금 조건의 최신 목록을 **다시 읽어 합친다.**
+   *   · 화면으로 돌아왔을 때(visibilitychange) · 창에 다시 들어왔을 때(focus)
+   *   · 인터넷이 다시 연결됐을 때(online)
+   *   · 화면을 보고 있는 동안 LIVE_REFRESH_MS 마다(구독이 조용히 죽은 경우 대비)
+   * 화면이 가려져 있을 때는 읽지 않는다 — 보지 않는 화면이 데이터를 쓰지 않게.
+   * 합치는 것은 hydrateMessages(id 로 합침)라 같은 글이 두 번 보이지 않고, 반응 수도
+   * 같이 새로 맞춰진다. 실패하면 조용히 넘긴다 — 보던 글은 그대로다.
+   */
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    let inFlight = false;
+    let lastAt = Date.now();
+    const refresh = () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      lastAt = Date.now();
+      const current = filterRef.current;
+      void fetchFieldReports(getPublicBrowserSupabase(), {
+        sido: current.sido,
+        sigungu: current.sigungu,
+        recentOnly: current.recentOnly,
+      })
+        .then((rows) => {
+          // 읽는 사이 조건이 바뀌었으면 버린다(조건 effect 가 새로 읽는다).
+          if (filterRef.current === current) hydrateMessages(rows);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+    // 돌아올 때마다 읽되, 방금 읽었으면 건너뛴다(focus·visibilitychange 가 겹쳐 온다).
+    const onReturn = () => {
+      if (Date.now() - lastAt > RETURN_MIN_GAP_MS) refresh();
+    };
+
+    const id = setInterval(refresh, LIVE_REFRESH_MS);
+    document.addEventListener("visibilitychange", onReturn);
+    window.addEventListener("focus", onReturn);
+    window.addEventListener("online", refresh);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onReturn);
+      window.removeEventListener("focus", onReturn);
+      window.removeEventListener("online", refresh);
+    };
+  }, []);
+
+  /*
    * 합치는 규칙은 service.mergeRoomMessages 에 있다(테스트가 그 함수를 붙든다).
    * 서버가 읽어 온 글이 첫 렌더부터 들어가고, 격리된 글은 되살아나지 않는다.
    */
@@ -117,7 +173,9 @@ export function useChatRoom(
     const merged = mergeRoomMessages({
       stored: snapshot.messages,
       initial: initialMessages,
-      seeded,
+      // 가상 대화 원본을 저장소에서 지웠다(2026-10-12). 번들에 실리지 않게 하려면
+      // 플래그로 막는 것이 아니라 import 자체가 없어야 한다.
+      seeded: [],
       removedIds: snapshot.removedIds,
     });
     return merged.map((message) => {
@@ -140,7 +198,6 @@ export function useChatRoom(
     snapshot.myReactions,
     snapshot.mineIds,
     snapshot.removedIds,
-    seeded,
     initialMine,
   ]);
 

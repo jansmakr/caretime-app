@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { HospitalDetail } from "@/components/hospital/HospitalDetail";
 import { fetchHospitalView } from "@/features/hospitals/repository";
-import { getHospital } from "@/features/hospitals/service";
+import { getMockHospital } from "@/features/hospitals/mock";
 import { showHospitalDirectory } from "@/lib/demoContent";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -24,7 +24,7 @@ export default async function HospitalDetailPage({
   const now = new Date();
   const hospital = isSupabaseConfigured
     ? await fetchHospitalView(createServerSupabase(), id, now)
-    : getHospital(id);
+    : getMockHospital(id);
   if (!hospital) notFound();
 
   return (

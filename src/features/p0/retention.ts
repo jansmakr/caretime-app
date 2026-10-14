@@ -55,6 +55,11 @@ export const RETENTION_DAYS = {
   observations: 7,
   /** 접수 시각 기준. 다음 지역 판단 근거. */
   hospital_requests: 365,
+  /**
+   * 접수 시각 기준. **연락처가 들어 있는 유일한 표다**(병원 담당자가 스스로 적는다).
+   * 2027년 서비스 안내를 위해 받고, 그 뒤로는 들고 있을 근거가 없다.
+   */
+  partner_inquiries: 365,
   /** 접수 시각 기준. 조치 기록도 같은 기간. */
   reports: 365,
   /**
@@ -117,4 +122,12 @@ export function isStalePost(input: { observedAt: string | null; now: Date }): bo
   const observed = Date.parse(input.observedAt);
   if (Number.isNaN(observed)) return true;
   return input.now.getTime() - observed >= POST_CURRENT_REFERENCE_MS;
+}
+
+/**
+ * 화면에 적는 보관 기간. 365 의 배수면 "1년"처럼 연 단위로 쓴다 — 방침 문서가
+ * "1년"이라고 적으므로 화면도 같은 말을 써야 한다. 숫자는 여전히 RETENTION_DAYS 에서 온다.
+ */
+export function formatRetention(days: number): string {
+  return days % 365 === 0 ? `${days / 365}년` : `${days}일`;
 }
