@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * `supabase db push --dry-run` 출력이 기대한 migration 만 담고 있는지 본다.
  *
