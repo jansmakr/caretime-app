@@ -1,22 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LiveInfoNotice } from "@/components/common/LiveInfoNotice";
 import { Toast, useToast } from "@/components/common/Toast";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { ChatComposer } from "@/components/chat/ChatComposer";
-import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
+import { ChatRegionBar } from "@/components/chat/ChatRegionBar";
 import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useMyRegion } from "@/features/regions/myRegion";
-import { useAutoLocate } from "@/features/regions/useAutoLocate";
-import { type MyRegion } from "@/features/regions/sigungu";
-import { regionLabel } from "@/features/regions/sigungu";
+import { canLocate, isLocationAllowed, locateMyRegion } from "@/features/regions/geolocate";
+import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
 import { isFilterActive } from "@/features/chat/service";
 import { buildRoomShareText } from "@/features/chat/share";
 import { useChatRoom } from "@/features/chat/useChatRoom";
+import {
+  emptyListCopy,
+  readViewChoice,
+  resolveInitialView,
+  writeViewChoice,
+  type ViewSido,
+} from "@/features/chat/viewRegion";
 import {
   EMPTY_FILTER,
   EMPTY_SCOPE,
@@ -74,18 +80,75 @@ export function ChatRoom({
   const { message: toast, show } = useToast();
 
   /*
-   * 위치 권한을 이미 허락한 사람은 지역을 알아서 채운다(features/regions/useAutoLocate).
-   * 채웠으면 한 줄로 알린다 — 모르는 사이에 글에 지역이 붙으면 안 된다.
-   * 바꾸는 길은 작성창의 "올라갈 위치 바꾸기"다.
+   * ── 처음 볼 지역 (2026-10-15) ───────────────────────────────
+   * 순서는 features/chat/viewRegion 에 있다: 직접 고른 값 → 내 지역 → (권한을 이미
+   * 허락한 기기만) 위치 → 전국. 링크에 지역이 있으면 그 링크가 이긴다 — 받은 사람이
+   * 보낸 사람과 같은 화면을 봐야 한다.
+   *
+   * 위치로 채웠으면 한 줄로 알린다 — 모르는 사이에 글에 지역이 붙으면 안 된다.
+   * 정하는 동안 사람이 먼저 고르면 그 값을 덮지 않는다(userPicked).
    */
-  const autoPick = useCallback(
-    (picked: MyRegion) => {
-      saveRegion(picked);
-      show(`지역을 내 위치(${regionLabel(picked)})로 골랐어요. 작성창에서 바꿀 수 있어요.`);
+  const [resolved, setResolved] = useState(initialFilter.sido !== null);
+  /** 전국으로 시작했을 때만 "📍 내 위치로 보기"를 꺼내 둔다. 무엇이든 고르면 접는다. */
+  const [offerLocate, setOfferLocate] = useState(false);
+  const userPicked = useRef(false);
+  const mounted = useRef(false);
+  const started = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!regionLoaded || started.current) return;
+    started.current = true;
+    if (initialFilter.sido !== null) return;
+
+    void resolveInitialView({
+      saved: readViewChoice(),
+      myRegion,
+      autoLocate: async () => {
+        // 권한 창을 띄우지 않는다. 이미 허락된 기기에서만 찾는다(방침 1-5).
+        if (!canLocate() || !(await isLocationAllowed())) return null;
+        const result = await locateMyRegion();
+        return result.kind === "matched" || result.kind === "sido-only" ? result.region : null;
+      },
+    }).then((view) => {
+      if (!mounted.current || userPicked.current) return;
+      if (view.sido !== null) {
+        const sido = view.sido;
+        setFilter((f) => ({ ...f, sido, sigungu: null }));
+      }
+      if (view.source === "located") {
+        saveRegion(view.region);
+        show(`지역을 내 위치(${regionLabel(view.region)})로 골랐어요. 바꾸려면 위의 "지역 바꾸기"를 누르세요.`);
+      }
+      setOfferLocate(view.sido === null);
+      setResolved(true);
+    });
+  }, [regionLoaded, myRegion, initialFilter.sido, saveRegion, show]);
+
+  /** 시트에서 고른 지역. 이 값만 저장한다 — 다음에 들어와도 그대로 보인다. */
+  const selectView = useCallback((sido: ViewSido) => {
+    userPicked.current = true;
+    writeViewChoice(sido);
+    setFilter((f) => ({ ...f, sido, sigungu: null }));
+    setOfferLocate(false);
+    setResolved(true);
+  }, []);
+
+  /** "내 위치로 보기"·"내 위치로 다시 선택". 누른 것이므로 고른 값으로 저장한다. */
+  const locateView = useCallback(
+    (region: MyRegion) => {
+      selectView(region.sido);
+      saveRegion(region);
+      show(`지역을 내 위치(${regionLabel(region)})로 골랐어요.`);
     },
-    [saveRegion, show],
+    [selectView, saveRegion, show],
   );
-  useAutoLocate({ regionLoaded, region: myRegion, onPick: autoPick });
 
   useEffect(() => {
     setNow(new Date());
@@ -94,7 +157,7 @@ export function ChatRoom({
   }, []);
 
   const filtered = isFilterActive(filter);
-  /** 지금 좁혀 본 지역의 이름. 안내 문구가 "강서구에는" 으로 시작해야 한다. */
+  /** 지금 보는 지역의 이름. 링크로 구까지 들어왔으면 "서울 강서구". */
   const regionName =
     filter.sido === null
       ? "전국"
@@ -112,6 +175,14 @@ export function ChatRoom({
    */
   const emptyRoom = !filtered && totalCount === 0 && !initialLoadFailed;
 
+  /*
+   * 글에 붙는 지역. 글쓴이가 정한 내 지역(서울이면 구까지)이 먼저다. 정한 적이 없으면
+   * **지금 보는 시·도**를 기본으로 붙인다(작성창에 "올라갈 위치"로 보이고 바로 바꿀 수 있다).
+   * 전국을 보고 있으면 비워 두고, 작성창이 지역을 고르도록 권한다.
+   */
+  const postRegion: MyRegion | null =
+    myRegion ?? (filter.sido === null ? null : { sido: filter.sido, sigungu: filter.sigungu });
+
   return (
     <main className="space-y-3 px-4 pb-6 pt-3">
       {/* 상단 고정 고지 — 의료기관 현장 상황이 항상 최우선. 접히지 않는다. */}
@@ -124,13 +195,17 @@ export function ChatRoom({
         <ShareButton text={buildRoomShareText()} scope={EMPTY_SCOPE} onResult={show} variant="block" />
       )}
 
-      {/* 고를 것이 없으면 조건도 접는다. 첫 글은 지역을 고르지 않고도 쓸 수 있다. */}
+      {/*
+        지금 보는 지역 한 줄. 기간 탭은 없다 — 목록 맨 아래 "이전 글 더 보기"가 대신한다.
+        고를 것이 없으면(방 전체가 비었으면) 접는다. 첫 글은 지역을 고르지 않고도 쓸 수 있다.
+      */}
       {!emptyRoom && (
-        <ChatFilterBar
-          filter={filter}
-          myRegion={myRegion}
-          onChange={setFilter}
-          onChangeRegion={saveRegion}
+        <ChatRegionBar
+          label={regionName}
+          current={filter.sido}
+          showLocate={resolved && offerLocate && filter.sido === null}
+          onSelect={selectView}
+          onLocate={locateView}
         />
       )}
 
@@ -140,7 +215,7 @@ export function ChatRoom({
       */}
       {isFieldTalkSharingLive ? (
         <ChatComposer
-          myRegion={myRegion}
+          myRegion={postRegion}
           lastSentAt={lastSentAt}
           onSent={show}
           onPickRegion={saveRegion}
@@ -186,17 +261,15 @@ export function ChatRoom({
               내 지역 0건이 **막다른 화면이 되면 안 된다.** 출시 직후 대부분의 구는
               0건이고, 그 사람이 보는 첫 화면이 빈 목록이면 나간다.
             */}
-            <p className="text-[14.5px] leading-relaxed text-ink-muted">
-              {initialLoadFailed
-                ? "글을 불러오지 못했습니다. 잠시 후 다시 열어 주세요. 올라온 글이 없다는 뜻은 아닙니다."
-                : filtered
-                  ? `${regionName}에는 아직 글이 없어요. 전국 글을 보시겠어요?`
-                  : filter.recentOnly
-                    ? "최근 1개월에 올라온 글이 없습니다. 이전 글도 보시겠어요?"
-                    : "아직 올라온 글이 없습니다. 지금 상황을 물어보거나 알려 주세요."}
+            <p className="break-keep text-[16px] leading-relaxed text-ink-muted">
+              {emptyListCopy({
+                loadFailed: initialLoadFailed,
+                regionFiltered: filtered,
+                recentOnly: filter.recentOnly,
+              })}
             </p>
 
-            {filtered && (
+            {filtered && !initialLoadFailed && (
               <button
                 type="button"
                 onClick={() => setFilter({ ...filter, sido: null, sigungu: null })}
@@ -205,16 +278,21 @@ export function ChatRoom({
                 전국 글 보기
               </button>
             )}
-            {!filtered && filter.recentOnly && (
-              <button
-                type="button"
-                onClick={() => setFilter({ ...filter, recentOnly: false })}
-                className="ct-secondary mt-3 w-full"
-              >
-                이전 글도 보기
-              </button>
-            )}
           </div>
+        )}
+
+        {/*
+          기간 (2026-10-15). 탭 대신 목록 맨 아래 버튼 하나다. 기본은 최근 1개월이고,
+          누르면 같은 조건의 이전 글을 서버에서 더 읽어 온다(useChatRoom 의 조건 effect).
+        */}
+        {filter.recentOnly && !initialLoadFailed && (
+          <button
+            type="button"
+            onClick={() => setFilter({ ...filter, recentOnly: false })}
+            className="ct-secondary mt-3 w-full text-[16px]"
+          >
+            이전 글 더 보기
+          </button>
         )}
 
         {/*

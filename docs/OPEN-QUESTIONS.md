@@ -86,7 +86,7 @@ index field_reports_region_lookup on (sido, sigungu, created_at desc)
 전부 null 이면 "지역을 특정하지 않은 글"이다. 시군구만 있고 시도가 없는 글은
 저장되지 않는다 — 어디인지 알 수 없기 때문이다.
 
-**필터는 동작한다.** `ChatFilterBar` 에 시도·시군구·병원 드롭다운이 있고
+**필터는 동작한다.** `ChatFilterBar` 에 시도·시군구·병원 드롭다운이 있고 *(2026-10-15: `ChatFilterBar` 는 지워졌다. 지금은 `ChatRegionBar` 한 줄 + 시·도 시트이고, 구는 보는 쪽에서 묻지 않는다 — features/chat/viewRegion.)*
 `filterMessages` 가 거른다. 단 **클라이언트 필터**다 — 서버가 준 최근 100건
 (`FIELD_REPORT_PAGE`) 안에서만 거른다.
 
