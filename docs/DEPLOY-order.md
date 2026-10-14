@@ -547,6 +547,8 @@ supabase link --project-ref <운영 프로젝트 ref>
 
 # 적용 전에 무엇이 올라가는지 본다
 supabase db push --dry-run
+# 기대한 파일만 있는지 기계로 확인한다 (읽기만 함, exit 1 이면 올리지 않는다)
+npx supabase db push --dry-run 2>&1 | node scripts/check-dry-run.mjs [기대 파일명...]
 
 # 올린다
 supabase db push

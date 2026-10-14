@@ -16,6 +16,7 @@
     "import:manual-hospitals": "tsx scripts/import-manual-hospitals.ts",
     "sql:manual-hospitals": "tsx scripts/import-manual-hospitals.ts --sql",
     "gen:sigungu": "tsx scripts/gen-sigungu.ts",
+    "_note:db-check-dry-run": "npx supabase db push --dry-run 2>&1 | node scripts/check-dry-run.mjs [기대 파일명...] — 읽기만 한다. 인자 없으면 20261011120000_partner_inquiries.sql 한 건을 기대",
     "_note:sql-manual-hospitals": "파일로 받을 때는 -- --out manual.sql 을 쓴다. PowerShell 의 > 는 한글 주석을 깨뜨린다"
   },
   "dependencies": {
