@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { useRevisitRefetch } from "@/lib/useRevisitRefetch";
-import { MOCK_HOSPITALS } from "./mock";
 import { fetchHospitalViews } from "./repository";
 import type { HospitalView } from "./types";
 
@@ -35,7 +34,11 @@ type HospitalList =
  */
 export function useHospitalList(): HospitalList & { now: Date | null } {
   const [list, setList] = useState<HospitalList>(
-    isSupabaseConfigured ? { status: "loading", hospitals: [] } : { status: "ready", hospitals: MOCK_HOSPITALS },
+    /*
+     * 연결이 없으면 빈 목록이다. 가상 병원으로 채우지 않는다 — 채우면 그 목록이
+     * 운영 번들에 실려 나가고, 연결이 빠진 배포에서 가짜 병원이 진짜처럼 뜬다.
+     */
+    isSupabaseConfigured ? { status: "loading", hospitals: [] } : { status: "ready", hospitals: [] },
   );
   const [now, setNow] = useState<Date | null>(null);
   const alive = useRef(true);

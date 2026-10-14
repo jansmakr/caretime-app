@@ -70,6 +70,6 @@ export function isWriteFrozen(env: Record<string, string | undefined> = process.
  * **Vercel 에 `FLAG_DEMO_CONTENT` 를 넣으면 가상 글이 꺼진다고 믿게 만든다.**
  * 노출을 가리는 판정점은 하나여야 한다(CLAUDE.md) — `lib/demoContent.ts` 다.
  *
- * 가상 글이 나오는 길은 지금 한 줄이다:
- *   isDemoContentAllowed → showDemoReports → useChatRoom 의 seedChatMessages
+ * 가상 글이 나오는 길은 지금 **없다**(2026-10-12). 원본(features/chat/seed.ts)을
+ * 지웠고 showDemoReports 는 상수 false 다.
  */

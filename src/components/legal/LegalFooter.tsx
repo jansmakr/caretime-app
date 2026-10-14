@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LEGAL_DOC_PATH } from "@/features/legal/documents";
+import { LEGAL_DOC_PATH, loadLegalDocument } from "@/features/legal/documents";
 import { areLegalDocsReadable, isPolicyInForce } from "@/features/legal/version";
 
 /**
@@ -21,6 +21,11 @@ import { areLegalDocsReadable, isPolicyInForce } from "@/features/legal/version"
  *   · 시행 전이면 "미리 읽을 수 있습니다 · 아직 효력이 없습니다".
  *   · 시행 뒤에만 "동의하는 것으로 봅니다" — 효력 없는 문서에 동의시키지 않는다.
  *
+ * ── 시행일을 적는다 ────────────────────────────────────────
+ * 홈 · /more · /terms · /privacy 네 곳이 같은 날짜를 보여야 한다. 날짜를 여기 적지
+ * 않고 **문서 머리글에서 읽는다** — 네 곳이 한 줄(docs/legal/*.md 의 `시행일:`)을
+ * 본다. 두 문서의 날짜가 갈라지면 둘 다 적는다. 하나로 뭉뚱그리면 틀린 쪽이 숨는다.
+ *
  * 서버 컴포넌트다. 파일을 읽으므로 클라이언트에서 부르지 않는다.
  */
 export function LegalFooter() {
@@ -29,10 +34,23 @@ export function LegalFooter() {
 
   if (!ready) return null;
 
+  const terms = loadLegalDocument("terms").effectiveDate;
+  const privacy = loadLegalDocument("privacy").effectiveDate;
+  const dateText =
+    terms === null || privacy === null
+      ? null
+      : terms === privacy
+        ? terms
+        : `약관 ${terms} · 방침 ${privacy}`;
+
   return (
     <footer className="px-5 pb-5 pt-2">
       <p className="text-[14px] leading-relaxed text-ink-faint">
-          {inForce ? "글을 남기면 " : "시행 전입니다. "}
+          {inForce
+            ? "글을 남기면 "
+            : dateText
+              ? `${dateText} 부터 시행합니다. `
+              : "시행 전입니다. "}
           <Link href={LEGAL_DOC_PATH.terms} className="font-semibold text-ink-muted underline">
             이용약관
           </Link>
@@ -41,7 +59,7 @@ export function LegalFooter() {
             개인정보 처리방침
           </Link>
           {inForce
-            ? "에 동의하는 것으로 봅니다. 로그인 없이 이용하며 이름·연락처는 저장하지 않습니다."
+            ? `에 동의하는 것으로 봅니다(시행 ${dateText}). 로그인 없이 이용하며 글쓴이의 이름·연락처는 받지 않습니다.`
             : " 을 미리 읽을 수 있습니다. 아직 효력이 없습니다."}
       </p>
     </footer>

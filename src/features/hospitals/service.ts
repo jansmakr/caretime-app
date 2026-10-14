@@ -1,6 +1,6 @@
 import type { ExtractedFacts } from "@/features/search-session/types";
 import { isExpired } from "@/lib/freshness";
-import { CAPABILITIES, MOCK_HOSPITALS } from "./mock";
+import { CAPABILITIES } from "./capabilities";
 import type { HospitalCapability, HospitalView } from "./types";
 
 /**
@@ -64,10 +64,10 @@ function isAgeBlocked(caps: HospitalCapability[], ageYears: number | null): bool
   });
 }
 
-/** hospitals 는 Supabase 연결 시 repository 가 읽은 목록, 아니면 Mock 이다. */
+/** hospitals 는 repository 가 읽은 목록이다. 기본값으로 가상 목록을 두지 않는다. */
 export function searchHospitals(
   facts: ExtractedFacts,
-  hospitals: HospitalView[] = MOCK_HOSPITALS,
+  hospitals: HospitalView[],
 ): MatchedHospital[] {
   const wanted = relevantCapabilityIds(facts);
 
@@ -87,10 +87,6 @@ export function searchHospitals(
      * 두면 목록 맨 앞에 선다. 모르는 것이 가장 가까운 것이 되면 안 된다.
      */
     .sort((a, b) => (a.hospital.distanceKm ?? Infinity) - (b.hospital.distanceKm ?? Infinity));
-}
-
-export function getHospital(id: string): HospitalView | null {
-  return MOCK_HOSPITALS.find((h) => h.id === id) ?? null;
 }
 
 export function capabilityLabel(cap: HospitalCapability): string {

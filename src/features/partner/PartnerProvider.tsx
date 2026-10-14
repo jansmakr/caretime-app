@@ -11,7 +11,7 @@ import type {
 } from "@/features/hospitals/types";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { createIncomingDemoVisits, createPartnerDemoState, getPartnerHospital } from "./mock";
+import { createIncomingDemoVisits, createPartnerDemoState } from "./mock";
 import {
   aggregateIncoming,
   confirmSameAsYesterday,
@@ -109,7 +109,14 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export function PartnerProvider({ children }: { children: React.ReactNode }) {
+export function PartnerProvider({
+  children,
+  demoHospital,
+}: {
+  children: React.ReactNode;
+  /** 데모 모드에서 쓸 가상 병원. 서버가 읽어 넘긴다 — 목록 전체를 번들에 싣지 않으려고. */
+  demoHospital: HospitalView | null;
+}) {
   const source = isSupabaseConfigured ? "supabase" : "demo";
   const [phase, setPhase] = useState<PartnerPhase>("loading");
   const [notice, setNotice] = useState<string | null>(null);
@@ -144,14 +151,14 @@ export function PartnerProvider({ children }: { children: React.ReactNode }) {
 
   // ── 데모 모드 ──
   useEffect(() => {
-    if (source !== "demo") return;
+    if (source !== "demo" || !demoHospital) return;
     const t = new Date();
     setNow(t);
-    setHospital(getPartnerHospital());
-    replaceState(createPartnerDemoState(t));
+    setHospital(demoHospital);
+    replaceState(createPartnerDemoState(t, demoHospital));
     setVisits(createIncomingDemoVisits(t));
     setPhase("ready");
-  }, [source, replaceState]);
+  }, [source, replaceState, demoHospital]);
 
   // ── Supabase: 세션 → 소속 병원 ──
   useEffect(() => {

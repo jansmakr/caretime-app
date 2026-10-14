@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { InstallHint } from "@/components/common/InstallHint";
 import { CompanyInfo } from "@/components/legal/CompanyInfo";
+import { PartnerInquiry } from "@/components/common/PartnerInquiry";
 import { LEGAL_DOC_PATH, loadLegalDocument } from "@/features/legal/documents";
 import { showPartnerEntry } from "@/lib/demoContent";
 
@@ -59,6 +60,13 @@ export default function MorePage() {
             여기서는 닫는 버튼이 없고, 설치할 길이 있을 때만 줄이 생긴다.
           */}
           <InstallHint variant="row" />
+
+          {/*
+            의료기관 사전 신청. 목록 안의 한 칸이고, 누를 때만 폼이 펼쳐진다.
+            아래의 "의료기관 정보 등록(준비 중)"과 다른 것이다 — 그쪽은 참여 병원이
+            쓰는 화면이고, 이쪽은 아직 없는 서비스에 미리 이름을 남기는 자리다.
+          */}
+          <PartnerInquiry variant="row" />
 
           <li className="flex items-center justify-between px-5 py-4">
             <span className="text-[16px] font-medium text-ink-muted">의료기관 정보 등록</span>

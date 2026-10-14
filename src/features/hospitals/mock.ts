@@ -1,4 +1,5 @@
-import type { Capability, HospitalView } from "./types";
+import { CAPABILITIES } from "./capabilities";
+import type { HospitalView } from "./types";
 
 /**
  * ⚠️ MOCK DATA — 실제 의료기관 정보가 아닙니다.
@@ -8,15 +9,8 @@ import type { Capability, HospitalView } from "./types";
  * UI 가 실제 연동인 것처럼 보이지 않도록 화면 상단에 Demo 배지를 항상 띄웁니다.
  */
 
-export const CAPABILITIES: Capability[] = [
-  { id: "cap_facial_laceration", label: "소아 안면열상", group: "facial" },
-  { id: "cap_scalp_laceration", label: "두피 열상", group: "facial" },
-  { id: "cap_hand_trauma", label: "손가락 외상", group: "hand" },
-  { id: "cap_nail_injury", label: "손톱 손상", group: "hand" },
-  { id: "cap_burn", label: "소아 화상", group: "burn" },
-  { id: "cap_bite", label: "교상", group: "other" },
-  { id: "cap_foreign_body", label: "이물 제거", group: "other" },
-];
+export { CAPABILITIES };
+
 
 /** 지금 시각 기준으로 상대 시각을 만든다. 데모에서 항상 "몇 분 전"이 살아있게 하려는 것. */
 function minutesAgo(n: number): string {
@@ -323,3 +317,11 @@ export const MOCK_HOSPITALS: HospitalView[] = [
     isParticipating: false,
   },
 ];
+
+/**
+ * 가상 병원 하나. Supabase 설정이 없는 로컬과 파트너 데모 화면만 쓴다.
+ * service.ts 에 있던 것을 옮겼다 — 거기 있으면 이름표만 읽는 화면도 이 파일을 끌고 간다.
+ */
+export function getMockHospital(id: string): HospitalView | null {
+  return MOCK_HOSPITALS.find((h) => h.id === id) ?? null;
+}

@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isSearchIndexingOpen, showDemoReports } from "./demoContent";
+import { isSearchIndexingOpen, parsePartnerChatUrl, showDemoReports } from "./demoContent";
 
 /**
  * 노출 플래그의 **판정점이 하나**인지, 그리고 되돌리기 어려운 쪽이 환경변수로
@@ -19,13 +19,20 @@ function declarationOf(name: string): string {
 }
 
 describe("가상 글", () => {
-  it("★ 운영 빌드에서는 환경변수로도 켤 수 없다 — 지어낸 글은 허위 정보가 된다", () => {
+  it("★ 상수 false 다 — 환경변수로도, NODE_ENV 로도 켜지지 않는다", () => {
     /*
      * 실제 병원 이름이 든 지어낸 글은 그 병원에 대한 허위 정보이고, 가상 병원
      * 이름을 쓰면 "모두 가상 데이터" 배너를 되살린다. 둘 다 이미 겪었다.
-     * 그래서 Vercel 설정 한 줄로 되살아나는 자리에 두지 않는다.
+     * NODE_ENV 가드는 화면만 막고 번들에는 원본이 실렸다(2026-10-12 grep).
      */
-    expect(declarationOf("showDemoReports")).toContain('process.env.NODE_ENV !== "production"');
+    expect(showDemoReports).toBe(false);
+    expect(declarationOf("showDemoReports")).not.toContain("process.env");
+  });
+
+  it("★ 가상 대화 원본이 저장소에 없다 — 있으면 누군가 다시 import 한다", () => {
+    expect(existsSync("src/features/chat/seed.ts")).toBe(false);
+    const room = readFileSync("src/features/chat/useChatRoom.ts", "utf8");
+    expect(room).not.toMatch(/from "\.\/seed"|hospitals\/mock/);
   });
 
   it("가상 글을 내는 플래그는 하나다 — 켜는 길이 둘이면 하나를 잊는다", () => {
@@ -41,9 +48,24 @@ describe("색인", () => {
   });
 });
 
-describe("테스트 환경", () => {
-  it("여기서는 가상 글이 켜져 있다 — 위 두 테스트가 구조를 보는 이유다", () => {
-    // NODE_ENV=test 이므로 production 가드를 통과한다. 값 자체로는 운영을 못 본다.
-    expect(typeof showDemoReports).toBe("boolean");
+
+describe("오픈채팅 주소", () => {
+  it("값이 없으면 null — 버튼을 숨긴다", () => {
+    expect(parsePartnerChatUrl(undefined)).toBeNull();
+    expect(parsePartnerChatUrl("  ")).toBeNull();
+  });
+
+  it("★ 카카오 오픈채팅 https 주소만 받는다 — 방침 1-6 이 카카오 처리를 안내한다", () => {
+    expect(parsePartnerChatUrl("https://open.kakao.com/o/abc123")).toBe(
+      "https://open.kakao.com/o/abc123",
+    );
+    expect(parsePartnerChatUrl("http://open.kakao.com/o/abc123")).toBeNull();
+    expect(parsePartnerChatUrl("https://open.kakao.com.evil.example/o/a")).toBeNull();
+    expect(parsePartnerChatUrl("https://example.com/o/abc")).toBeNull();
+    expect(parsePartnerChatUrl("open.kakao.com/o/abc")).toBeNull();
+  });
+
+  it("주소를 코드에 적어 두지 않는다 — 환경변수에서만 온다", () => {
+    expect(declarationOf("partnerChatUrl")).not.toContain("open.kakao.com");
   });
 });

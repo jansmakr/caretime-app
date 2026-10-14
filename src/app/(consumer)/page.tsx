@@ -4,6 +4,7 @@ import { StageNotice } from "@/components/common/StageNotice";
 import { DiscoveryForm } from "@/components/home/DiscoveryForm";
 import { MyRegionGate } from "@/components/home/MyRegionGate";
 import { InstallHint } from "@/components/common/InstallHint";
+import { PartnerInquiry } from "@/components/common/PartnerInquiry";
 import { LegalFooter } from "@/components/legal/LegalFooter";
 import { showCareConditionForm, showHospitalDirectory } from "@/lib/demoContent";
 
@@ -13,6 +14,13 @@ import { showCareConditionForm, showHospitalDirectory } from "@/lib/demoContent"
  * 배너는 시각·건수를 쓰지 않으므로 그 이유가 없어졌다. 쿠키·요청 정보에 의존하는
  * 다른 요소도 홈에는 없다. (성능 목적의 추가 리팩터링은 하지 않았다)
  */
+
+/*
+ * 단, 약관·방침 한 줄(LegalFooter)은 **오늘 날짜로** "시행 전 / 동의하는 것으로
+ * 봅니다"를 가른다. 정적으로 굳으면 빌드한 날의 판정이 시행일 뒤에도 남는다 —
+ * 2026-10-26 이 지나도 재배포 전까지 "시행 전"이라고 적힌다. 한 시간마다 다시 그린다.
+ */
+export const revalidate = 3600;
 
 /**
  * 홈.
@@ -70,6 +78,13 @@ export default function HomePage() {
           설치할 길이 없는 브라우저에서는 아무것도 그리지 않는다.
         */}
         <InstallHint />
+
+        {/*
+          의료기관 사전 신청. 보호자 흐름(제목 → 현장톡 버튼) 뒤에 둔다 —
+          이 화면의 주인공은 보호자이고, 병원 담당자는 드물게 온다.
+          평소에는 접힌 카드 한 장이고, 누를 때만 폼이 펼쳐진다(원칙 4).
+        */}
+        <PartnerInquiry />
 
         {/*
          * 병원 목록으로 가는 길은 1차에 없다. 글을 병원이 아니라 구에 걸기로 했고,

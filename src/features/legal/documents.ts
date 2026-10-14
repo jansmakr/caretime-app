@@ -31,10 +31,8 @@ export const LEGAL_DOC_FILE: Record<LegalDocId, string> = {
   privacy: "privacy.md",
 };
 
-export const LEGAL_DOC_PATH: Record<LegalDocId, string> = {
-  terms: "/terms",
-  privacy: "/privacy",
-};
+// 클라이언트 컴포넌트도 링크를 건다. 이 파일은 node:fs 를 읽으므로 경로만 따로 뒀다.
+export { LEGAL_DOC_PATH } from "./paths";
 
 /** 본문을 아직 받지 못했다는 표시. 이 줄이 있으면 준비되지 않은 것이다. */
 const PENDING_MARK = "<!-- 본문대기 -->";
