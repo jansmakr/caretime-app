@@ -74,7 +74,7 @@ export function ChatRoom({
   const { message: toast, show } = useToast();
 
   /*
-   * 위치 권한을 이미 허락한 사람은 지역을 알아서 채운다(features/regions/useAutoLocate).
+   * 지역이 비어 있으면 화면을 열 때 위치로 채운다(features/regions/useAutoLocate).
    * 채웠으면 한 줄로 알린다 — 모르는 사이에 글에 지역이 붙으면 안 된다.
    * 바꾸는 길은 작성창의 "올라갈 위치 바꾸기"다.
    */

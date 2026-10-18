@@ -146,17 +146,36 @@ function codeOf(path: string): string {
     .replace(/(^|[^:])\/\/.*$/gm, "$1"); // 줄 주석 (URL 의 // 는 건드리지 않는다)
 }
 
-describe("shouldAutoLocate — 이미 허락한 사람에게만, 고른 값은 덮지 않는다", () => {
-  const base = { regionLoaded: true, hasRegion: false, keyConfigured: true, permissionGranted: true };
+describe("shouldAutoLocate — 접속하면 묻되, 거부한 사람·고른 값은 건드리지 않는다", () => {
+  const base = {
+    regionLoaded: true,
+    hasRegion: false,
+    keyConfigured: true,
+    permission: "prompt" as const,
+    alreadyAsked: false,
+  };
 
-  it("허락했고 지역이 비어 있으면 찾는다", () => {
+  it("★ 처음 온 사람(권한 미정)에게도 바로 묻는다", () => {
     expect(shouldAutoLocate(base)).toBe(true);
   });
-  it("처음 온 사람(권한 미허락)에게는 묻지 않는다", () => {
-    expect(shouldAutoLocate({ ...base, permissionGranted: false })).toBe(false);
+  it("권한 조회를 못 하는 브라우저도 묻는다", () => {
+    expect(shouldAutoLocate({ ...base, permission: "unknown" })).toBe(true);
+  });
+  it("이미 허락했으면 찾는다", () => {
+    expect(shouldAutoLocate({ ...base, permission: "granted" })).toBe(true);
+  });
+  it("★ 거부한 사람에게는 다시 묻지 않는다", () => {
+    expect(shouldAutoLocate({ ...base, permission: "denied" })).toBe(false);
+  });
+  it("★ 한 탭에서 두 번 묻지 않는다 — 창을 닫은 사람을 화면마다 막지 않는다", () => {
+    expect(shouldAutoLocate({ ...base, alreadyAsked: true })).toBe(false);
+    expect(shouldAutoLocate({ ...base, permission: "unknown", alreadyAsked: true })).toBe(false);
+  });
+  it("허락한 사람은 창이 뜨지 않으므로 이미 물었어도 찾는다", () => {
+    expect(shouldAutoLocate({ ...base, permission: "granted", alreadyAsked: true })).toBe(true);
   });
   it("저장된 지역이 있으면 덮지 않는다", () => {
-    expect(shouldAutoLocate({ ...base, hasRegion: true })).toBe(false);
+    expect(shouldAutoLocate({ ...base, hasRegion: true, permission: "granted" })).toBe(false);
   });
   it("저장소를 읽기 전에는 판단하지 않는다", () => {
     expect(shouldAutoLocate({ ...base, regionLoaded: false })).toBe(false);
