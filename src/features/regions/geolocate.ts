@@ -125,9 +125,9 @@ function kakao(): { maps?: KakaoMaps } | undefined {
 }
 
 /**
- * SDK 를 **버튼을 누른 뒤에** 불러온다.
+ * SDK 를 **좌표를 받은 뒤에** 불러온다.
  *
- * 페이지를 열 때 같이 불러오면, 위치를 쓸 생각이 없는 사람의 브라우저도 카카오에
+ * 페이지를 열 때 같이 불러오면, 위치를 허락하지 않은 사람의 브라우저도 카카오에
  * 접속한다. 그건 우리가 하지 않기로 한 일이다(추적 스크립트를 안 붙이는 것과
  * 같은 이유). `autoload=false` 로 받아서 우리가 부를 때만 초기화한다.
  */
@@ -163,8 +163,8 @@ function loadSdk(): Promise<KakaoMaps> {
 }
 
 /**
- * 브라우저에게 좌표를 묻는다. 버튼을 눌렀을 때, 또는 **이미 허락된 경우에만**
- * 화면을 열 때 불린다(isLocationAllowed). 처음 온 사람에게 먼저 묻지 않는다.
+ * 브라우저에게 좌표를 묻는다. 버튼을 눌렀을 때, 또는 화면을 열 때(shouldAutoLocate)
+ * 불린다. 권한이 정해지지 않았으면 여기서 브라우저의 권한 창이 뜬다.
  */
 function askPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -197,38 +197,56 @@ function toNames(maps: KakaoMaps, lat: number, lng: number): Promise<RegionNames
   });
 }
 
+/** 브라우저가 알려 주는 위치 권한 상태. 조회를 못 하면 "unknown". */
+export type LocationPermission = "granted" | "prompt" | "denied" | "unknown";
+
 /**
- * 이 사이트에 위치 권한을 **이미 허락했는가.** 묻지 않고 확인만 한다.
+ * 이 사이트의 위치 권한 상태. **묻지 않고 확인만 한다.**
  *
- * 권한 상태 조회(Permissions API)는 권한 창을 띄우지 않는다. "granted" 일 때만 true 다.
- * 처음 온 사람("prompt")·거부한 사람("denied")·조회를 못 하는 브라우저는 모두 false —
- * 그 사람들에게는 화면을 열자마자 권한 창을 띄우지 않는다. 급한 사람에게 첫 화면부터
- * 결정을 하나 더 얹는 일이고(원칙 1), 브라우저도 누르지 않은 권한 요청을 막거나
- * 조용히 묻지 않게 바꾼다.
+ * 권한 상태 조회(Permissions API)는 권한 창을 띄우지 않는다. 조회를 못 하는 브라우저
+ * (옛 사파리 등)는 "unknown" 이고, 그때는 물어봐야 알 수 있다.
  */
-export async function isLocationAllowed(): Promise<boolean> {
+export async function locationPermission(): Promise<LocationPermission> {
   try {
-    if (typeof navigator === "undefined" || !navigator.permissions?.query) return false;
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return "unknown";
     const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
-    return status.state === "granted";
+    const state = status.state;
+    return state === "granted" || state === "prompt" || state === "denied" ? state : "unknown";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
 /**
- * 자동으로 찾아도 되는가. **순수 함수다** — 테스트가 이 판정을 붙든다.
+ * 화면을 열 때 자동으로 찾아도 되는가. **순수 함수다** — 테스트가 이 판정을 붙든다.
  *
- * 저장된 지역이 있으면 찾지 않는다. 사용자가 직접 고른 값을 위치가 덮으면,
- * 다른 동네에 잠깐 들른 날 글이 엉뚱한 구에 붙는다.
+ * ── 접속하면 바로 묻는다 (2026-10-18) ───────────────────────
+ * 전에는 이미 허락한 사람에게만 자동으로 찾았다. 처음 온 사람은 "내 위치로 선택"을
+ * 눌러야 했는데, 그 버튼을 찾기 전에 지역 없이 글을 쓰거나 지역을 손으로 고르느라
+ * 멈췄다. 사용자 요청으로 **처음 온 사람에게도 바로 권한 창을 띄운다.**
+ *
+ * 지키는 것:
+ *   · 거부한 사람("denied")에게는 다시 묻지 않는다 — 브라우저도 묻지 못한다
+ *   · 저장된 지역이 있으면 묻지 않는다 — 고른 값을 위치가 덮으면, 다른 동네에 잠깐
+ *     들른 날 글이 엉뚱한 구에 붙는다
+ *   · 한 번 열린 동안(탭)에는 한 번만 묻는다(alreadyAsked) — 창을 닫고 홈 → 현장톡으로
+ *     옮길 때마다 다시 뜨면 급한 사람의 손을 계속 막는다. 기억은 메모리에만 둔다
+ *     (기기에 새 값을 저장하지 않는다)
+ *   · 이미 허락한 사람은 alreadyAsked 와 상관없이 찾는다 — 창이 뜨지 않는다
+ *   · 좌표가 나가는 길은 버튼과 같다(locateMyRegion). 권한 창에서 거부하면 카카오에
+ *     접속하지 않는다 — SDK 는 좌표를 받은 뒤에 불러온다
  */
 export function shouldAutoLocate(input: {
   regionLoaded: boolean;
   hasRegion: boolean;
   keyConfigured: boolean;
-  permissionGranted: boolean;
+  permission: LocationPermission;
+  alreadyAsked: boolean;
 }): boolean {
-  return input.regionLoaded && !input.hasRegion && input.keyConfigured && input.permissionGranted;
+  if (!input.regionLoaded || input.hasRegion || !input.keyConfigured) return false;
+  if (input.permission === "denied") return false;
+  if (input.permission === "granted") return true;
+  return !input.alreadyAsked;
 }
 
 /**
