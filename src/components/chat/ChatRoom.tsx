@@ -9,6 +9,7 @@ import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
 import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
+import { KetaGuide } from "@/components/chat/KetaGuide";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useMyRegion } from "@/features/regions/myRegion";
 import { useAutoLocate } from "@/features/regions/useAutoLocate";
@@ -116,6 +117,9 @@ export function ChatRoom({
     <main className="space-y-3 px-4 pb-6 pt-3">
       {/* 상단 고정 고지 — 의료기관 현장 상황이 항상 최우선. 접히지 않는다. */}
       <LiveInfoNotice />
+
+      {/* 케타 안내 — AI 가 아닌 정해진 말풍선. 119 버튼이 여기 있다. 빈 방에서도 보인다. */}
+      <KetaGuide />
 
       {emptyRoom && <EmptyRoomLead />}
 
