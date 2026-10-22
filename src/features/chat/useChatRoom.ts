@@ -213,6 +213,13 @@ export function useChatRoom(
   ]);
 
   const messages = useMemo(() => filterMessages(all, filter), [all, filter]);
+
+  /** 이 브라우저가 쓴 글·답글 id 전부. 답글의 "새 답글" 판정이 쓴다. */
+  const myIds = useMemo(() => {
+    const ids = new Set(initialMine);
+    for (const id of Object.keys(snapshot.mineIds)) ids.add(id);
+    return ids;
+  }, [initialMine, snapshot.mineIds]);
   const react = useCallback(
     (messageId: string, key: ReactionKey) => pressReaction(messageId, key),
     [],
@@ -228,6 +235,7 @@ export function useChatRoom(
     totalCount: all.length,
     nickname: snapshot.nickname,
     lastSentAt: snapshot.lastSentAt,
+    myIds,
     react,
     remove,
   };

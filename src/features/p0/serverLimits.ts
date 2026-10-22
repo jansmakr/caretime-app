@@ -17,6 +17,7 @@ import { DEFAULT_GUEST_LIMITS, type GuestLimits } from "./limits";
 
 export const LIMIT_ENV = {
   posts: "GUEST_LIMIT_POSTS",
+  replies: "GUEST_LIMIT_REPLIES",
   reactions: "GUEST_LIMIT_REACTIONS",
   reactionReads: "GUEST_LIMIT_REACTION_READS",
   reports: "GUEST_LIMIT_REPORTS",
@@ -49,6 +50,7 @@ export function resolveLimits(env: Record<string, string | undefined> = process.
 
   return {
     posts: parseRules(env[LIMIT_ENV.posts]) ?? DEFAULT_GUEST_LIMITS.posts,
+    replies: parseRules(env[LIMIT_ENV.replies]) ?? DEFAULT_GUEST_LIMITS.replies,
     reactions: parseRules(env[LIMIT_ENV.reactions]) ?? DEFAULT_GUEST_LIMITS.reactions,
     reactionReads:
       parseRules(env[LIMIT_ENV.reactionReads]) ?? DEFAULT_GUEST_LIMITS.reactionReads,

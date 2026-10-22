@@ -64,17 +64,24 @@ export async function POST(request: NextRequest) {
   const key = typeof payload.key === "string" && KEYS.has(payload.key) ? payload.key : null;
   if (!reportId || !key) return done(400, { error: "반응을 저장할 수 없습니다." }, freshToken);
 
-  // 방금 만든 세션에는 글이 없다. 묻지 않는다.
-  if (!freshToken) {
-    const { data: report, error: ownerError } = await admin
-      .from("field_reports")
-      .select("guest_id")
-      .eq("id", reportId)
-      .maybeSingle();
-    if (ownerError) return done(500, { error: "저장하지 못했습니다." }, freshToken);
-    if ((report as { guest_id: string | null } | null)?.guest_id === session.id) {
-      return done(403, { error: "own_post" }, freshToken);
-    }
+  /*
+   * 누구의 글인가, 답글인가. select("*") 로 읽는다 — parent_id 컬럼이 없는 DB
+   * (migration 20261022 전)에서도 이 조회가 깨지지 않게.
+   *
+   * 답글에는 반응이 없다. 반응 표의 외래키는 field_reports 를 가리켜서 답글 id 도
+   * 받아 버린다 — 화면에 없는 숫자가 쌓인다.
+   */
+  const { data: report, error: ownerError } = await admin
+    .from("field_reports")
+    .select("*")
+    .eq("id", reportId)
+    .maybeSingle();
+  if (ownerError) return done(500, { error: "저장하지 못했습니다." }, freshToken);
+  const target = report as { guest_id: string | null; parent_id?: string | null } | null;
+  if (target?.parent_id) return done(400, { error: "반응을 저장할 수 없습니다." }, freshToken);
+  // 방금 만든 세션에는 글이 없다.
+  if (!freshToken && target?.guest_id === session.id) {
+    return done(403, { error: "own_post" }, freshToken);
   }
 
   const since = new Date(Date.now() - 60 * 60_000).toISOString();

@@ -101,15 +101,22 @@ index field_reports_region_lookup on (sido, sigungu, created_at desc)
 | 글 | 30초 | 1건 |
 | 글 | 1시간 | 10건 |
 | 글 | 24시간 | 30건 |
+| 답글 | 10초 | 1건 |
+| 답글 | 1시간 | 20건 |
+| 답글 | 24시간 | 60건 |
 | 반응 | 10초 | 5건 |
 | 반응 | 1시간 | 60건 |
+| 내 반응 읽기 | 1분 | 20건 |
+| 내 반응 읽기 | 1시간 | 200건 |
 | 신고 | 1시간 | 5건 |
-| 같은 내용 재등록 | 10분 | 차단 |
+| 같은 내용 재등록 | 10분 | 차단 (답글은 같은 부모 글 기준) |
 
-PRD §3.1 표 그대로다. 분당 규칙은 따로 두지 않았다 — 30초 규칙이 그 자리를 한다.
+글·반응·신고는 PRD §3.1 표 그대로다. 답글은 PRD 표에 없어 사용자가 정했다(2026-10-22).
+답글은 글과 같은 표에 쌓이지만 따로 센다 — 글을 쓴 직후에도 답글은 달 수 있다.
+내 반응 읽기는 DB 에 행이 남지 않아 서버 메모리에서 센다(인스턴스마다 따로, `features/p0/memoryRate`). 분당 규칙은 따로 두지 않았다 — 30초 규칙이 그 자리를 한다.
 
-**환경변수로 뺐다.** `GUEST_LIMIT_POSTS` · `GUEST_LIMIT_REACTIONS` ·
-`GUEST_LIMIT_REPORTS` · `GUEST_LIMIT_DUPLICATE_MINUTES`.
+**환경변수로 뺐다.** `GUEST_LIMIT_POSTS` · `GUEST_LIMIT_REPLIES` · `GUEST_LIMIT_REACTIONS` ·
+`GUEST_LIMIT_REACTION_READS` · `GUEST_LIMIT_REPORTS` · `GUEST_LIMIT_DUPLICATE_MINUTES`.
 형식은 `창초:건수` 를 쉼표로 이은 것(`30:1,3600:10,86400:30`).
 `NEXT_PUBLIC_` 을 붙이지 않았다 — 브라우저가 한계를 알면 맞춰 쓰는 경로가 생긴다.
 
