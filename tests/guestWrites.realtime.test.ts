@@ -323,6 +323,79 @@ describe("멱등성", () => {
   }, TEST_MS);
 });
 
+describe("빠른 반응", () => {
+  async function postId(writer: Browser): Promise<string> {
+    const res = await writer.writeReport();
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { id: string }).id;
+  }
+
+  it("★ 내 글에는 누를 수 없다 — 화면이 아니라 서버가 막는다", async () => {
+    const writer = new Browser();
+    const reportId = await postId(writer);
+
+    const res = await writer.post("/api/field-reports/reactions", { reportId, key: "low_wait" });
+    expect(res.status).toBe(403);
+
+    const rows = await fetch(`${REST}/field_report_reactions?report_id=eq.${reportId}&select=key`, {
+      headers: admin,
+    }).then((r) => r.json() as Promise<unknown[]>);
+    expect(rows).toHaveLength(0);
+  }, TEST_MS);
+
+  it("★ 남의 글에는 누를 수 있고, 두 번째는 already 다 — 숫자가 부풀지 않는다", async () => {
+    const reportId = await postId(new Browser());
+    const reader = new Browser();
+    await reader.get("/api/guest");
+
+    const first = await reader.post("/api/field-reports/reactions", { reportId, key: "low_wait" });
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({ ok: true, already: false });
+
+    const second = await reader.post("/api/field-reports/reactions", { reportId, key: "low_wait" });
+    expect(second.status).toBe(200);
+    expect(await second.json()).toMatchObject({ ok: true, already: true });
+
+    const rows = await fetch(`${REST}/field_report_reactions?report_id=eq.${reportId}&select=key`, {
+      headers: admin,
+    }).then((r) => r.json() as Promise<unknown[]>);
+    expect(rows).toHaveLength(1);
+  }, TEST_MS);
+
+  it("★ '내가 누른 반응'은 본인 것만 돌려준다 — 남이 누른 것·세션 id 는 없다", async () => {
+    const reportId = await postId(new Browser());
+    const me = new Browser();
+    const other = new Browser();
+    await me.get("/api/guest");
+    await other.get("/api/guest");
+    await me.post("/api/field-reports/reactions", { reportId, key: "doctor_present" });
+    await other.post("/api/field-reports/reactions", { reportId, key: "closed" });
+
+    const res = await me.get("/api/field-reports/reactions");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { mine: Record<string, string[]> };
+    expect(body.mine[reportId]).toEqual(["doctor_present"]);
+    expect(Object.keys(body)).toEqual(["mine"]);
+  }, TEST_MS);
+
+  it("세션이 없으면 빈 값이고 쿠키를 심지 않는다", async () => {
+    const res = await fetch(`${BASE}/api/field-reports/reactions`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ mine: {} });
+    expect(res.headers.getSetCookie?.() ?? []).toHaveLength(0);
+  }, TEST_MS);
+
+  it("★ 읽기도 제한이 있다", async () => {
+    const reader = new Browser();
+    await reader.get("/api/guest");
+    const perMinute = DEFAULT_GUEST_LIMITS.reactionReads[0].max;
+    for (let i = 0; i < perMinute; i++) {
+      expect((await reader.get("/api/field-reports/reactions")).status).toBe(200);
+    }
+    expect((await reader.get("/api/field-reports/reactions")).status).toBe(429);
+  }, TEST_MS);
+});
+
 describe("개인정보 필터", () => {
   it("★ 전화번호가 적힌 글은 올라가지 않는다", async () => {
     const browser = new Browser();

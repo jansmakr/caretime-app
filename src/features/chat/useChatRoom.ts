@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { fetchFieldReports } from "./repository";
-import { withMyReactions } from "./reactions";
+import { withPendingReactions, type ReactionKey } from "./reactions";
 import { filterMessages, mergeRoomMessages } from "./service";
 import {
   connectChat,
@@ -12,10 +12,12 @@ import {
   getChatSnapshot,
   getChatSnapshotOnServer,
   hydrateMessages,
+  hydrateMyReactions,
   hydrateNickname,
+  pendingReactionKeys,
+  pressReaction,
   remainingCooldownMs,
   subscribeChat,
-  toggleReaction,
 } from "./store";
 import { CHAT_COOLDOWN_MS, type ChatFilter, type ChatMessage, type ChatMessageView } from "./types";
 
@@ -48,8 +50,10 @@ export function useChatRoom(
   const snapshot = useSyncExternalStore(subscribeChat, getChatSnapshot, getChatSnapshotOnServer);
 
   // 저장된 닉네임은 브라우저에만 있다. 첫 렌더가 아니라 마운트 후에 올린다.
+  // 내가 누른 반응도 서버에 물어 눌린 표시를 되살린다(새로고침해도 남게).
   useEffect(() => {
     hydrateNickname();
+    hydrateMyReactions();
   }, []);
 
   /*
@@ -84,6 +88,7 @@ export function useChatRoom(
     if (!isSupabaseConfigured) return;
 
     let live = true;
+    const startedAt = Date.now();
     void fetchFieldReports(getPublicBrowserSupabase(), {
       sido: filter.sido,
       sigungu: filter.sigungu,
@@ -91,7 +96,7 @@ export function useChatRoom(
     })
       .then((rows) => {
         // 조건을 빠르게 두 번 바꾸면 늦게 온 응답이 먼저 온 것을 덮는다. 그래서 버린다.
-        if (live) hydrateMessages(rows);
+        if (live) hydrateMessages(rows, startedAt);
       })
       .catch(() => {
         /*
@@ -130,6 +135,7 @@ export function useChatRoom(
       if (document.visibilityState !== "visible" || inFlight) return;
       inFlight = true;
       lastAt = Date.now();
+      const startedAt = lastAt;
       const current = filterRef.current;
       void fetchFieldReports(getPublicBrowserSupabase(), {
         sido: current.sido,
@@ -138,7 +144,7 @@ export function useChatRoom(
       })
         .then((rows) => {
           // 읽는 사이 조건이 바뀌었으면 버린다(조건 effect 가 새로 읽는다).
-          if (filterRef.current === current) hydrateMessages(rows);
+          if (filterRef.current === current) hydrateMessages(rows, startedAt);
         })
         .catch(() => undefined)
         .finally(() => {
@@ -188,7 +194,11 @@ export function useChatRoom(
           snapshot.mineIds[message.id] === true ||
           initialMine.has(message.id),
         myReactions: mine,
-        reactions: withMyReactions(message.baseReactions, mine),
+        // 숫자는 서버 값 + 서버가 아직 모르는 내 반응뿐이다. 눌린 표시(mine)를 더하지 않는다.
+        reactions: withPendingReactions(
+          message.baseReactions,
+          pendingReactionKeys(snapshot.pendingReactions, message.id),
+        ),
       };
     });
     // initialMessages 는 서버 렌더값이라 바뀌지 않는다. 의존성에 넣어도 같은 결과다.
@@ -196,15 +206,17 @@ export function useChatRoom(
   }, [
     snapshot.messages,
     snapshot.myReactions,
+    snapshot.pendingReactions,
     snapshot.mineIds,
     snapshot.removedIds,
     initialMine,
   ]);
 
   const messages = useMemo(() => filterMessages(all, filter), [all, filter]);
-  const react = useCallback((messageId: string, key: Parameters<typeof toggleReaction>[1]) => {
-    toggleReaction(messageId, key);
-  }, []);
+  const react = useCallback(
+    (messageId: string, key: ReactionKey) => pressReaction(messageId, key),
+    [],
+  );
 
   /** 내가 쓴 글 지우기. 돌려주는 약속이 깨지면 화면이 알려 준다. */
   const remove = useCallback(async (messageId: string) => {

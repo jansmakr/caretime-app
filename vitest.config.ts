@@ -29,11 +29,16 @@ export const ALIAS = { "@": fileURLToPath(new URL("./src", import.meta.url)) };
 export default defineConfig({
   test: {
     ...SHARED,
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", REALTIME_TESTS],
   },
   resolve: {
     // tsconfig 의 "@/*" 경로를 vitest 에서도 같은 뜻으로 쓴다.
     alias: ALIAS,
   },
+  /*
+   * *.test.tsx 는 컴포넌트를 react-dom/server 로 그려 마크업을 본다(jsdom 없이).
+   * tsconfig 의 jsx 는 Next 가 쓰는 "preserve" 라 vitest 가 변환을 고르지 못한다 — 여기서 정한다.
+   */
+  esbuild: { jsx: "automatic" },
 });
