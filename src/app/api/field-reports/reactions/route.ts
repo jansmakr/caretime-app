@@ -7,6 +7,7 @@ import {
   type GuestSession,
 } from "@/features/chat/guestSession";
 import { checkRate } from "@/features/p0/limits";
+import { createMemoryRateBucket, takeMemorySlot } from "@/features/p0/memoryRate";
 import { resolveLimits } from "@/features/p0/serverLimits";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { areWritesOpen } from "@/lib/demoContent";
@@ -18,8 +19,14 @@ import { areWritesOpen } from "@/lib/demoContent";
  * 같은 세션이 같은 글에 같은 반응을 두 번 누르면 기본키가 막고, 그것을 오류로 올리지
  * 않는다 — 이미 눌린 것이고 사용자에게는 같은 결과다.
  *
- * 취소는 아직 없다. 누른 것을 되돌리려면 지우는 경로가 필요하고, 그건 "누가 눌렀는지"를
- * 서버가 아는 지금은 가능하다 — 다만 이번 턴의 범위는 쓰기를 서버로 옮기는 것까지다.
+ * 취소는 없다. 화면도 취소를 보여 주지 않는다(다시 누르면 "이미 알려 주셨어요").
+ * 전에는 화면에서만 내려가는 취소가 있었는데, 서버 숫자는 그대로라 화면 숫자가 거짓이 됐다.
+ *
+ * 내 글에는 누를 수 없다. 화면이 칩을 읽기 전용으로 그리지만 그것만으로는 닫은 것이
+ * 아니다 — 요청 모양을 아는 사람은 그대로 보낼 수 있다. 글의 guest_id 와 대조한다.
+ *
+ * 응답의 already 는 "이미 누른 것"이다. 화면은 그때 숫자를 올리지 않는다 —
+ * 그 반응은 이미 서버 숫자에 들어 있다.
  */
 export const dynamic = "force-dynamic";
 
@@ -57,6 +64,19 @@ export async function POST(request: NextRequest) {
   const key = typeof payload.key === "string" && KEYS.has(payload.key) ? payload.key : null;
   if (!reportId || !key) return done(400, { error: "반응을 저장할 수 없습니다." }, freshToken);
 
+  // 방금 만든 세션에는 글이 없다. 묻지 않는다.
+  if (!freshToken) {
+    const { data: report, error: ownerError } = await admin
+      .from("field_reports")
+      .select("guest_id")
+      .eq("id", reportId)
+      .maybeSingle();
+    if (ownerError) return done(500, { error: "저장하지 못했습니다." }, freshToken);
+    if ((report as { guest_id: string | null } | null)?.guest_id === session.id) {
+      return done(403, { error: "own_post" }, freshToken);
+    }
+  }
+
   const since = new Date(Date.now() - 60 * 60_000).toISOString();
   const { data: recent } = await admin
     .from("field_report_reactions")
@@ -93,7 +113,62 @@ export async function POST(request: NextRequest) {
     return done(500, { error: "저장하지 못했습니다." }, freshToken);
   }
 
-  return done(200, { ok: true }, freshToken);
+  return done(200, { ok: true, already: error?.code === "23505" }, freshToken);
+}
+
+/** 이 서버 인스턴스의 읽기 제한 기록. (features/p0/memoryRate 의 한계 주석) */
+const readBucket = createMemoryRateBucket();
+
+/** 한 번에 돌려주는 내 반응 수. 화면이 읽는 글(최근 100건 안팎)보다 넉넉하게. */
+const MY_REACTION_PAGE = 500;
+
+/**
+ * 이 브라우저가 누른 반응. **본인 것만** 돌려준다.
+ *
+ * 왜 필요한가: 누른 표시가 브라우저 메모리에만 있으면 새로고침에 사라진다. 그러면
+ * 같은 칩을 또 누르고, 화면 숫자는 오르는데 서버는 중복이라 받지 않는다 —
+ * 새로고침 전까지 **실제보다 1 많은 숫자**가 보인다.
+ *
+ * 돌려주는 것: 글 id → 반응 키. 글 id 는 이미 공개 목록에 있는 값이고, 묶어 주는 사실
+ * ("이 브라우저가 눌렀다")은 이 브라우저 본인에게만 간다. 남이 누른 것·세션 id 는 없다.
+ *
+ * 세션이 없으면 빈 값이다. 여기서 세션을 만들지 않는다 — 읽기만 하러 온 사람에게
+ * 쿠키를 심지 않는다(/api/guest 와 같은 이유).
+ */
+export async function GET(request: NextRequest) {
+  const admin = createAdminSupabase();
+  const session = await findGuestSession(admin, request.cookies.get(GUEST_COOKIE)?.value);
+  if (!session) return NextResponse.json({ mine: {} });
+
+  const verdict = takeMemorySlot({
+    bucket: readBucket,
+    key: session.id,
+    action: "reactionReads",
+    limits: resolveLimits(),
+    now: Date.now(),
+  });
+  if (!verdict.allowed) {
+    const response = NextResponse.json(
+      { error: "rate_limited", retryAfterSeconds: verdict.retryAfterSeconds },
+      { status: 429 },
+    );
+    response.headers.set("Retry-After", String(verdict.retryAfterSeconds));
+    return response;
+  }
+
+  const { data, error } = await admin
+    .from("field_report_reactions")
+    .select("report_id,key")
+    .eq("guest_id", session.id)
+    .order("created_at", { ascending: false })
+    .limit(MY_REACTION_PAGE);
+  if (error) return NextResponse.json({ error: "읽지 못했습니다." }, { status: 500 });
+
+  const mine: Record<string, string[]> = {};
+  for (const row of (data ?? []) as { report_id: string; key: string }[]) {
+    (mine[row.report_id] ??= []).push(row.key);
+  }
+  return NextResponse.json({ mine });
 }
 
 function done(status: number, body: Record<string, unknown>, freshToken: string | null) {

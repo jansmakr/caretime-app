@@ -18,6 +18,7 @@ import { DEFAULT_GUEST_LIMITS, type GuestLimits } from "./limits";
 export const LIMIT_ENV = {
   posts: "GUEST_LIMIT_POSTS",
   reactions: "GUEST_LIMIT_REACTIONS",
+  reactionReads: "GUEST_LIMIT_REACTION_READS",
   reports: "GUEST_LIMIT_REPORTS",
   duplicateBodyMinutes: "GUEST_LIMIT_DUPLICATE_MINUTES",
 } as const;
@@ -49,6 +50,8 @@ export function resolveLimits(env: Record<string, string | undefined> = process.
   return {
     posts: parseRules(env[LIMIT_ENV.posts]) ?? DEFAULT_GUEST_LIMITS.posts,
     reactions: parseRules(env[LIMIT_ENV.reactions]) ?? DEFAULT_GUEST_LIMITS.reactions,
+    reactionReads:
+      parseRules(env[LIMIT_ENV.reactionReads]) ?? DEFAULT_GUEST_LIMITS.reactionReads,
     reports: parseRules(env[LIMIT_ENV.reports]) ?? DEFAULT_GUEST_LIMITS.reports,
     duplicateBodyWindowMs:
       Number.isInteger(duplicateMinutes) && duplicateMinutes > 0

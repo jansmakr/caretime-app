@@ -7,6 +7,7 @@ import { ChatReactions } from "@/components/chat/ChatReactions";
 import { ReportButton } from "@/components/chat/ReportButton";
 import { ShareButton } from "@/components/chat/ShareButton";
 import type { ReactionKey } from "@/features/chat/reactions";
+import type { ReactionOutcome } from "@/features/chat/repository";
 import { formatChatAgo } from "@/features/chat/service";
 import { formatPostDate, postAgeDays } from "@/features/chat/age";
 import { buildShareText } from "@/features/chat/share";
@@ -35,7 +36,7 @@ export function ChatBubble({
 }: {
   message: ChatMessageView;
   now: Date;
-  onReact: (id: string, key: ReactionKey) => void;
+  onReact: (id: string, key: ReactionKey) => Promise<ReactionOutcome>;
   onShared: (text: string) => void;
   /** 내 글 지우기. 없으면 삭제 버튼을 그리지 않는다. */
   onRemove?: (id: string) => Promise<void>;
@@ -87,11 +88,12 @@ export function ChatBubble({
         <SourceBadge source="user" />
       </div>
 
-      {/* 원클릭 빠른 반응 — 텍스트 없이 상황을 거든다. */}
+      {/* 원클릭 빠른 반응 — 텍스트 없이 상황을 거든다. 내 글에서는 받은 것만 보여 준다. */}
       <ChatReactions
         counts={message.reactions}
         mine={message.myReactions}
-        onToggle={(key) => onReact(message.id, key)}
+        readOnly={message.mine}
+        onPress={(key) => onReact(message.id, key)}
       />
 
       <div className="mt-2 flex items-center gap-2">

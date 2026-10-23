@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ZERO_REACTIONS, type ReactionCounts, type ReactionKey } from "./reactions";
+import { REACTION_KEYS, ZERO_REACTIONS, type ReactionCounts, type ReactionKey } from "./reactions";
 import { RECENT_DAYS, type ChatDraft, type ChatMessage } from "./types";
 
 /**
@@ -235,16 +235,60 @@ function newReportId(): string {
 /**
  * 반응 누르기. 역시 서버 라우트를 거친다.
  *
- * 실패해도 던지지 않는다. 반응 하나가 안 올라간 것으로 사용자를 붙잡지 않는다 —
- * 화면은 이미 눌린 것으로 보이고, 다음에 읽을 때 서버 값으로 맞춰진다.
+ * 던지지 않고 결과를 돌려준다. 화면은 그 결과로 숫자를 맞춘다 — 저장되지 않은 반응을
+ * 눌린 것으로 남겨 두면 그 숫자는 서버에 없는 숫자다.
  */
-export async function insertReaction(reportId: string, key: ReactionKey): Promise<void> {
-  await fetch("/api/field-reports/reactions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ reportId, key }),
-  }).catch(() => undefined);
+export type ReactionOutcome =
+  /** 저장됐다. 서버 숫자에 하나 더해졌다. */
+  | "saved"
+  /** 이미 누른 것이다. 서버 숫자에 이미 들어 있다. */
+  | "already"
+  /** 내 글이다. 내 글에는 누를 수 없다. */
+  | "own_post"
+  | "rate_limited"
+  | "failed";
+
+export async function insertReaction(reportId: string, key: ReactionKey): Promise<ReactionOutcome> {
+  try {
+    const response = await fetch("/api/field-reports/reactions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ reportId, key }),
+    });
+    if (response.status === 429) return "rate_limited";
+    if (response.status === 403) return "own_post";
+    if (!response.ok) return "failed";
+    const body = (await response.json().catch(() => ({}))) as { already?: unknown };
+    return body.already === true ? "already" : "saved";
+  } catch {
+    return "failed";
+  }
+}
+
+/**
+ * 이 브라우저가 누른 반응(글 id → 키). 새로고침 뒤에도 눌린 표시를 서버 기준으로 되살린다.
+ * 못 읽으면 null 이다 — 빈 값과 구분한다. 못 읽었는데 "아무것도 안 눌렀다"로 그리지 않는다.
+ */
+export async function fetchMyReactions(): Promise<Record<string, ReactionKey[]> | null> {
+  try {
+    const response = await fetch("/api/field-reports/reactions", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { mine?: Record<string, unknown> };
+    const mine: Record<string, ReactionKey[]> = {};
+    for (const [reportId, keys] of Object.entries(body.mine ?? {})) {
+      if (!Array.isArray(keys)) continue;
+      const valid = keys.filter((k): k is ReactionKey => REACTION_KEYS.includes(k as ReactionKey));
+      if (valid.length > 0) mine[reportId] = valid;
+    }
+    return mine;
+  } catch {
+    return null;
+  }
 }
 
 export type ReportReason =
