@@ -259,6 +259,27 @@ describe("실시간", () => {
     expect(arrived.message.scope.sigungu).toBe("강서구");
   }, TEST_MS);
 
+  it("★ 답글은 실시간으로 내보내지 않는다 — 구버전 화면이 원글로 그리지 않게(migration 20261022)", async () => {
+    const parent = await post();
+    const replyId = crypto.randomUUID();
+    const signals = await listen(async () => {
+      const res = await fetch(`${REST}/field_reports`, {
+        method: "POST",
+        headers: { ...admin, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({
+          id: replyId,
+          category: "other",
+          body: "실시간으로 가면 안 되는 답글입니다.",
+          handle: "야간지킴이",
+          parent_id: parent.id,
+        }),
+      });
+      if (!res.ok) throw new Error(`심기 실패 → ${res.status} ${await res.text()}`);
+      created.push(replyId);
+    });
+    expect(signals.find((s) => s.kind === "upsert" && s.message.id === replyId)).toBeUndefined();
+  }, TEST_MS);
+
   it("★ 페이로드에 운영용 값이 실리지 않는다", async () => {
     let posted = "";
     const signals = await listen(async () => {

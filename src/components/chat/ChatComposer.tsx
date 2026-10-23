@@ -9,6 +9,7 @@ import { appendTranscript } from "@/features/chat/voice";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
 import { RateLimitedError, ReportRejectedError } from "@/features/chat/repository";
+import { FACT_ONLY_NOTICE } from "@/lib/copy";
 import { COOLDOWN_SECONDS, useChatNickname, useCooldownSeconds } from "@/features/chat/useChatRoom";
 import {
   CHAT_BODY_MAX,
@@ -282,7 +283,7 @@ export function ChatComposer({
         되고, 거짓인 경고는 다음 경고까지 안 읽히게 만든다(features/p0/abuse).
       */}
       <p className="mt-4 break-keep text-[13px] leading-relaxed text-ink-muted">
-        직접 확인한 사실만 적어 주세요. 진단이나 치료 판단은 적지 않습니다.
+        {FACT_ONLY_NOTICE}
         <br />
         <span className="font-semibold text-ink">
           의료기관·의료진을 비방하는 글, 욕설은 올릴 수 없습니다.

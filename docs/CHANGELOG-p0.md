@@ -80,3 +80,4 @@
 - 현장톡 최신 유지(돌아올 때·재연결·30초마다 다시 읽어 합침) / 화면 🎤 음성 입력(Web Speech, 미지원은 키보드 안내, 방침 1-7) / 위치 권한을 이미 허락한 사람은 지역 자동 채움(홈·현장톡, 방침 1-5) / 홈: 지역 카드에 "내 위치로 선택"·"고르지 않고 현장톡 보기", 의료기관 사전 신청은 맨 아래 한 줄로 낮춤
 - scripts/check-dry-run.mjs: db push --dry-run 출력에 기대한 migration 만 있는지 확인(읽기 전용, exit 0/1). DEPLOY-order·package.json 에 사용법
 - 빠른 반응 칩을 버튼으로(테두리·✓·14px·간격 8px) / 방 위 안내 한 번(닫기, localStorage) / 내 글은 읽기 전용("다른 분들이 눌러 준 반응이에요") + 서버도 403 / GET /api/field-reports/reactions(본인 반응만, 메모리 rate limit GUEST_LIMIT_REACTION_READS) / 숫자 서버 기준(화면만 내려가는 취소 제거, 다시 누르면 "이미 알려 주셨어요", 실패 시 되돌림) / 실시간 신호가 반응 수를 0 으로 덮던 것 수정 / vitest 가 *.test.tsx 를 읽게(jsx automatic)
+- 현장톡 답글(1단계): field_reports.parent_id + 답글 뷰·답글 수 뷰(migration 20261022, 파일만·운영 미적용) / 같은 POST 경로·같은 검증·신고 자동 격리, 답글 제한 따로(10초 1·1시간 20·하루 60, GUEST_LIMIT_REPLIES) / 카드 기존 줄에 "💬 답글 N개", 펼친 뒤 목록·작성칸·"첫 답글을 남겨 주세요" / 내 글 "새 답글 N개"(localStorage, 서버 기록 없음) / 답글 읽기 실패 시 영역 숨김 / 답글은 broadcast·반응 없음 / 빠른 문구 없음 / 작성창 안내 문구를 lib/copy 로

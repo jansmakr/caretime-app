@@ -29,9 +29,15 @@ const REASONS: { value: ReportReason; label: string }[] = [
 export function ReportButton({
   messageId,
   onResult,
+  onReported,
 }: {
   messageId: string;
   onResult: (message: string) => void;
+  /**
+   * 접수된 뒤. 답글이 쓴다 — 펼친 답글 목록은 실시간 신호를 듣지 않으므로
+   * (새 구독 없음, 2026-10-22 결정) 그 자리에서 직접 뺀다.
+   */
+  onReported?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -43,6 +49,7 @@ export function ReportButton({
       await reportFieldReport(messageId, reason);
       setOpen(false);
       onResult("신고했습니다. 확인할 때까지 이 글은 보이지 않습니다.");
+      onReported?.();
     } catch {
       onResult("신고를 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {

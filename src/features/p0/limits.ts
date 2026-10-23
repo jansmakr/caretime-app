@@ -36,6 +36,8 @@ export interface RateRule {
 
 export interface GuestLimits {
   posts: RateRule[];
+  /** 답글. 글과 같은 표에 쌓이지만 따로 센다 — 답글이 글 몫을 깎으면 묻고 답하기가 막힌다. */
+  replies: RateRule[];
   reactions: RateRule[];
   /**
    * "내가 누른 반응" 읽기(GET /api/field-reports/reactions).
@@ -59,6 +61,12 @@ export const DEFAULT_GUEST_LIMITS: GuestLimits = {
     { windowMs: HOUR, max: 10 },
     { windowMs: DAY, max: 30 },
   ],
+  // PRD 표에 없다. 2026-10-22 사용자 결정값.
+  replies: [
+    { windowMs: 10_000, max: 1 },
+    { windowMs: HOUR, max: 20 },
+    { windowMs: DAY, max: 60 },
+  ],
   reactions: [
     { windowMs: 10_000, max: 5 },
     { windowMs: HOUR, max: 60 },
@@ -72,7 +80,7 @@ export const DEFAULT_GUEST_LIMITS: GuestLimits = {
   duplicateBodyWindowMs: 10 * MINUTE,
 };
 
-export type LimitedAction = "posts" | "reactions" | "reactionReads" | "reports";
+export type LimitedAction = "posts" | "replies" | "reactions" | "reactionReads" | "reports";
 
 export interface RateCheckInput {
   action: LimitedAction;

@@ -18,6 +18,7 @@ import { regionLabel } from "@/features/regions/sigungu";
 import { isFilterActive } from "@/features/chat/service";
 import { buildRoomShareText } from "@/features/chat/share";
 import { useChatRoom } from "@/features/chat/useChatRoom";
+import { useReplies } from "@/features/chat/useReplies";
 import {
   EMPTY_FILTER,
   EMPTY_SCOPE,
@@ -66,13 +67,16 @@ export function ChatRoom({
    * 위해 고른 대가다(features/regions/myRegion).
    */
   const { region: myRegion, loaded: regionLoaded, save: saveRegion } = useMyRegion();
-  const { messages, totalCount, lastSentAt, react, remove } = useChatRoom(
+  const { messages, totalCount, lastSentAt, myIds, react, remove } = useChatRoom(
     renderedAt,
     filter,
     initialMessages,
     initialMyPostIds,
   );
   const { message: toast, show } = useToast();
+  // 답글 수·내 글의 새 답글. 읽기가 실패하면 enabled 가 false 이고 답글 버튼이 없다.
+  const replies = useReplies(messages, myIds);
+  const isMyId = useCallback((id: string) => myIds.has(id), [myIds]);
 
   /*
    * 위치 권한을 이미 허락한 사람은 지역을 알아서 채운다(features/regions/useAutoLocate).
@@ -175,6 +179,18 @@ export function ChatRoom({
                 onReact={react}
                 onShared={show}
                 onRemove={remove}
+                replies={
+                  replies.enabled
+                    ? {
+                        count: replies.counts[message.id] ?? 0,
+                        newCount: replies.newCounts[message.id] ?? 0,
+                        canWrite: isFieldTalkSharingLive,
+                        isMine: isMyId,
+                        onChanged: () => void replies.refresh(),
+                        onSeen: replies.markSeen,
+                      }
+                    : undefined
+                }
               />
             </li>
           ))}
