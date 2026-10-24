@@ -5,6 +5,9 @@ import { regionLabel, type MyRegion } from "@/features/regions/sigungu";
 import { LocateButton } from "@/components/chat/LocateButton";
 import { RegionPicker } from "@/components/chat/RegionPicker";
 import { VoiceInputButton } from "@/components/chat/VoiceInputButton";
+import { ComposeCheckSheet } from "@/components/chat/ComposeCheckSheet";
+import { checkBeforeSend, type ComposeCheck } from "@/features/chat/composeCheck";
+import { stripPhoneNumbers } from "@/features/p0/pii";
 import { appendTranscript } from "@/features/chat/voice";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
@@ -33,6 +36,11 @@ import {
  *
  * 남은 것: 주제 한 줄(선택) · 본문 · 보내기. 진단·치료 조언을 적지 말라는 문구는
  * 그대로 둔다. 그건 대상을 좁히는 말이 아니라 **하지 말아야 하는 일**이다.
+ *
+ * ── 안내를 줄였다 (2026-10-18) ──────────────────────────────
+ * "이름과 연락처는 적지 마세요"·"직접 확인한 사실만"·올라갈 위치 설명 세 줄을
+ * 걷어 내고, 하지 말아야 하는 일은 **한 줄**로 남겼다. 대신 걸리는 글을 쓴 사람에게만
+ * 올리기 직전에 묻는다 — 전화번호, 진단 요구 두 가지(features/chat/composeCheck).
  */
 export function ChatComposer({
   myRegion,
@@ -67,6 +75,8 @@ export function ChatComposer({
   /** 지역을 고치는 칸을 펼쳤는가. 평소 접혀 있다 — 한 번 정하면 거의 안 바꾼다. */
   const [editingRegion, setEditingRegion] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 올리기 직전 확인 창. null 이면 닫혀 있다. */
+  const [check, setCheck] = useState<ComposeCheck | null>(null);
   const cooldown = useCooldownSeconds(lastSentAt);
 
   /*
@@ -93,7 +103,16 @@ export function ChatComposer({
     };
   }
 
-  async function send() {
+  async function send({ skipCheck = false }: { skipCheck?: boolean } = {}) {
+    if (!skipCheck) {
+      const found = checkBeforeSend(body);
+      if (found !== null) {
+        setCheck(found);
+        return;
+      }
+    }
+    setCheck(null);
+
     const draft = {
       // 모든 글이 같은 값으로 들어간다. 화면에서 고르지 않는다.
       category: DEFAULT_CATEGORY,
@@ -180,22 +199,23 @@ export function ChatComposer({
           onChange={(e) => setBody(e.target.value)}
           rows={5}
           maxLength={CHAT_BODY_MAX}
-          placeholder="지금 상황이든, 전에 겪은 일이든 적어 주세요. 어느 동네·병원인지 함께 적으면 더 도움이 됩니다."
-          className="mt-2 w-full resize-none rounded-field bg-fill px-4 py-3 text-[15px] leading-relaxed
+          placeholder="지금 상황이나 다녀온 곳을 적어 주세요. 병원 이름을 함께 적으면 더 도움이 됩니다."
+          className="mt-2 w-full resize-none rounded-field bg-fill px-4 py-3 text-[16px] leading-relaxed
                      text-ink transition placeholder:text-ink-faint
                      focus:bg-surface focus:outline-none focus:ring-2 focus:ring-blue"
         />
-        <div className="mt-1 flex items-start justify-between gap-3">
-          <p className="break-keep text-[11.5px] leading-relaxed text-ink-faint">
-            이름과 연락처는 적지 마세요
-          </p>
+        <div className="mt-1 flex items-start justify-end gap-3">
+          {/*
+            "이름과 연락처는 적지 마세요" 줄을 뺐다(2026-10-18). 전화번호를 적으면 올리기
+            직전에 묻는다(ComposeCheckSheet) — 모두가 읽는 경고보다 걸린 사람에게 묻는 쪽이 읽힌다.
+          */}
           {/*
             남은 글자를 보여준다. 음성으로 말하면 길어지기 쉬워서 "몇 자 썼나"보다
             "얼마 남았나"가 쓸모 있다 — 잘린 줄 모르고 올리는 것을 막는다.
             100자 아래로 내려가면 색으로도 알린다.
           */}
           <span
-            className={`shrink-0 text-[11.5px] ${
+            className={`shrink-0 text-[14px] ${
               left <= 100 ? "font-semibold text-caution-ink" : "text-ink-faint"
             }`}
           >
@@ -210,19 +230,23 @@ export function ChatComposer({
         목록의 칩도 함께 사라진다.
       */}
 
-      <p className="mt-3 rounded-field bg-fill px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-faint">
-        <span className="font-semibold text-ink-muted">올라갈 위치 </span>
-        {scopeLabel}
-        <br />
-        {scopeNote ??
-          (myRegion === null
-            ? "구를 고르면 같은 동네 사람이 찾아 읽습니다. 안 골라도 올라갑니다."
-            : "다른 동네 이야기는 글에 적어 주세요.")}
+      {/*
+        올라갈 위치와 이름을 한 줄로 접었다(2026-10-18). "구를 고르면 같은 동네 사람이…"
+        설명은 아래 "내 위치로 선택"·"바꾸기"가 대신한다 — 고르는 길이 바로 보이면
+        이유를 읽지 않아도 된다(원칙 4).
+      */}
+      <p className="mt-3 break-keep rounded-field bg-fill px-3.5 py-2.5 text-[14px] leading-relaxed text-ink-muted">
+        <span className="font-semibold text-ink">{scopeLabel}</span>
         {nickname && (
           <>
+            {" · "}
+            <span className="font-semibold text-ink">{nickname}</span> 이름으로 올라갑니다
+          </>
+        )}
+        {scopeNote && (
+          <>
             <br />
-            <span className="font-semibold text-ink-muted">{nickname}</span> 이름으로 올라갑니다 ·
-            로그인 없이 등록됩니다
+            {scopeNote}
           </>
         )}
       </p>
@@ -281,12 +305,8 @@ export function ChatComposer({
         ("○○병원 불친절해요")은 통과한다. 통과하는 것을 막는다고 적으면 거짓이
         되고, 거짓인 경고는 다음 경고까지 안 읽히게 만든다(features/p0/abuse).
       */}
-      <p className="mt-4 break-keep text-[13px] leading-relaxed text-ink-muted">
-        직접 확인한 사실만 적어 주세요. 진단이나 치료 판단은 적지 않습니다.
-        <br />
-        <span className="font-semibold text-ink">
-          의료기관·의료진을 비방하는 글, 욕설은 올릴 수 없습니다.
-        </span>
+      <p className="mt-4 break-keep text-[14px] leading-relaxed text-ink-muted">
+        진단·치료 조언, 의료기관 비방·욕설은 적지 말아 주세요.
       </p>
 
       {/*
@@ -300,6 +320,20 @@ export function ChatComposer({
       >
         {cooldown > 0 ? `${cooldown}초 후 올릴 수 있습니다` : "올리기"}
       </button>
+
+      {check && (
+        <ComposeCheckSheet
+          check={check}
+          onStripPhone={() => {
+            const next = stripPhoneNumbers(body);
+            bodyRef.current = next;
+            setBody(next);
+            setCheck(null);
+          }}
+          onSendAnyway={() => void send({ skipCheck: true })}
+          onClose={() => setCheck(null)}
+        />
+      )}
     </section>
   );
 }
