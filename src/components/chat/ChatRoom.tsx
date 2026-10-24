@@ -10,6 +10,7 @@ import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
 import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
 import { KetaGuide } from "@/components/chat/KetaGuide";
+import { ReactionGuide } from "@/components/chat/ReactionGuide";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useMyRegion } from "@/features/regions/myRegion";
 import { useAutoLocate } from "@/features/regions/useAutoLocate";
@@ -162,6 +163,12 @@ export function ChatRoom({
             {messages.length}건
           </span>
         </div>
+
+        {/*
+          빠른 반응 안내 — 방에 한 번만. 누를 수 있는 글(남의 글)이 있을 때만 보인다.
+          내 글뿐이면 누를 칩이 없으니 "눌러 주세요"라고 하지 않는다.
+        */}
+        {messages.some((message) => !message.mine) && <ReactionGuide />}
 
         <ul className="mt-2 divide-y divide-fill">
           {messages.map((message) => (
