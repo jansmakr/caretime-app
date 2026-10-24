@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { StageNotice } from "@/components/common/StageNotice";
 import { ChatRoom } from "@/components/chat/ChatRoom";
 import { readMyPostIds } from "@/features/chat/myPosts";
 import { fetchFieldReports } from "@/features/chat/repository";
@@ -73,7 +72,6 @@ export default async function ChatPage({
   return (
     <>
       <AppHeader title="💬 실시간 현장톡" backHref="/" />
-      <StageNotice />
       <ChatRoom
         renderedAt={new Date().toISOString()}
         initialFilter={filter}
