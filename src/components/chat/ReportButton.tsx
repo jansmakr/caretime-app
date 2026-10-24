@@ -62,9 +62,10 @@ export function ReportButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="min-h-[44px] shrink-0 px-2 text-[13px] font-semibold text-ink-faint"
+        className="min-h-[44px] shrink-0 px-2 text-[14px] font-semibold text-ink-muted"
       >
-        신고
+        {/* "신고" 두 글자는 무엇을 하는 버튼인지 덜 읽혔다. */}
+        신고하기
       </button>
     );
   }

@@ -114,7 +114,7 @@ describe("펼친 답글 목록", () => {
     expect(html).toContain("bg-fill");
     expect(html).toContain("text-[15px]");
     expect(html).toContain("text-[14px]");
-    expect(html.match(/>신고</g)).toHaveLength(1);
+    expect(html.match(/>신고하기</g)).toHaveLength(1);
     expect(html).toContain("나 · 내 답글");
   });
 });

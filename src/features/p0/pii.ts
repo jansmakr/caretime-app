@@ -80,6 +80,23 @@ export function findPii(text: string): PiiFinding | null {
   return null;
 }
 
+/** 전화번호로 보이는 것이 있는가. 화면의 올리기 전 확인이 쓴다(features/chat/composeCheck). */
+export function hasPhoneNumber(text: string): boolean {
+  return PHONE.test(text);
+}
+
+/**
+ * 전화번호로 보이는 것을 모두 지운다. 지운 자리의 겹친 띄어쓰기는 하나로 줄인다.
+ * 화면이 "번호 지우기"를 누를 때만 쓴다 — 서버는 지우지 않고 거절한다.
+ */
+export function stripPhoneNumbers(text: string): string {
+  return text
+    .replace(new RegExp(PHONE.source, "g"), "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
 /**
  * 병원 대표번호는 막지 않는다.
  *

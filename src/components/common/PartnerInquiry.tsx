@@ -95,13 +95,21 @@ export function PartnerInquiry({ variant = "card" }: { variant?: "card" | "row" 
   if (!open && variant === "quiet") {
     return (
       <section className="mt-8 border-t border-line pt-4">
+        {/*
+          살짝만 띄운다(2026-10-18). 회색 한 줄은 병원 담당자도 지나쳤다. 옅은 바탕·
+          이모지·파란 글자까지만 쓴다 — 현장톡 주 버튼(진한 파랑, 큰 글씨)보다 눈에
+          띄면 안 된다(원칙 1). 카드 그림자·채운 버튼은 쓰지 않는다.
+        */}
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="flex min-h-[44px] w-full items-center justify-between gap-3 text-left"
+          className="flex min-h-[48px] w-full items-center justify-between gap-3 rounded-field bg-fill px-4 text-left active:brightness-95"
         >
-          <span className="break-keep text-[16px] text-ink-muted">의료기관 담당자이신가요?</span>
-          <span className="shrink-0 text-[16px] font-semibold text-ink-muted underline">사전 신청 안내</span>
+          <span className="flex items-center gap-2 break-keep text-[16px] text-ink">
+            <span aria-hidden>🏥</span>
+            의료기관 담당자이신가요?
+          </span>
+          <span className="shrink-0 text-[16px] font-semibold text-blue-deep underline">사전 신청 안내</span>
         </button>
       </section>
     );

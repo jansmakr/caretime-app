@@ -36,6 +36,7 @@ export const USER_REPORT_DISCLAIMER =
 
 /**
  * 글·답글을 올리기 직전의 안내. 작성창과 답글 칸이 **같은 문장**을 쓴다.
- * 진단 요구를 감지하는 확인창은 아직 없다(PR-A 가 머지되면 두 곳에 함께 붙인다).
+ * 문장은 작성창 안내를 한 줄로 줄인 #14 의 것이다(2026-10-25 에 하나로 맞춤).
+ * 진단 요구 확인 창(ComposeCheckSheet)은 아직 작성창에만 붙어 있다.
  */
-export const FACT_ONLY_NOTICE = "직접 확인한 사실만 적어 주세요. 진단이나 치료 판단은 적지 않습니다.";
+export const FACT_ONLY_NOTICE = "진단·치료 조언, 의료기관 비방·욕설은 적지 말아 주세요.";
