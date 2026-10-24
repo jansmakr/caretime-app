@@ -57,7 +57,7 @@ export function ReportButton({
         onClick={() => setOpen(true)}
         className="min-h-[44px] shrink-0 px-2 text-[14px] font-semibold text-ink-muted"
       >
-        {/* "신고" 두 글자는 무엇을 하는 버튼인지 덜 읽혔다. 케타 안내가 이 이름을 부른다. */}
+        {/* "신고" 두 글자는 무엇을 하는 버튼인지 덜 읽혔다. */}
         신고하기
       </button>
     );
