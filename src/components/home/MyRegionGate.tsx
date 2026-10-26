@@ -16,7 +16,7 @@ import { regionLabel } from "@/features/regions/sigungu";
  *
  * 좌표를 받지 않는다. "내 위치로 선택"(2026-10-14 홈에도 추가)은 기기에서 카카오로
  * 좌표를 보내 **구 이름만** 받아 오고 좌표는 버린다(features/regions/geolocate).
- * 위치 권한을 이미 허락한 사람은 누르지 않아도 채워진다(useAutoLocate).
+ * 지역이 비어 있으면 화면을 열 때 권한 창이 뜨고, 허락하면 채워진다(useAutoLocate).
  * 고른 값은 **이 기기에만** 남는다(localStorage, 서버로 가지 않는다).
  *
  * ── 이 화면의 결정은 하나다 ─────────────────────────────────

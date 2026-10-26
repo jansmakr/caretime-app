@@ -103,6 +103,61 @@ export function canLocate(): boolean {
 
 const SCRIPT_ID = "kakao-maps-sdk";
 const GEO_TIMEOUT_MS = 10_000;
+/**
+ * 지도 도구를 받고 이름으로 바꾸는 데 기다리는 한도. 스크립트가 onerror 없이 멈추거나
+ * (느린 망·차단), 카카오가 콜백을 부르지 않으면(도메인 미등록 등) 끝없이 기다리게 된다.
+ * 그동안 화면은 막히지 않지만 "찾는 중"인지 "못 찾은" 것인지 알 수 없다.
+ */
+const SDK_TIMEOUT_MS = 8_000;
+
+/**
+ * 못 찾았을 때 보이는 문구. **전부 "직접 골라 주세요."로 끝난다** — 실패해도 할 일은
+ * 하나이고, 그것을 말해 준다(원칙 8). 테스트가 이 끝맺음을 붙든다.
+ */
+/**
+ * 인앱 브라우저(카카오톡·네이버·인스타그램·페이스북·라인·다음 앱 안에서 연 화면).
+ * 이 안에서는 위치 권한 창이 아예 뜨지 않거나, 떠도 앱이 막아 조용히 실패하는 일이
+ * 잦다. 그러면 사용자는 "찾는 중"을 15초 넘게 보다가 이유 없는 실패를 받는다.
+ * 그래서 묻기 전에 알아보고, 다른 브라우저로 여는 길을 한 줄로 알려 준다.
+ * **순수 함수다** — UA 문자열만 본다. UA 는 판단에만 쓰고 어디에도 보내지 않는다.
+ */
+export function isInAppBrowser(userAgent: string): boolean {
+  return /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|\bLine\/|DaumApps/i.test(userAgent);
+}
+
+/** 인앱 브라우저에서 보이는 한 줄. */
+export const IN_APP_NOTICE = "이 앱 안에서는 위치를 찾지 못할 수 있어요. 크롬 등으로 열어 주세요.";
+
+/** 지금 화면이 인앱 브라우저인가. 서버 렌더에서는 false. */
+export function inAppBrowserNow(): boolean {
+  return typeof navigator !== "undefined" && isInAppBrowser(navigator.userAgent ?? "");
+}
+
+export const LOCATE_FAIL = {
+  denied: "위치 권한이 꺼져 있습니다. 직접 골라 주세요.",
+  unavailable: "지금은 위치를 알 수 없습니다. 직접 골라 주세요.",
+  timeout: "위치를 찾는 데 너무 오래 걸립니다. 직접 골라 주세요.",
+  unsupported: "위치를 쓸 수 없는 기기입니다. 직접 골라 주세요.",
+  sdk: "지도 서비스를 불러오지 못했습니다. 직접 골라 주세요.",
+  geocode: "지역 이름을 찾지 못했습니다. 직접 골라 주세요.",
+} as const;
+
+/** 한도 안에 끝나지 않으면 실패로 본다. */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(id);
+        reject(e);
+      },
+    );
+  });
+}
 
 interface KakaoGeocoder {
   coord2RegionCode: (
@@ -125,9 +180,9 @@ function kakao(): { maps?: KakaoMaps } | undefined {
 }
 
 /**
- * SDK 를 **버튼을 누른 뒤에** 불러온다.
+ * SDK 를 **좌표를 받은 뒤에** 불러온다.
  *
- * 페이지를 열 때 같이 불러오면, 위치를 쓸 생각이 없는 사람의 브라우저도 카카오에
+ * 페이지를 열 때 같이 불러오면, 위치를 허락하지 않은 사람의 브라우저도 카카오에
  * 접속한다. 그건 우리가 하지 않기로 한 일이다(추적 스크립트를 안 붙이는 것과
  * 같은 이유). `autoload=false` 로 받아서 우리가 부를 때만 초기화한다.
  */
@@ -163,8 +218,8 @@ function loadSdk(): Promise<KakaoMaps> {
 }
 
 /**
- * 브라우저에게 좌표를 묻는다. 버튼을 눌렀을 때, 또는 **이미 허락된 경우에만**
- * 화면을 열 때 불린다(isLocationAllowed). 처음 온 사람에게 먼저 묻지 않는다.
+ * 브라우저에게 좌표를 묻는다. 버튼을 눌렀을 때, 또는 화면을 열 때(shouldAutoLocate)
+ * 불린다. 권한이 정해지지 않았으면 여기서 브라우저의 권한 창이 뜬다.
  */
 function askPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -197,38 +252,56 @@ function toNames(maps: KakaoMaps, lat: number, lng: number): Promise<RegionNames
   });
 }
 
+/** 브라우저가 알려 주는 위치 권한 상태. 조회를 못 하면 "unknown". */
+export type LocationPermission = "granted" | "prompt" | "denied" | "unknown";
+
 /**
- * 이 사이트에 위치 권한을 **이미 허락했는가.** 묻지 않고 확인만 한다.
+ * 이 사이트의 위치 권한 상태. **묻지 않고 확인만 한다.**
  *
- * 권한 상태 조회(Permissions API)는 권한 창을 띄우지 않는다. "granted" 일 때만 true 다.
- * 처음 온 사람("prompt")·거부한 사람("denied")·조회를 못 하는 브라우저는 모두 false —
- * 그 사람들에게는 화면을 열자마자 권한 창을 띄우지 않는다. 급한 사람에게 첫 화면부터
- * 결정을 하나 더 얹는 일이고(원칙 1), 브라우저도 누르지 않은 권한 요청을 막거나
- * 조용히 묻지 않게 바꾼다.
+ * 권한 상태 조회(Permissions API)는 권한 창을 띄우지 않는다. 조회를 못 하는 브라우저
+ * (옛 사파리 등)는 "unknown" 이고, 그때는 물어봐야 알 수 있다.
  */
-export async function isLocationAllowed(): Promise<boolean> {
+export async function locationPermission(): Promise<LocationPermission> {
   try {
-    if (typeof navigator === "undefined" || !navigator.permissions?.query) return false;
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return "unknown";
     const status = await navigator.permissions.query({ name: "geolocation" as PermissionName });
-    return status.state === "granted";
+    const state = status.state;
+    return state === "granted" || state === "prompt" || state === "denied" ? state : "unknown";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
 /**
- * 자동으로 찾아도 되는가. **순수 함수다** — 테스트가 이 판정을 붙든다.
+ * 화면을 열 때 자동으로 찾아도 되는가. **순수 함수다** — 테스트가 이 판정을 붙든다.
  *
- * 저장된 지역이 있으면 찾지 않는다. 사용자가 직접 고른 값을 위치가 덮으면,
- * 다른 동네에 잠깐 들른 날 글이 엉뚱한 구에 붙는다.
+ * ── 접속하면 바로 묻는다 (2026-10-18) ───────────────────────
+ * 전에는 이미 허락한 사람에게만 자동으로 찾았다. 처음 온 사람은 "내 위치로 선택"을
+ * 눌러야 했는데, 그 버튼을 찾기 전에 지역 없이 글을 쓰거나 지역을 손으로 고르느라
+ * 멈췄다. 사용자 요청으로 **처음 온 사람에게도 바로 권한 창을 띄운다.**
+ *
+ * 지키는 것:
+ *   · 거부한 사람("denied")에게는 다시 묻지 않는다 — 브라우저도 묻지 못한다
+ *   · 저장된 지역이 있으면 묻지 않는다 — 고른 값을 위치가 덮으면, 다른 동네에 잠깐
+ *     들른 날 글이 엉뚱한 구에 붙는다
+ *   · 한 번 열린 동안(탭)에는 한 번만 묻는다(alreadyAsked) — 창을 닫고 홈 → 현장톡으로
+ *     옮길 때마다 다시 뜨면 급한 사람의 손을 계속 막는다. 기억은 메모리에만 둔다
+ *     (기기에 새 값을 저장하지 않는다)
+ *   · 이미 허락한 사람은 alreadyAsked 와 상관없이 찾는다 — 창이 뜨지 않는다
+ *   · 좌표가 나가는 길은 버튼과 같다(locateMyRegion). 권한 창에서 거부하면 카카오에
+ *     접속하지 않는다 — SDK 는 좌표를 받은 뒤에 불러온다
  */
 export function shouldAutoLocate(input: {
   regionLoaded: boolean;
   hasRegion: boolean;
   keyConfigured: boolean;
-  permissionGranted: boolean;
+  permission: LocationPermission;
+  alreadyAsked: boolean;
 }): boolean {
-  return input.regionLoaded && !input.hasRegion && input.keyConfigured && input.permissionGranted;
+  if (!input.regionLoaded || input.hasRegion || !input.keyConfigured) return false;
+  if (input.permission === "denied") return false;
+  if (input.permission === "granted") return true;
+  return !input.alreadyAsked;
 }
 
 /**
@@ -247,9 +320,9 @@ export async function locateMyRegion(): Promise<LocateOutcome> {
 
   let maps: KakaoMaps;
   try {
-    maps = await loadSdk();
+    maps = await withTimeout(loadSdk(), SDK_TIMEOUT_MS);
   } catch {
-    return { kind: "failed", reason: "지도 서비스를 불러오지 못했습니다. 직접 골라 주세요." };
+    return { kind: "failed", reason: LOCATE_FAIL.sdk };
   }
 
   try {
@@ -257,11 +330,28 @@ export async function locateMyRegion(): Promise<LocateOutcome> {
      * 좌표를 꺼내 쓰고 바로 버린다. 지역 변수 둘이 전부이고, 이 블록을 벗어나면
      * 참조가 남지 않는다. 바깥으로 나가는 것은 names 뿐이다.
      */
-    const names = await toNames(maps, position.coords.latitude, position.coords.longitude);
+    const names = await withTimeout(
+      toNames(maps, position.coords.latitude, position.coords.longitude),
+      SDK_TIMEOUT_MS,
+    );
     return matchRegion(names);
   } catch {
-    return { kind: "failed", reason: "지역 이름을 찾지 못했습니다. 직접 골라 주세요." };
+    return { kind: "failed", reason: LOCATE_FAIL.geocode };
   }
+}
+
+/**
+ * 화면을 열 때 찾다가 못 찾았으면 무엇을 알릴까. **순수 함수다.** 알릴 것이 없으면 null.
+ *
+ * 거부는 알리지 않는다 — 방금 스스로 고른 것이고, "권한이 꺼져 있습니다"를 되돌려
+ * 주면 탓하는 말이 된다. 그 밖의 실패(시간 초과·지도 도구 로드 실패·이름 변환 실패·
+ * 목록과 맞지 않음)는 허락하고 기다린 사람에게 아무 말이 없으면 "찾는 중인가?" 하고
+ * 기다리게 되므로 한 줄로 알린다. 어느 경우든 막지 않는다 — 직접 고르는 길은 그대로다.
+ */
+export function autoLocateNotice(result: LocateOutcome): string | null {
+  if (result.kind === "matched" || result.kind === "sido-only") return null;
+  if (result.kind === "failed" && result.reason === LOCATE_FAIL.denied) return null;
+  return result.reason;
 }
 
 /**
@@ -270,8 +360,8 @@ export async function locateMyRegion(): Promise<LocateOutcome> {
  */
 function describeGeoError(e: unknown): string {
   const code = (e as GeolocationPositionError | undefined)?.code;
-  if (code === 1) return "위치 권한이 꺼져 있습니다. 직접 골라 주세요.";
-  if (code === 2) return "지금은 위치를 알 수 없습니다. 직접 골라 주세요.";
-  if (code === 3) return "위치를 찾는 데 너무 오래 걸립니다. 직접 골라 주세요.";
-  return "위치를 쓸 수 없는 기기입니다. 직접 골라 주세요.";
+  if (code === 1) return LOCATE_FAIL.denied;
+  if (code === 2) return LOCATE_FAIL.unavailable;
+  if (code === 3) return LOCATE_FAIL.timeout;
+  return LOCATE_FAIL.unsupported;
 }

@@ -88,9 +88,10 @@ export function ChatRoom({
   const isMyId = useCallback((id: string) => myIds.has(id), [myIds]);
 
   /*
-   * 위치 권한을 이미 허락한 사람은 지역을 알아서 채운다(features/regions/useAutoLocate).
+   * 지역이 비어 있으면 화면을 열 때 위치로 채운다(features/regions/useAutoLocate).
    * 채웠으면 한 줄로 알린다 — 모르는 사이에 글에 지역이 붙으면 안 된다.
    * 바꾸는 길은 작성창의 "올라갈 위치 바꾸기"다.
+   * 못 찾았으면(거부 제외) 그 이유를 한 줄로 알린다 — 문구는 "직접 골라 주세요."로 끝난다.
    */
   const autoPick = useCallback(
     (picked: MyRegion) => {
@@ -99,7 +100,7 @@ export function ChatRoom({
     },
     [saveRegion, show],
   );
-  useAutoLocate({ regionLoaded, region: myRegion, onPick: autoPick });
+  useAutoLocate({ regionLoaded, region: myRegion, onPick: autoPick, onFail: show });
 
   useEffect(() => {
     setNow(new Date());

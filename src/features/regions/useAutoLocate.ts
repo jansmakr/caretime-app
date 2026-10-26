@@ -1,23 +1,39 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { canLocate, isLocationAllowed, locateMyRegion, shouldAutoLocate } from "./geolocate";
+import {
+  IN_APP_NOTICE,
+  autoLocateNotice,
+  canLocate,
+  inAppBrowserNow,
+  locateMyRegion,
+  locationPermission,
+  shouldAutoLocate,
+} from "./geolocate";
 import { type MyRegion } from "./sigungu";
 
 /**
- * 위치 권한을 **이미 허락한 사람**에게는 화면을 열 때 지역을 알아서 채운다.
+ * 이 탭에서 이미 권한 창을 띄웠는가. **메모리에만 있다** — 기기에 저장하지 않는다.
+ * 새로 열면 다시 묻는다(지역을 아직 안 골랐고 거부하지도 않았을 때만).
+ */
+let askedThisTab = false;
+
+/**
+ * 화면을 열 때 지역이 비어 있으면 **위치로 바로 찾는다.**
  *
- * ── 처음 온 사람에게는 묻지 않는다 ──────────────────────────
- * 권한 상태가 "granted" 일 때만 돈다(isLocationAllowed). 처음 온 사람은 "내 위치로
- * 선택"을 한 번 누르면 되고, 그다음부터는 지역이 비어 있을 때 자동으로 채워진다.
- * 화면을 열자마자 권한 창을 띄우지 않는 이유는 geolocate.isLocationAllowed 에 있다.
+ * ── 접속하면 바로 묻는다 (2026-10-18) ───────────────────────
+ * 처음 온 사람에게도 권한 창을 띄운다. 언제 묻고 언제 안 묻는지는
+ * geolocate.shouldAutoLocate 에 있다(거부한 사람·지역을 고른 사람에게는 묻지 않고,
+ * 한 탭에서 한 번만 묻는다).
  *
  * ── 고른 값을 덮지 않는다 ───────────────────────────────────
- * 저장된 지역이 있으면 아무것도 하지 않는다(shouldAutoLocate).
+ * 저장된 지역이 있으면 아무것도 하지 않는다.
  *
- * ── 실패는 조용히 끝난다 ────────────────────────────────────
- * 사용자가 누른 것이 아니므로 실패 문구를 띄우지 않는다. 버튼과 직접 고르는 길은
- * 그대로 남아 있다. 좌표는 locateMyRegion 밖으로 나오지 않는다 — 버튼과 같은 경로다.
+ * ── 실패해도 막지 않는다 ────────────────────────────────────
+ * 버튼과 직접 고르는 길은 그대로 남아 있다. onFail 을 넘긴 화면(현장톡)에는 거부를
+ * 뺀 실패를 한 줄로 알린다(geolocate.autoLocateNotice) — 허락하고 기다린 사람이
+ * "찾는 중인가?" 하고 멈추지 않게. 넘기지 않은 화면(홈)은 조용히 끝난다 — 지역 카드가
+ * 그대로 보이므로 직접 고르면 된다. 좌표는 locateMyRegion 밖으로 나오지 않는다 — 버튼과 같은 경로다.
  *
  * 한 화면에서 한 번만 돈다. 지역을 지운 뒤 같은 화면에서 다시 채우지 않는다 —
  * 지운 사람의 뜻을 위치가 되돌리면 안 된다.
@@ -26,10 +42,12 @@ export function useAutoLocate({
   regionLoaded,
   region,
   onPick,
+  onFail,
 }: {
   regionLoaded: boolean;
   region: MyRegion | null;
   onPick: (region: MyRegion) => void;
+  onFail?: (reason: string) => void;
 }): void {
   const tried = useRef(false);
 
@@ -40,25 +58,40 @@ export function useAutoLocate({
 
     let live = true;
     void (async () => {
-      const permissionGranted = await isLocationAllowed();
+      const permission = await locationPermission();
       if (
         !live ||
         !shouldAutoLocate({
           regionLoaded,
           hasRegion: region !== null,
           keyConfigured: canLocate(),
-          permissionGranted,
+          permission,
+          alreadyAsked: askedThisTab,
         })
       ) {
         return;
       }
+      if (permission !== "granted") askedThisTab = true;
+      /*
+       * 인앱 브라우저(카카오톡 등)는 권한 창이 안 뜨는 일이 잦다. 아직 허락받지 않았으면
+       * 묻지 않고 "크롬 등으로 열어 주세요" 한 줄만 알린다. 이미 허락된 곳이면 그대로 찾는다.
+       */
+      if (permission !== "granted" && inAppBrowserNow()) {
+        onFail?.(IN_APP_NOTICE);
+        return;
+      }
       const result = await locateMyRegion();
       if (!live) return;
-      if (result.kind === "matched" || result.kind === "sido-only") onPick(result.region);
+      if (result.kind === "matched" || result.kind === "sido-only") {
+        onPick(result.region);
+        return;
+      }
+      const notice = autoLocateNotice(result);
+      if (notice !== null) onFail?.(notice);
     })();
 
     return () => {
       live = false;
     };
-  }, [regionLoaded, region, onPick]);
+  }, [regionLoaded, region, onPick, onFail]);
 }
