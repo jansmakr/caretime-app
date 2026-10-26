@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import { PostTime } from "@/components/chat/PostTime";
 import { ReportButton } from "@/components/chat/ReportButton";
-import { formatChatAgo } from "@/features/chat/service";
 import {
   RateLimitedError,
   ReportRejectedError,
@@ -111,7 +111,7 @@ export function ReplyListView({
               <span className="text-[14px] font-semibold text-ink-muted">
                 {mine ? `${reply.handle} · 내 답글` : reply.handle}
               </span>
-              <span className="text-[14px] text-ink-faint">{formatChatAgo(reply.createdAt, now)}</span>
+              <PostTime createdAt={reply.createdAt} now={now} />
               {/* 내 답글은 신고하지 않는다(원글과 같다). */}
               {!mine && (
                 <span className="ml-auto">

@@ -1,3 +1,5 @@
+import { formatMomentAgo } from "@/lib/relativeTime";
+
 /**
  * 글이 얼마나 오래됐는가.
  *
@@ -17,20 +19,68 @@ export function postAgeDays(createdAt: string, now: Date): number {
   return Math.max(0, Math.floor((now.getTime() - written) / DAY_MS));
 }
 
-/**
- * 오래된 글의 날짜. 올해 글은 "3월 14일", 지난해 글은 "2025년 3월 14일".
- *
- * 연도를 늘 적지 않는 이유: 올해 글에 연도를 붙이면 읽을 글자가 늘어난다(원칙 4).
- * 해가 다르면 그때는 연도가 가장 중요한 정보다.
- */
-export function formatPostDate(createdAt: string, now: Date): string {
-  const written = new Date(createdAt);
-  if (Number.isNaN(written.getTime())) return "";
+/* ────────────────────────────────────────────────────────────
+ * 글 카드·답글의 시간 한 줄 (2026-10-26)
+ * ──────────────────────────────────────────────────────────── */
 
-  const month = written.getMonth() + 1;
-  const day = written.getDate();
-  const sameYear = written.getFullYear() === now.getFullYear();
-  return sameYear
-    ? `${month}월 ${day}일`
-    : `${written.getFullYear()}년 ${month}월 ${day}일`;
+
+const HOUR_MS = 60 * 60_000;
+
+/** 서울 시간의 연·월·일·시·분. 서버(UTC)와 브라우저가 같은 글자를 그리게 시간대를 고정한다. */
+function seoulParts(date: Date): { y: number; mo: number; d: number; h: number; mi: number } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return { y: get("year"), mo: get("month"), d: get("day"), h: get("hour"), mi: get("minute") };
 }
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+export interface PostTime {
+  /** 화면에 보이는 한 줄. "10분 전 · 오후 5:12" · "3일 전 · 10/23 21:40" */
+  text: string;
+  /** 스크린리더가 읽는 문장. "2026년 10월 23일 오후 9시 40분, 3일 전" */
+  spoken: string;
+  /** <time dateTime>. ISO 그대로. */
+  iso: string;
+  /** 24시간이 지났는가. 지났으면 시간 글자를 옅게 그린다. */
+  stale: boolean;
+}
+
+/**
+ * "상대 시간 · 정확한 시각". **서울 시간 기준.**
+ *
+ * 상대 시간만 있으면 "3일 전"이 어느 밤인지 셈해야 하고, 정확한 시각만 있으면
+ * 얼마나 지났는지 셈해야 한다. 둘을 한 줄에 두면 셈이 없다(원칙 5).
+ * 오늘 글은 "오후 5:12", 그 밖은 "10/23 21:40", 해가 다르면 "2025/10/23 21:40".
+ */
+export function formatPostTime(createdAt: string, now: Date): PostTime | null {
+  const written = new Date(createdAt);
+  if (Number.isNaN(written.getTime())) return null;
+
+  const w = seoulParts(written);
+  const n = seoulParts(now);
+  const sameDay = w.y === n.y && w.mo === n.mo && w.d === n.d;
+  const half = w.h < 12 ? "오전" : "오후";
+  const h12 = w.h % 12 === 0 ? 12 : w.h % 12;
+
+  const exact = sameDay
+    ? `${half} ${h12}:${pad(w.mi)}`
+    : `${w.y === n.y ? "" : `${w.y}/`}${w.mo}/${w.d} ${pad(w.h)}:${pad(w.mi)}`;
+  const relative = formatMomentAgo(createdAt, now);
+
+  return {
+    text: `${relative} · ${exact}`,
+    spoken: `${w.y}년 ${w.mo}월 ${w.d}일 ${half} ${h12}시 ${w.mi}분, ${relative}`,
+    iso: written.toISOString(),
+    stale: now.getTime() - written.getTime() >= 24 * HOUR_MS,
+  };
+}
+
