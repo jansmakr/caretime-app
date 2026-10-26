@@ -26,6 +26,10 @@ import { CHAT_BODY_MAX, CHAT_TOPIC_MAX } from "@/features/chat/types";
  * 멱등성: 글 id 를 클라이언트가 만든다. 같은 요청이 두 번 오면 두 번째는 기본키에서
  * 막히고, 그것을 **성공으로** 돌려준다. 모바일에서 응답이 늦어 다시 누르는 일은 흔하고,
  * 그때 글이 두 개 생기는 것보다 같은 글이 하나 있는 편이 맞다.
+ *
+ * 답글도 여기로 온다(parentId). 답글은 글과 같은 표·같은 검증·같은 신고 격리를 탄다
+ * (migration 20261022). 다른 것은 셋이다 — 제한을 따로 세고(limits.replies), 같은 내용
+ * 비교를 부모 글 기준으로 하고, 지역·병원 칸을 비운다. 답글에 답글은 없다.
  */
 export const dynamic = "force-dynamic";
 
@@ -41,6 +45,23 @@ interface Body {
   sigungu?: unknown;
   hospitalId?: unknown;
   hospitalName?: unknown;
+  parentId?: unknown;
+}
+
+/** 답글을 달 부모 글. select("*") 로 읽는다 — parent_id 컬럼이 아직 없는 DB 를 알아보려고. */
+interface ParentRow {
+  id: string;
+  category: string;
+  visibility: string;
+  parent_id?: string | null;
+}
+
+/** 최근 쓴 것. parent_id 가 없는 DB(migration 전)에서는 키가 없다 — 그때는 전부 원글이다. */
+interface RecentRow {
+  created_at: string;
+  body: string;
+  hospital_id: string | null;
+  parent_id?: string | null;
 }
 
 function text(value: unknown, max: number): string | null {
@@ -87,7 +108,17 @@ export async function POST(request: NextRequest) {
   const sigungu =
     payload.sigungu === null || payload.sigungu === undefined ? null : text(payload.sigungu, 30);
 
-  if (!id || !category || !body) return fail(400, "글을 저장할 수 없습니다.", freshToken);
+  const parentId =
+    payload.parentId === null || payload.parentId === undefined
+      ? null
+      : typeof payload.parentId === "string" && UUID.test(payload.parentId)
+        ? payload.parentId
+        : undefined;
+  if (parentId === undefined) return fail(400, "답글을 저장할 수 없습니다.", freshToken);
+  const isReply = parentId !== null;
+
+  // 답글은 분류를 고르지 않는다. 부모 글의 분류를 따른다(아래에서 채운다).
+  if (!id || (!category && !isReply) || !body) return fail(400, "글을 저장할 수 없습니다.", freshToken);
 
   /*
    * 개인정보는 올라가기 전에 막는다. 한 번 올라간 값은 지우기 전에 이미 읽힌다.
@@ -115,7 +146,30 @@ export async function POST(request: NextRequest) {
   const abuse = findAbuse(body);
   if (abuse) return fail(422, abuse.message, freshToken);
   // 시군구만 있으면 어디인지 알 수 없다. DB 의 CHECK 와 같은 규칙을 여기서 먼저 본다.
-  if (sigungu !== null && sido === null) return fail(400, "지역이 올바르지 않습니다.", freshToken);
+  if (!isReply && sigungu !== null && sido === null) {
+    return fail(400, "지역이 올바르지 않습니다.", freshToken);
+  }
+
+  /*
+   * 답글을 달 수 있는 글인가. 보이는 원글에만 단다 — 내려간 글에 달린 답글은 아무도
+   * 못 보고(답글 뷰가 부모 상태를 함께 본다), 답글에 단 답글은 화면에 자리가 없다.
+   */
+  let parent: ParentRow | null = null;
+  if (isReply) {
+    const { data, error: parentError } = await admin
+      .from("field_reports")
+      .select("*")
+      .eq("id", parentId)
+      .maybeSingle();
+    if (parentError) return fail(500, "저장하지 못했습니다.", freshToken);
+    parent = data as ParentRow | null;
+    // 컬럼이 없다 = migration 20261022 전이다. 화면이 먼저 나간 경우다.
+    if (parent && !("parent_id" in parent)) return fail(503, "답글은 아직 준비 중입니다.", freshToken);
+    if (!parent || parent.visibility !== "VISIBLE") {
+      return fail(404, "답글을 달 수 없는 글입니다. 지워졌거나 내려간 글입니다.", freshToken);
+    }
+    if (parent.parent_id) return fail(400, "답글에는 답글을 달 수 없습니다.", freshToken);
+  }
 
   /*
    * ── 3. 멱등성 — **제한보다 먼저** ──
@@ -146,18 +200,23 @@ export async function POST(request: NextRequest) {
 
   // ── 4. 제한 ──
   const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
+  /*
+   * select("*") — parent_id 로 글과 답글을 가른다. 이름으로 고르면 migration 전 DB 에서
+   * 이 조회가 실패하고, 그러면 **원글 쓰기까지** 막힌다.
+   */
   const { data: recent } = await admin
     .from("field_reports")
-    .select("created_at,body,hospital_id")
+    .select("*")
     .eq("guest_id", session.id)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(200);
 
-  const rows = (recent ?? []) as { created_at: string; body: string; hospital_id: string | null }[];
+  const all = (recent ?? []) as RecentRow[];
+  const rows = all.filter((r) => (isReply ? Boolean(r.parent_id) : !r.parent_id));
   const limits = resolveLimits();
   const verdict = checkRate({
-    action: "posts",
+    action: isReply ? "replies" : "posts",
     limits,
     recentTimestamps: rows.map((r) => Date.parse(r.created_at)),
     now: Date.now(),
@@ -184,13 +243,14 @@ export async function POST(request: NextRequest) {
    * "지역만 아는 글"끼리 비교하는 것이 맞고, 병원별 글과 섞으면 서로 다른 병원 이야기가
    * 같은 내용이라는 이유로 막힌다.
    */
+  // 답글은 부모 글 기준으로 묶는다 — 다른 글에 같은 "지금 열려 있어요"를 다는 것은 막지 않는다.
   if (
     isDuplicateBody({
       text: body,
-      hospitalId: hospitalId ?? "",
+      hospitalId: isReply ? parentId : (hospitalId ?? ""),
       previous: rows.map((r) => ({
         text: r.body,
-        hospitalId: r.hospital_id ?? "",
+        hospitalId: (isReply ? r.parent_id : r.hospital_id) ?? "",
         createdAt: Date.parse(r.created_at),
       })),
       now: Date.now(),
@@ -201,21 +261,42 @@ export async function POST(request: NextRequest) {
   }
 
   // ── 5. 저장 ──
-  const { error } = await admin.from("field_reports").insert({
-    id,
-    category,
-    topic: payload.topic === null || payload.topic === undefined ? null : text(payload.topic, CHAT_TOPIC_MAX),
-    body,
-    sido,
-    sigungu,
-    hospital_id: hospitalId,
-    hospital_name:
-      payload.hospitalName === null || payload.hospitalName === undefined
-        ? null
-        : text(payload.hospitalName, 60),
-    handle: session.nickname,
-    guest_id: session.id,
-  });
+  // 답글은 지역·병원·주제를 비운다. 그 글이 어디 이야기인지는 부모가 말한다.
+  // parent_id 는 답글일 때만 싣는다 — migration 전 DB 에서도 원글은 그대로 저장된다.
+  const { error } = await admin.from("field_reports").insert(
+    isReply && parent
+      ? {
+          id,
+          category: parent.category,
+          topic: null,
+          body,
+          sido: null,
+          sigungu: null,
+          hospital_id: null,
+          hospital_name: null,
+          handle: session.nickname,
+          guest_id: session.id,
+          parent_id: parent.id,
+        }
+      : {
+          id,
+          category,
+          topic:
+            payload.topic === null || payload.topic === undefined
+              ? null
+              : text(payload.topic, CHAT_TOPIC_MAX),
+          body,
+          sido,
+          sigungu,
+          hospital_id: hospitalId,
+          hospital_name:
+            payload.hospitalName === null || payload.hospitalName === undefined
+              ? null
+              : text(payload.hospitalName, 60),
+          handle: session.nickname,
+          guest_id: session.id,
+        },
+  );
 
   // 23505 = 같은 id 가 이미 있다. 두 번 눌린 것이고, 결과는 같다.
   if (error && error.code !== "23505") {

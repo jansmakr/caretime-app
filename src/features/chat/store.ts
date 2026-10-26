@@ -369,6 +369,16 @@ export async function deleteMyMessage(messageId: string): Promise<void> {
   }
 }
 
+/**
+ * 방금 이 브라우저가 쓴 답글을 내 것으로 기억한다. 내 글에 내가 단 답글을
+ * "새 답글"로 세지 않으려는 것이다. 새로고침 뒤에는 /api/guest 가 같은 id 를 준다
+ * (답글도 같은 표라 내 글 목록에 들어 있다).
+ */
+export function markMine(id: string): void {
+  if (snapshot.mineIds[id]) return;
+  commit({ mineIds: { ...snapshot.mineIds, [id]: true } });
+}
+
 export function myReactionsFor(messageId: string): ReactionKey[] {
   return snapshot.myReactions[messageId] ?? [];
 }

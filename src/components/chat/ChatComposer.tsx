@@ -12,6 +12,7 @@ import { appendTranscript } from "@/features/chat/voice";
 import { validateChatDraft } from "@/features/chat/service";
 import { sendChatMessage } from "@/features/chat/store";
 import { RateLimitedError, ReportRejectedError } from "@/features/chat/repository";
+import { FACT_ONLY_NOTICE } from "@/lib/copy";
 import { COOLDOWN_SECONDS, useChatNickname, useCooldownSeconds } from "@/features/chat/useChatRoom";
 import {
   CHAT_BODY_MAX,
@@ -306,7 +307,7 @@ export function ChatComposer({
         되고, 거짓인 경고는 다음 경고까지 안 읽히게 만든다(features/p0/abuse).
       */}
       <p className="mt-4 break-keep text-[14px] leading-relaxed text-ink-muted">
-        진단·치료 조언, 의료기관 비방·욕설은 적지 말아 주세요.
+        {FACT_ONLY_NOTICE}
       </p>
 
       {/*
