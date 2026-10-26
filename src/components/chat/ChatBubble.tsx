@@ -4,13 +4,12 @@ import { useId, useState } from "react";
 import Link from "next/link";
 import { SourceBadge } from "@/components/common/SourceBadge";
 import { ChatReactions } from "@/components/chat/ChatReactions";
+import { PostTime } from "@/components/chat/PostTime";
 import { ReplyPanel, ReplyToggle } from "@/components/chat/ReplySection";
 import { ReportButton } from "@/components/chat/ReportButton";
 import { ShareButton } from "@/components/chat/ShareButton";
 import type { ReactionKey } from "@/features/chat/reactions";
 import type { ReactionOutcome } from "@/features/chat/repository";
-import { formatChatAgo } from "@/features/chat/service";
-import { formatPostDate, postAgeDays } from "@/features/chat/age";
 import { buildShareText } from "@/features/chat/share";
 import type { ChatMessageView } from "@/features/chat/types";
 
@@ -61,10 +60,8 @@ export function ChatBubble({
   const place = [message.scope.hospitalName, message.scope.sigungu ?? message.scope.sido]
     .filter(Boolean)
     .join(" · ");
-  const age = postAgeDays(message.createdAt, now);
   const [repliesOpen, setRepliesOpen] = useState(false);
   const panelId = useId();
-  const dateLabel = formatPostDate(message.createdAt, now);
 
   return (
     <article>
@@ -84,13 +81,8 @@ export function ChatBubble({
           있어야 해서, 오래된 글일수록 날짜를 더 분명하게 보여준다(원칙 5).
         */}
         <span className="ml-auto shrink-0 text-right">
-          {age >= 30 ? (
-            <span className="block text-[13.5px] font-bold text-caution-ink">{dateLabel}</span>
-          ) : (
-            <span className="block text-[12.5px] font-medium text-ink-faint">
-              {formatChatAgo(message.createdAt, now)}
-            </span>
-          )}
+          {/* "상대 시간 · 정확한 시각"(서울). 색은 24시간·30일로 가른다(PostTime). */}
+          <PostTime createdAt={message.createdAt} now={now} />
         </span>
       </div>
 
