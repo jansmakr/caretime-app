@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { LiveInfoNotice } from "@/components/common/LiveInfoNotice";
 import { Toast, useToast } from "@/components/common/Toast";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
+import { ComposeOpenButton } from "@/components/chat/ComposeOpenButton";
 import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
-import { KetaGuide } from "@/components/chat/KetaGuide";
+import { ChatGuideFold } from "@/components/chat/ChatGuideFold";
 import { ReactionGuide } from "@/components/chat/ReactionGuide";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useMyRegion } from "@/features/regions/myRegion";
@@ -75,6 +75,14 @@ export function ChatRoom({
     initialMyPostIds,
   );
   const { message: toast, show } = useToast();
+  const [composing, setComposing] = useState(false);
+  const sent = useCallback(
+    (message: string) => {
+      show(message);
+      setComposing(false);
+    },
+    [show],
+  );
   // 답글 수·내 글의 새 답글. 읽기가 실패하면 enabled 가 false 이고 답글 버튼이 없다.
   const replies = useReplies(messages, myIds);
   const isMyId = useCallback((id: string) => myIds.has(id), [myIds]);
@@ -121,14 +129,41 @@ export function ChatRoom({
 
   return (
     <main className="space-y-3 px-4 pb-6 pt-3">
-      {/* 상단 고정 고지 — 의료기관 현장 상황이 항상 최우선. 접히지 않는다. */}
-      <LiveInfoNotice />
-
-      {/* 케타 안내 — AI 가 아닌 정해진 말풍선. 119 버튼이 여기 있다. 빈 방에서도 보인다. */}
-      <KetaGuide />
+      {/*
+        베타 · 유의 · 케타 안내를 한 줄로 접었다(2026-10-24). 펼치면 문구 그대로 나온다.
+        들어오자마자 글이 보여야 한다 — 세 덩어리가 360px 첫 화면을 다 차지했다.
+        119 는 머리띠에 항상 있다.
+      */}
+      <ChatGuideFold />
 
       {emptyRoom && <EmptyRoomLead />}
 
+      {/*
+        작성 기능이 닫혀 있을 때의 안내. 지금은 열려 있다(lib/demoContent).
+        플래그를 내리면 이쪽이 나온다 — 장애 때 쓰기만 닫는 경로다.
+
+        작성창은 접어 두고 [글쓰기]로 펼친다(2026-10-26). 올라온 글이 첫 화면에 먼저
+        보여야 한다. 올리면 다시 접는다 — 방금 올린 글이 목록 맨 위에 보이게.
+      */}
+      {isFieldTalkSharingLive ? (
+        composing ? (
+          <ChatComposer
+            myRegion={myRegion}
+            lastSentAt={lastSentAt}
+            onSent={sent}
+            onPickRegion={saveRegion}
+          />
+        ) : (
+          <ComposeOpenButton onOpen={() => setComposing(true)} />
+        )
+      ) : (
+        <ComposerClosedNotice />
+      )}
+
+      {/*
+        공유·조건은 작성창 아래, 목록 바로 위로 옮겼다(2026-10-24). 작성창의 [올리기]가
+        360px 첫 화면 안에 들어오게 하려는 것이고, 조건은 목록을 거르는 것이라 목록 옆이 맞다.
+      */}
       {/* 톡방 전체 공유. 공유할 글이 없을 때는 내리지 않는다 — 빈 방을 공유하라고 하지 않는다. */}
       {!emptyRoom && (
         <ShareButton text={buildRoomShareText()} scope={EMPTY_SCOPE} onResult={show} variant="block" />
@@ -142,21 +177,6 @@ export function ChatRoom({
           onChange={setFilter}
           onChangeRegion={saveRegion}
         />
-      )}
-
-      {/*
-        작성 기능이 닫혀 있을 때의 안내. 지금은 열려 있다(lib/demoContent).
-        플래그를 내리면 이쪽이 나온다 — 장애 때 쓰기만 닫는 경로다.
-      */}
-      {isFieldTalkSharingLive ? (
-        <ChatComposer
-          myRegion={myRegion}
-          lastSentAt={lastSentAt}
-          onSent={show}
-          onPickRegion={saveRegion}
-        />
-      ) : (
-        <ComposerClosedNotice />
       )}
 
       {/* 빈 방에서는 "대화 0건"을 그리지 않는다. 위의 안내가 이미 그 말을 하고 있다. */}

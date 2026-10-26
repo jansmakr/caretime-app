@@ -22,7 +22,8 @@ import { Call119Confirm } from "@/components/common/Call119Confirm";
  * 신고 안내 문장은 이 교체로 빠졌다. 신고 경로는 글마다 붙은 [신고하기] 버튼이 보여 준다.
  *
  * 문장을 더 늘리지 않는다(원칙 4). 작성창의 안내를 줄이고 남은 말이 여기 왔다.
- * 접지 않는다 — 119 줄이 접혀 있으면 안 된다.
+ * 2026-10-24 부터 /chat 에서는 "안내 보기" 안에 접힌다(ChatGuideFold). 119 는 머리띠에 항상 있어서
+ * 접혀도 119 로 가는 길은 첫 화면에 남는다.
  */
 export function KetaGuide() {
   const [confirming, setConfirming] = useState(false);
