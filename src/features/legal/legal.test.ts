@@ -118,7 +118,9 @@ describe("문서 읽기", () => {
   });
 
   it("★ 준비됐다면 policy_version 이 만들어지고 되읽힌다", () => {
-    const version = currentPolicyVersion();
+    // 실제 오늘이 아니라 고정한 시각으로 본다(아래 "시행일" 묶음과 같은 이유).
+    const now = new Date("2027-06-01T03:00:00Z");
+    const version = currentPolicyVersion(now);
     const ready = loadLegalDocument("terms").hasBody && loadLegalDocument("privacy").hasBody;
 
     /*
@@ -126,7 +128,7 @@ describe("문서 읽기", () => {
      * 시행일 전이면 null 이다 — 미래 날짜를 동의한 버전으로 적지 않는다.
      */
     const effective = loadLegalDocument("terms").effectiveDate ?? "9999-12-31";
-    const inForce = ready && todayInSeoul() >= effective;
+    const inForce = ready && todayInSeoul(now) >= effective;
     expect(version !== null).toBe(inForce);
     if (version !== null) {
       // 콘솔에서 본 값으로 어느 문서인지 알 수 있어야 한다.
@@ -216,12 +218,24 @@ describe("시행일 — 오기 전에는 효력이 없다", () => {
     expect(todayInSeoul(new Date("2026-10-13T03:00:00Z"))).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("★ 저장소의 문서는 아직 시행 중이 아니다 — policy_version 이 null 이다", () => {
-    /*
-     * 본문이 없으면 null, 본문이 있고 시행일이 미래여도 null, 시행일이 지나면 값이다.
-     * 세 경우 모두 "지금 시행 중인가"를 묻는 한 함수로 답한다.
-     */
-    expect(currentPolicyVersion()).toBeNull();
+  /*
+   * 저장소의 약관·방침은 **2026-10-26 부터 시행**이다(2026-10-26 결정).
+   * 전에는 인자 없이 불러 실제 오늘 날짜로 "아직 시행 전(null)"을 기대했고, 시행일이
+   * 오자 깨졌다. 지금은 시각을 고정해 넘긴다 — 날짜가 지나도 결과가 바뀌지 않는다.
+   * 본문이 없으면 null, 본문이 있고 시행일이 미래여도 null, 시행일이 지나면 값이다.
+   */
+  const IN_FORCE = "terms=2026-10-26;privacy=2026-10-26";
+
+  it("★ 시행일 전날(서울 2026-10-25 23:59)에는 null — 미래 날짜를 동의한 버전으로 적지 않는다", () => {
+    expect(currentPolicyVersion(new Date("2026-10-25T14:59:59Z"))).toBeNull();
+  });
+
+  it("★ 시행일 0시(서울 2026-10-26 00:00)부터 값이다", () => {
+    expect(currentPolicyVersion(new Date("2026-10-25T15:00:00Z"))).toBe(IN_FORCE);
+  });
+
+  it("시행일이 한참 지나도 같은 값이다", () => {
+    expect(currentPolicyVersion(new Date("2027-06-01T03:00:00Z"))).toBe(IN_FORCE);
   });
 });
 
