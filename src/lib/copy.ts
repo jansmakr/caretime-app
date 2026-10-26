@@ -33,3 +33,10 @@ export const VISIT_INTENT_DISCLAIMER =
  */
 export const USER_REPORT_DISCLAIMER =
   "본 정보는 방문 환자·보호자의 자율 공유 데이터이며, 의료기관 현장 진료 상황이 항상 최우선입니다. 응급 환자 대응 등에 따라 대기 및 접수 여부가 수시로 변동될 수 있습니다.";
+
+/**
+ * 글·답글을 올리기 직전의 안내. 작성창과 답글 칸이 **같은 문장**을 쓴다.
+ * 문장은 작성창 안내를 한 줄로 줄인 #14 의 것이다(2026-10-25 에 하나로 맞춤).
+ * 진단 요구 확인 창(ComposeCheckSheet)은 아직 작성창에만 붙어 있다.
+ */
+export const FACT_ONLY_NOTICE = "진단·치료 조언, 의료기관 비방·욕설은 적지 말아 주세요.";

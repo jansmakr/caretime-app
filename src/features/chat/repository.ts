@@ -415,3 +415,133 @@ export function subscribeFieldReports(
     void client.removeChannel(channel);
   };
 }
+
+// ─── 답글 ──────────────────────────────────────────────────
+/*
+ * 답글은 원글과 같은 표(field_reports.parent_id)에 있고 읽기는 따로 연 뷰로 한다
+ * (migration 20261022). 원글 뷰는 답글을 내보내지 않는다.
+ *
+ * 읽기가 실패하면 **던진다.** 부르는 쪽(useReplies)이 그것을 "답글 기능 없음"으로 읽고
+ * 답글 영역을 숨긴다 — 화면이 migration 보다 먼저 나간 경우다. 0 으로 바꿔 돌려주면
+ * "답글 0개"라는 없는 숫자가 된다.
+ */
+
+/** 답글 뷰가 돌려주는 모양. guest_id 는 없다. */
+export interface ReplyRow {
+  id: string;
+  parent_id: string;
+  body: string;
+  handle: string;
+  created_at: string;
+}
+
+export interface ChatReply {
+  id: string;
+  parentId: string;
+  body: string;
+  handle: string;
+  createdAt: string;
+}
+
+/** 한 글에 펼쳐 보이는 답글 수. */
+export const REPLY_PAGE = 100;
+/** 한 번에 묻는 부모 글 수. URL 길이를 넘기지 않게 나눈다. */
+const REPLY_ID_CHUNK = 100;
+
+export function toChatReply(row: ReplyRow): ChatReply {
+  return {
+    id: row.id,
+    parentId: row.parent_id,
+    body: row.body,
+    handle: row.handle,
+    createdAt: row.created_at,
+  };
+}
+
+function chunks<T>(list: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+/** 글 id → 답글 수. 답글이 없는 글은 결과에 없다(0 으로 본다). */
+export async function fetchReplyCounts(
+  client: SupabaseClient,
+  parentIds: string[],
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const ids of chunks(parentIds, REPLY_ID_CHUNK)) {
+    const { data, error } = await client
+      .from("field_report_reply_counts")
+      .select("parent_id,count")
+      .in("parent_id", ids);
+    if (error) throw new Error(`답글 수 조회 실패: ${error.message}`);
+    for (const row of (data ?? []) as { parent_id: string; count: number }[]) {
+      counts[row.parent_id] = row.count;
+    }
+  }
+  return counts;
+}
+
+/** 한 글의 답글. 오래된 것이 위다 — 묻고 답한 순서대로 읽힌다. */
+export async function fetchReplies(client: SupabaseClient, parentId: string): Promise<ChatReply[]> {
+  const { data, error } = await client
+    .from("field_report_replies_public")
+    .select("id,parent_id,body,handle,created_at")
+    .eq("parent_id", parentId)
+    .order("created_at", { ascending: true })
+    .limit(REPLY_PAGE);
+  if (error) throw new Error(`답글 조회 실패: ${error.message}`);
+  return ((data ?? []) as ReplyRow[]).map(toChatReply);
+}
+
+/**
+ * 내 글들에 달린 답글의 id·작성 시각. "새 답글 N개"를 브라우저에서 센다.
+ * 공개 뷰의 값만 쓴다 — 서버가 새로 내보내는 것이 없다.
+ */
+export async function fetchReplyTimes(
+  client: SupabaseClient,
+  parentIds: string[],
+): Promise<{ id: string; parentId: string; createdAt: string }[]> {
+  const out: { id: string; parentId: string; createdAt: string }[] = [];
+  for (const ids of chunks(parentIds, REPLY_ID_CHUNK)) {
+    const { data, error } = await client
+      .from("field_report_replies_public")
+      .select("id,parent_id,created_at")
+      .in("parent_id", ids)
+      .limit(1000);
+    if (error) throw new Error(`답글 조회 실패: ${error.message}`);
+    for (const row of (data ?? []) as { id: string; parent_id: string; created_at: string }[]) {
+      out.push({ id: row.id, parentId: row.parent_id, createdAt: row.created_at });
+    }
+  }
+  return out;
+}
+
+/**
+ * 답글 올리기. 글과 같은 서버 라우트를 지난다 — 같은 검증·제한·신고 격리.
+ * 거절은 글과 같은 오류로 돌려준다(작성창과 같은 말을 화면에 쓴다).
+ */
+export async function insertReply(parentId: string, body: string): Promise<ChatReply> {
+  const id = newReportId();
+  const response = await fetch("/api/field-reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ id, parentId, body }),
+  });
+
+  if (response.status === 429) {
+    const payload = (await response.json().catch(() => ({}))) as { retryAfterSeconds?: number };
+    throw new RateLimitedError(payload.retryAfterSeconds ?? 10);
+  }
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    const message = payload.error ?? "저장하지 못했습니다.";
+    if (response.status >= 400 && response.status < 500) throw new ReportRejectedError(message);
+    throw new Error(message);
+  }
+
+  const saved = (await response.json()) as { id: string; handle: string; createdAt: string };
+  return { id: saved.id, parentId, body: body.trim(), handle: saved.handle, createdAt: saved.createdAt };
+}
