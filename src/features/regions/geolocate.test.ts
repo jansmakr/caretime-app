@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { matchRegion, normalizeSido, shouldAutoLocate } from "./geolocate";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  IN_APP_NOTICE,
+  LOCATE_FAIL,
+  isInAppBrowser,
+  autoLocateNotice,
+  locateMyRegion,
+  matchRegion,
+  normalizeSido,
+  shouldAutoLocate,
+  withTimeout,
+} from "./geolocate";
 
 /**
  * 추측하지 않는다는 것을 고정한다.
@@ -182,5 +192,115 @@ describe("shouldAutoLocate — 접속하면 묻되, 거부한 사람·고른 값
   });
   it("지도 키가 없으면 찾지 않는다", () => {
     expect(shouldAutoLocate({ ...base, keyConfigured: false })).toBe(false);
+  });
+});
+
+describe("못 찾으면 막지 않고 직접 고르게 넘긴다", () => {
+  it("★ 실패 문구는 전부 '직접 골라 주세요.'로 끝난다", () => {
+    for (const text of Object.values(LOCATE_FAIL)) {
+      expect(text.endsWith("직접 골라 주세요.")).toBe(true);
+    }
+  });
+
+  it("★ 거부는 알리지 않는다 — 방금 스스로 고른 것이다", () => {
+    expect(autoLocateNotice({ kind: "failed", reason: LOCATE_FAIL.denied })).toBeNull();
+  });
+
+  it("★ 시간 초과·지도 도구 로드 실패·변환 실패·목록 불일치는 한 줄로 알린다", () => {
+    for (const reason of [LOCATE_FAIL.timeout, LOCATE_FAIL.sdk, LOCATE_FAIL.geocode]) {
+      expect(autoLocateNotice({ kind: "failed", reason })).toBe(reason);
+    }
+    const unmatched = matchRegion({ sido: "Tokyo", sigungu: null });
+    expect(autoLocateNotice(unmatched)).toContain("직접 골라 주세요");
+  });
+
+  it("찾았으면 알릴 실패가 없다", () => {
+    expect(autoLocateNotice(matchRegion({ sido: "부산광역시", sigungu: null }))).toBeNull();
+  });
+
+  it("한도 안에 끝나지 않으면 실패로 본다", async () => {
+    vi.useFakeTimers();
+    const pending = withTimeout(new Promise<never>(() => {}), 100);
+    const caught = pending.catch((e: Error) => e.message);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await caught).toBe("timeout");
+    vi.useRealTimers();
+  });
+});
+
+/**
+ * 지도 도구(카카오 SDK)를 못 받았을 때 실제 흐름이 무엇을 돌려주는가.
+ * 브라우저 대신 navigator·document 를 붙여 두고 locateMyRegion 을 그대로 돌린다.
+ */
+describe("지도 도구 로드 실패 — 흐름 전체", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  function stubBrowser(onAppend: (script: { onerror?: () => void }) => void) {
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("navigator", {
+      geolocation: {
+        getCurrentPosition: (ok: (p: unknown) => void) =>
+          ok({ coords: { latitude: 37.55, longitude: 126.85 } }),
+      },
+    });
+    vi.stubGlobal("document", {
+      getElementById: () => null,
+      createElement: () => ({}),
+      head: { appendChild: onAppend },
+    });
+  }
+
+  it("★ 스크립트가 오류를 내면 '직접 골라 주세요.'로 끝나는 문구를 돌려준다", async () => {
+    stubBrowser((script) => script.onerror?.());
+    const out = await locateMyRegion();
+    expect(out).toEqual({ kind: "failed", reason: LOCATE_FAIL.sdk });
+    expect(autoLocateNotice(out)).toMatch(/직접 골라 주세요\.$/);
+  });
+
+  it("★ 스크립트가 아무 응답 없이 멈춰도 끝없이 기다리지 않는다", async () => {
+    vi.useFakeTimers();
+    stubBrowser(() => {});
+    const out = locateMyRegion();
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(await out).toEqual({ kind: "failed", reason: LOCATE_FAIL.sdk });
+  });
+
+  it("좌표를 돌려주지 않는다", async () => {
+    stubBrowser((script) => script.onerror?.());
+    const out = await locateMyRegion();
+    expect(JSON.stringify(out)).not.toMatch(/37\.55|126\.85/);
+  });
+});
+
+describe("인앱 브라우저 — 권한 창이 안 뜨는 곳에서는 다른 브라우저로 여는 길을 알린다", () => {
+  const ANDROID_CHROME =
+    "Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36";
+  const IOS_SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1";
+  const SAMSUNG =
+    "Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36";
+
+  it("★ 카카오톡 인앱(안드로이드·아이폰)을 알아본다", () => {
+    expect(isInAppBrowser(`${ANDROID_CHROME} KAKAOTALK 10.8.5`)).toBe(true);
+    expect(isInAppBrowser(`${IOS_SAFARI} KAKAOTALK 10.8.5`)).toBe(true);
+  });
+
+  it("네이버·인스타그램·페이스북·라인 인앱도", () => {
+    expect(isInAppBrowser(`${ANDROID_CHROME} NAVER(inapp; search; 2000; 12.8.1)`)).toBe(true);
+    expect(isInAppBrowser(`${IOS_SAFARI} Instagram 350.0.0`)).toBe(true);
+    expect(isInAppBrowser(`${IOS_SAFARI} [FBAN/FBIOS;FBAV/480.0]`)).toBe(true);
+    expect(isInAppBrowser(`${ANDROID_CHROME} Line/14.16.0`)).toBe(true);
+  });
+
+  it("★ 크롬·사파리·삼성 인터넷은 인앱이 아니다", () => {
+    for (const ua of [ANDROID_CHROME, IOS_SAFARI, SAMSUNG]) expect(isInAppBrowser(ua)).toBe(false);
+  });
+
+  it("★ 안내는 한 줄이고 '크롬 등으로 열어 주세요'로 끝난다", () => {
+    expect(IN_APP_NOTICE).not.toContain("\n");
+    expect(IN_APP_NOTICE.endsWith("크롬 등으로 열어 주세요.")).toBe(true);
   });
 });

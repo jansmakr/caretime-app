@@ -103,6 +103,61 @@ export function canLocate(): boolean {
 
 const SCRIPT_ID = "kakao-maps-sdk";
 const GEO_TIMEOUT_MS = 10_000;
+/**
+ * 지도 도구를 받고 이름으로 바꾸는 데 기다리는 한도. 스크립트가 onerror 없이 멈추거나
+ * (느린 망·차단), 카카오가 콜백을 부르지 않으면(도메인 미등록 등) 끝없이 기다리게 된다.
+ * 그동안 화면은 막히지 않지만 "찾는 중"인지 "못 찾은" 것인지 알 수 없다.
+ */
+const SDK_TIMEOUT_MS = 8_000;
+
+/**
+ * 못 찾았을 때 보이는 문구. **전부 "직접 골라 주세요."로 끝난다** — 실패해도 할 일은
+ * 하나이고, 그것을 말해 준다(원칙 8). 테스트가 이 끝맺음을 붙든다.
+ */
+/**
+ * 인앱 브라우저(카카오톡·네이버·인스타그램·페이스북·라인·다음 앱 안에서 연 화면).
+ * 이 안에서는 위치 권한 창이 아예 뜨지 않거나, 떠도 앱이 막아 조용히 실패하는 일이
+ * 잦다. 그러면 사용자는 "찾는 중"을 15초 넘게 보다가 이유 없는 실패를 받는다.
+ * 그래서 묻기 전에 알아보고, 다른 브라우저로 여는 길을 한 줄로 알려 준다.
+ * **순수 함수다** — UA 문자열만 본다. UA 는 판단에만 쓰고 어디에도 보내지 않는다.
+ */
+export function isInAppBrowser(userAgent: string): boolean {
+  return /KAKAOTALK|NAVER\(inapp|Instagram|FBAN|FBAV|\bLine\/|DaumApps/i.test(userAgent);
+}
+
+/** 인앱 브라우저에서 보이는 한 줄. */
+export const IN_APP_NOTICE = "이 앱 안에서는 위치를 찾지 못할 수 있어요. 크롬 등으로 열어 주세요.";
+
+/** 지금 화면이 인앱 브라우저인가. 서버 렌더에서는 false. */
+export function inAppBrowserNow(): boolean {
+  return typeof navigator !== "undefined" && isInAppBrowser(navigator.userAgent ?? "");
+}
+
+export const LOCATE_FAIL = {
+  denied: "위치 권한이 꺼져 있습니다. 직접 골라 주세요.",
+  unavailable: "지금은 위치를 알 수 없습니다. 직접 골라 주세요.",
+  timeout: "위치를 찾는 데 너무 오래 걸립니다. 직접 골라 주세요.",
+  unsupported: "위치를 쓸 수 없는 기기입니다. 직접 골라 주세요.",
+  sdk: "지도 서비스를 불러오지 못했습니다. 직접 골라 주세요.",
+  geocode: "지역 이름을 찾지 못했습니다. 직접 골라 주세요.",
+} as const;
+
+/** 한도 안에 끝나지 않으면 실패로 본다. */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(id);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(id);
+        reject(e);
+      },
+    );
+  });
+}
 
 interface KakaoGeocoder {
   coord2RegionCode: (
@@ -265,9 +320,9 @@ export async function locateMyRegion(): Promise<LocateOutcome> {
 
   let maps: KakaoMaps;
   try {
-    maps = await loadSdk();
+    maps = await withTimeout(loadSdk(), SDK_TIMEOUT_MS);
   } catch {
-    return { kind: "failed", reason: "지도 서비스를 불러오지 못했습니다. 직접 골라 주세요." };
+    return { kind: "failed", reason: LOCATE_FAIL.sdk };
   }
 
   try {
@@ -275,11 +330,28 @@ export async function locateMyRegion(): Promise<LocateOutcome> {
      * 좌표를 꺼내 쓰고 바로 버린다. 지역 변수 둘이 전부이고, 이 블록을 벗어나면
      * 참조가 남지 않는다. 바깥으로 나가는 것은 names 뿐이다.
      */
-    const names = await toNames(maps, position.coords.latitude, position.coords.longitude);
+    const names = await withTimeout(
+      toNames(maps, position.coords.latitude, position.coords.longitude),
+      SDK_TIMEOUT_MS,
+    );
     return matchRegion(names);
   } catch {
-    return { kind: "failed", reason: "지역 이름을 찾지 못했습니다. 직접 골라 주세요." };
+    return { kind: "failed", reason: LOCATE_FAIL.geocode };
   }
+}
+
+/**
+ * 화면을 열 때 찾다가 못 찾았으면 무엇을 알릴까. **순수 함수다.** 알릴 것이 없으면 null.
+ *
+ * 거부는 알리지 않는다 — 방금 스스로 고른 것이고, "권한이 꺼져 있습니다"를 되돌려
+ * 주면 탓하는 말이 된다. 그 밖의 실패(시간 초과·지도 도구 로드 실패·이름 변환 실패·
+ * 목록과 맞지 않음)는 허락하고 기다린 사람에게 아무 말이 없으면 "찾는 중인가?" 하고
+ * 기다리게 되므로 한 줄로 알린다. 어느 경우든 막지 않는다 — 직접 고르는 길은 그대로다.
+ */
+export function autoLocateNotice(result: LocateOutcome): string | null {
+  if (result.kind === "matched" || result.kind === "sido-only") return null;
+  if (result.kind === "failed" && result.reason === LOCATE_FAIL.denied) return null;
+  return result.reason;
 }
 
 /**
@@ -288,8 +360,8 @@ export async function locateMyRegion(): Promise<LocateOutcome> {
  */
 function describeGeoError(e: unknown): string {
   const code = (e as GeolocationPositionError | undefined)?.code;
-  if (code === 1) return "위치 권한이 꺼져 있습니다. 직접 골라 주세요.";
-  if (code === 2) return "지금은 위치를 알 수 없습니다. 직접 골라 주세요.";
-  if (code === 3) return "위치를 찾는 데 너무 오래 걸립니다. 직접 골라 주세요.";
-  return "위치를 쓸 수 없는 기기입니다. 직접 골라 주세요.";
+  if (code === 1) return LOCATE_FAIL.denied;
+  if (code === 2) return LOCATE_FAIL.unavailable;
+  if (code === 3) return LOCATE_FAIL.timeout;
+  return LOCATE_FAIL.unsupported;
 }

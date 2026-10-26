@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { canLocate, locateMyRegion, locationPermission, shouldAutoLocate } from "./geolocate";
+import {
+  IN_APP_NOTICE,
+  autoLocateNotice,
+  canLocate,
+  inAppBrowserNow,
+  locateMyRegion,
+  locationPermission,
+  shouldAutoLocate,
+} from "./geolocate";
 import { type MyRegion } from "./sigungu";
 
 /**
@@ -21,9 +29,11 @@ let askedThisTab = false;
  * ── 고른 값을 덮지 않는다 ───────────────────────────────────
  * 저장된 지역이 있으면 아무것도 하지 않는다.
  *
- * ── 실패는 조용히 끝난다 ────────────────────────────────────
- * 사용자가 누른 것이 아니므로 실패 문구를 띄우지 않는다. 버튼과 직접 고르는 길은
- * 그대로 남아 있다. 좌표는 locateMyRegion 밖으로 나오지 않는다 — 버튼과 같은 경로다.
+ * ── 실패해도 막지 않는다 ────────────────────────────────────
+ * 버튼과 직접 고르는 길은 그대로 남아 있다. onFail 을 넘긴 화면(현장톡)에는 거부를
+ * 뺀 실패를 한 줄로 알린다(geolocate.autoLocateNotice) — 허락하고 기다린 사람이
+ * "찾는 중인가?" 하고 멈추지 않게. 넘기지 않은 화면(홈)은 조용히 끝난다 — 지역 카드가
+ * 그대로 보이므로 직접 고르면 된다. 좌표는 locateMyRegion 밖으로 나오지 않는다 — 버튼과 같은 경로다.
  *
  * 한 화면에서 한 번만 돈다. 지역을 지운 뒤 같은 화면에서 다시 채우지 않는다 —
  * 지운 사람의 뜻을 위치가 되돌리면 안 된다.
@@ -32,10 +42,12 @@ export function useAutoLocate({
   regionLoaded,
   region,
   onPick,
+  onFail,
 }: {
   regionLoaded: boolean;
   region: MyRegion | null;
   onPick: (region: MyRegion) => void;
+  onFail?: (reason: string) => void;
 }): void {
   const tried = useRef(false);
 
@@ -60,13 +72,26 @@ export function useAutoLocate({
         return;
       }
       if (permission !== "granted") askedThisTab = true;
+      /*
+       * 인앱 브라우저(카카오톡 등)는 권한 창이 안 뜨는 일이 잦다. 아직 허락받지 않았으면
+       * 묻지 않고 "크롬 등으로 열어 주세요" 한 줄만 알린다. 이미 허락된 곳이면 그대로 찾는다.
+       */
+      if (permission !== "granted" && inAppBrowserNow()) {
+        onFail?.(IN_APP_NOTICE);
+        return;
+      }
       const result = await locateMyRegion();
       if (!live) return;
-      if (result.kind === "matched" || result.kind === "sido-only") onPick(result.region);
+      if (result.kind === "matched" || result.kind === "sido-only") {
+        onPick(result.region);
+        return;
+      }
+      const notice = autoLocateNotice(result);
+      if (notice !== null) onFail?.(notice);
     })();
 
     return () => {
       live = false;
     };
-  }, [regionLoaded, region, onPick]);
+  }, [regionLoaded, region, onPick, onFail]);
 }

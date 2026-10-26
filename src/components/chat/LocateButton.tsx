@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { canLocate, locateMyRegion } from "@/features/regions/geolocate";
+import { useEffect, useState } from "react";
+import {
+  IN_APP_NOTICE,
+  canLocate,
+  inAppBrowserNow,
+  locateMyRegion,
+} from "@/features/regions/geolocate";
 import { type MyRegion } from "@/features/regions/sigungu";
 
 /**
@@ -32,6 +37,13 @@ export function LocateButton({ onPick }: { onPick: (region: MyRegion) => void })
    * (features/regions/geolocate 의 LocateOutcome).
    */
   const [failed, setFailed] = useState<string | null>(null);
+  /*
+   * 인앱 브라우저(카카오톡 등)면 버튼 아래에 "크롬 등으로 열어 주세요" 한 줄.
+   * 서버는 UA 로 판단하지 않으므로 마운트 뒤에 정한다(첫 그림과 어긋나지 않게).
+   * 버튼은 그대로 둔다 — 앱에 따라 권한 창이 뜨는 경우도 있다.
+   */
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => setInApp(inAppBrowserNow()), []);
 
   if (!canLocate()) return null;
 
@@ -60,6 +72,10 @@ export function LocateButton({ onPick }: { onPick: (region: MyRegion) => void })
       >
         {busy ? "위치를 찾는 중입니다…" : "내 위치로 선택"}
       </button>
+
+      {inApp && !failed && (
+        <p className="mt-1.5 break-keep text-[13.5px] leading-relaxed text-ink-muted">{IN_APP_NOTICE}</p>
+      )}
 
       {failed && (
         <p role="alert" className="mt-1.5 break-keep text-[13.5px] leading-relaxed text-limited-ink">
