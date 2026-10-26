@@ -37,6 +37,12 @@ export interface RateRule {
 export interface GuestLimits {
   posts: RateRule[];
   reactions: RateRule[];
+  /**
+   * "내가 누른 반응" 읽기(GET /api/field-reports/reactions).
+   * 읽기는 DB 에 행을 남기지 않아 다른 제한처럼 DB 시각으로 셀 수 없다.
+   * 서버 메모리에서 센다(features/p0/memoryRate) — 인스턴스마다 따로 센다는 한계가 있다.
+   */
+  reactionReads: RateRule[];
   reports: RateRule[];
   /** 같은 병원에서 같은 본문을 다시 올릴 수 없는 시간. */
   duplicateBodyWindowMs: number;
@@ -57,11 +63,16 @@ export const DEFAULT_GUEST_LIMITS: GuestLimits = {
     { windowMs: 10_000, max: 5 },
     { windowMs: HOUR, max: 60 },
   ],
+  // 화면을 열 때 한 번 읽는다. 새로고침을 연달아 해도 막히지 않을 만큼, 긁어 가기에는 모자라게.
+  reactionReads: [
+    { windowMs: MINUTE, max: 20 },
+    { windowMs: HOUR, max: 200 },
+  ],
   reports: [{ windowMs: HOUR, max: 5 }],
   duplicateBodyWindowMs: 10 * MINUTE,
 };
 
-export type LimitedAction = "posts" | "reactions" | "reports";
+export type LimitedAction = "posts" | "reactions" | "reactionReads" | "reports";
 
 export interface RateCheckInput {
   action: LimitedAction;

@@ -9,6 +9,8 @@ import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
 import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
+import { KetaGuide } from "@/components/chat/KetaGuide";
+import { ReactionGuide } from "@/components/chat/ReactionGuide";
 import { ShareButton } from "@/components/chat/ShareButton";
 import { useMyRegion } from "@/features/regions/myRegion";
 import { useAutoLocate } from "@/features/regions/useAutoLocate";
@@ -117,6 +119,9 @@ export function ChatRoom({
       {/* 상단 고정 고지 — 의료기관 현장 상황이 항상 최우선. 접히지 않는다. */}
       <LiveInfoNotice />
 
+      {/* 케타 안내 — AI 가 아닌 정해진 말풍선. 119 버튼이 여기 있다. 빈 방에서도 보인다. */}
+      <KetaGuide />
+
       {emptyRoom && <EmptyRoomLead />}
 
       {/* 톡방 전체 공유. 공유할 글이 없을 때는 내리지 않는다 — 빈 방을 공유하라고 하지 않는다. */}
@@ -158,6 +163,12 @@ export function ChatRoom({
             {messages.length}건
           </span>
         </div>
+
+        {/*
+          빠른 반응 안내 — 방에 한 번만. 누를 수 있는 글(남의 글)이 있을 때만 보인다.
+          내 글뿐이면 누를 칩이 없으니 "눌러 주세요"라고 하지 않는다.
+        */}
+        {messages.some((message) => !message.mine) && <ReactionGuide />}
 
         <ul className="mt-2 divide-y divide-fill">
           {messages.map((message) => (

@@ -2,9 +2,11 @@ import { getPublicBrowserSupabase } from "@/lib/supabase/browser";
 import {
   deleteFieldReport,
   fetchGuestInfo,
+  fetchMyReactions,
   insertFieldReport,
   insertReaction,
   subscribeFieldReports,
+  type ReactionOutcome,
 } from "./repository";
 import { ZERO_REACTIONS, type ReactionKey } from "./reactions";
 import { normalizeChatDraft } from "./service";
@@ -14,7 +16,7 @@ import { CHAT_COOLDOWN_MS, type ChatDraft, type ChatMessage } from "./types";
  * 현장톡 보관소.
  *
  * 글은 이제 **서버에 있다**(public.field_reports). 새로고침해도 남고, 다른 사람에게 간다.
- * 브라우저에만 남는 것은 두 가지다 — 닉네임과, 이 브라우저가 누른 반응.
+ * 브라우저에만 남는 것은 없다 — 닉네임도, 이 브라우저가 누른 반응도 서버에 물어 받는다.
  *
  * 화면 코드는 그대로다. 밖으로 내보내는 모양(subscribe/getSnapshot/sendChatMessage)을
  * 바꾸지 않았다. 안쪽만 갈아 끼웠다.
@@ -33,8 +35,20 @@ export interface ChatSnapshot {
    * 출처를 나눠 두면 같은 글이 두 번 보이는 순간이 생긴다(보내자마자 구독으로 되돌아온다).
    */
   messages: ChatMessage[];
-  /** 글 id → 이 브라우저가 누른 반응. */
+  /**
+   * 글 id → 이 브라우저가 누른 반응. 눌린 표시(선택)에만 쓴다. 숫자에 더하지 않는다.
+   * 서버가 돌려준 것(/api/field-reports/reactions GET) + 방금 눌러 저장 중·저장된 것.
+   */
   myReactions: Record<string, ReactionKey[]>;
+  /**
+   * 글 id → 반응 키 → 저장이 끝난 시각(ms). 저장 중이면 null.
+   *
+   * **숫자에 더하는 것은 이것뿐이다.** 서버 숫자(baseReactions)는 읽은 시점의 값이라
+   * 그 뒤에 누른 것이 들어 있지 않다. 그 차이만 메운다. 저장이 끝난 뒤에 시작한 읽기가
+   * 그 글을 다시 가져오면 서버 숫자에 이미 들어 있으므로 지운다(hydrateMessages).
+   * 이렇게 나누지 않으면 새로고침 뒤 서버가 알려 준 내 반응이 숫자에 한 번 더 붙는다.
+   */
+  pendingReactions: Record<string, Partial<Record<ReactionKey, number | null>>>;
   /** 마지막으로 보낸 시각(ms). 연속 등록 차단에 쓴다. */
   lastSentAt: number | null;
   /** 이번 브라우저의 익명 닉네임. 첫 글을 쓸 때 정해진다. */
@@ -60,6 +74,7 @@ export interface ChatSnapshot {
 const SERVER_SNAPSHOT: ChatSnapshot = Object.freeze({
   messages: Object.freeze([]) as unknown as ChatMessage[],
   myReactions: Object.freeze({}) as Record<string, ReactionKey[]>,
+  pendingReactions: Object.freeze({}) as ChatSnapshot["pendingReactions"],
   lastSentAt: null,
   nickname: null,
   mineIds: Object.freeze({}) as Record<string, true>,
@@ -175,11 +190,40 @@ function mergeMessage(list: ChatMessage[], message: ChatMessage): ChatMessage[] 
  * 이미 들어 있는 글은 덮지 않는다 — 구독으로 먼저 들어온 최신 글이 서버 렌더 시점의
  * 목록으로 되돌아가면 방금 본 글이 사라진다.
  */
-export function hydrateMessages(initial: ChatMessage[]): void {
+export function hydrateMessages(initial: ChatMessage[], readStartedAt?: number): void {
   if (initial.length === 0) return;
   let next = snapshot.messages;
   for (const message of initial) next = mergeMessage(next, message);
-  commit({ messages: next });
+  commit({
+    messages: next,
+    pendingReactions:
+      readStartedAt === undefined
+        ? snapshot.pendingReactions
+        : settlePending(snapshot.pendingReactions, initial, readStartedAt),
+  });
+}
+
+/**
+ * 서버 숫자에 이미 들어간 반응을 대기 목록에서 뺀다.
+ * 저장이 끝난 **뒤에** 시작한 읽기만 그 반응을 셌다고 본다. 읽기가 먼저 시작했으면
+ * 그 응답에는 아직 없을 수 있다 — 빼면 숫자가 하나 모자라게 보인다.
+ */
+function settlePending(
+  pending: ChatSnapshot["pendingReactions"],
+  read: ChatMessage[],
+  readStartedAt: number,
+): ChatSnapshot["pendingReactions"] {
+  let next = pending;
+  for (const message of read) {
+    const entry = pending[message.id];
+    if (!entry) continue;
+    const kept: Partial<Record<ReactionKey, number | null>> = {};
+    for (const [key, savedAt] of Object.entries(entry) as [ReactionKey, number | null][]) {
+      if (savedAt === null || savedAt > readStartedAt) kept[key] = savedAt;
+    }
+    next = { ...next, [message.id]: kept };
+  }
+  return next;
 }
 
 /**
@@ -199,7 +243,15 @@ export function connectChat(): () => void {
       });
       return;
     }
-    commit({ messages: mergeMessage(snapshot.messages, signal.message) });
+    /*
+     * 실시간 신호에는 반응 숫자가 없다(글 행만 온다). 이미 가진 글이면 숫자를 지키고,
+     * 그렇지 않으면 0 으로 덮여 "아무도 안 눌렀다"는 거짓 숫자가 된다.
+     */
+    const existing = snapshot.messages.find((m) => m.id === signal.message.id);
+    const message = existing
+      ? { ...signal.message, baseReactions: existing.baseReactions }
+      : signal.message;
+    commit({ messages: mergeMessage(snapshot.messages, message) });
   });
 
   return () => {
@@ -209,26 +261,86 @@ export function connectChat(): () => void {
 }
 
 /**
- * 반응 켜기/끄기.
+ * 반응 누르기. **취소는 없다.**
  *
- * 한 브라우저가 같은 글의 같은 반응을 한 번만 올릴 수 있다. 다시 누르면 내린다.
- * 연타로 숫자를 부풀릴 수 있으면 그 숫자는 아무 뜻이 없어진다.
+ * 한 브라우저가 같은 글의 같은 반응을 한 번만 올릴 수 있다. 이미 누른 것을 다시 누르면
+ * 아무것도 바꾸지 않고 "already" 를 돌려준다 — 화면은 "이미 알려 주셨어요"라고 말한다.
+ * 전에는 다시 누르면 화면에서만 내려갔다. 서버 숫자는 그대로라 화면 숫자가 거짓이 됐다.
+ *
+ * 숫자는 서버 기준이다. 누르는 순간 하나 올리고(기다리게 하지 않는다), 서버가 받지
+ * 않으면 되돌린다. 저장되지 않은 반응을 눌린 것으로 남기면 서버에 없는 숫자가 된다.
+ *
+ * 내 글에는 누를 수 없다. 화면이 막지만 서버도 막는다 — 서버가 "내 글"이라고 하면
+ * 그 글을 내 글로 표시한다(새로고침 전이라 화면이 몰랐던 경우).
  */
-export function toggleReaction(messageId: string, key: ReactionKey): void {
-  const current = snapshot.myReactions[messageId] ?? [];
-  const pressing = !current.includes(key);
-  const next = pressing ? [...current, key] : current.filter((k) => k !== key);
-  commit({ myReactions: { ...snapshot.myReactions, [messageId]: next } });
+export async function pressReaction(messageId: string, key: ReactionKey): Promise<ReactionOutcome> {
+  if (snapshot.mineIds[messageId]) return "own_post";
+  if ((snapshot.myReactions[messageId] ?? []).includes(key)) return "already";
 
-  /*
-   * 켤 때만 서버로 간다. 취소는 아직 서버에 보낼 수 없다 — 누른 사람을 증명할 방법이
-   * 없어 삭제 정책을 만들지 않았다(migration 20260929 주석). 게스트 세션이 생기는 턴에 연다.
-   * 그때까지 취소는 이 브라우저 안에서만 반영된다.
-   *
-   * 실패해도 화면을 되돌리지 않는다. 반응 하나가 안 올라간 것으로 사용자를 붙잡지 않는다.
-   */
-  if (!pressing) return;
-  void insertReaction(messageId, key);
+  commit({
+    myReactions: { ...snapshot.myReactions, [messageId]: [...(snapshot.myReactions[messageId] ?? []), key] },
+    pendingReactions: setPending(snapshot.pendingReactions, messageId, key, null),
+  });
+
+  const outcome = await insertReaction(messageId, key);
+
+  if (outcome === "saved") {
+    commit({ pendingReactions: setPending(snapshot.pendingReactions, messageId, key, Date.now()) });
+    return outcome;
+  }
+  if (outcome === "already") {
+    // 눌린 표시는 맞다. 숫자는 이미 서버 값에 들어 있으므로 더하지 않는다.
+    commit({ pendingReactions: setPending(snapshot.pendingReactions, messageId, key, undefined) });
+    return outcome;
+  }
+
+  // 저장되지 않았다. 표시도 숫자도 되돌린다.
+  commit({
+    myReactions: {
+      ...snapshot.myReactions,
+      [messageId]: (snapshot.myReactions[messageId] ?? []).filter((k) => k !== key),
+    },
+    pendingReactions: setPending(snapshot.pendingReactions, messageId, key, undefined),
+    mineIds: outcome === "own_post" ? { ...snapshot.mineIds, [messageId]: true } : snapshot.mineIds,
+  });
+  return outcome;
+}
+
+function setPending(
+  pending: ChatSnapshot["pendingReactions"],
+  messageId: string,
+  key: ReactionKey,
+  value: number | null | undefined,
+): ChatSnapshot["pendingReactions"] {
+  const entry = { ...(pending[messageId] ?? {}) };
+  if (value === undefined) delete entry[key];
+  else entry[key] = value;
+  return { ...pending, [messageId]: entry };
+}
+
+/** 숫자에 아직 더해야 하는 내 반응(서버 숫자에 안 들어갔을 수 있는 것). */
+export function pendingReactionKeys(
+  pending: ChatSnapshot["pendingReactions"],
+  messageId: string,
+): ReactionKey[] {
+  return Object.keys(pending[messageId] ?? {}) as ReactionKey[];
+}
+
+/**
+ * 이 브라우저가 누른 반응을 서버에 물어 눌린 표시를 되살린다. 마운트 뒤 한 번 부른다.
+ *
+ * 숫자에는 더하지 않는다 — 서버 숫자에 이미 들어 있다. 이미 이 화면에서 누른 것과는
+ * 합친다(응답이 오기 전에 누를 수 있다). 못 읽으면 그대로 둔다.
+ */
+export function hydrateMyReactions(): void {
+  void fetchMyReactions().then((mine) => {
+    if (!mine) return;
+    const next = { ...snapshot.myReactions };
+    for (const [messageId, keys] of Object.entries(mine)) {
+      next[messageId] = Array.from(new Set([...(next[messageId] ?? []), ...keys]));
+    }
+    commit({ myReactions: next });
+  });
 }
 
 /**
