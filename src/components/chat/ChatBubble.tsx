@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { SourceBadge } from "@/components/common/SourceBadge";
 import { ChatReactions } from "@/components/chat/ChatReactions";
+import { ReplyPanel, ReplyToggle } from "@/components/chat/ReplySection";
 import { ReportButton } from "@/components/chat/ReportButton";
 import { ShareButton } from "@/components/chat/ShareButton";
 import type { ReactionKey } from "@/features/chat/reactions";
@@ -33,6 +34,7 @@ export function ChatBubble({
   onShared,
   onRemove,
   hideHospitalLink = false,
+  replies,
 }: {
   message: ChatMessageView;
   now: Date;
@@ -42,11 +44,26 @@ export function ChatBubble({
   onRemove?: (id: string) => Promise<void>;
   /** 이미 그 의료기관 화면에 있는가. 지금 보고 있는 곳으로 가는 링크를 만들지 않는다. */
   hideHospitalLink?: boolean;
+  /**
+   * 답글. 없으면 답글 버튼을 그리지 않는다 — 답글 수를 아직 못 읽었거나 읽기가 실패한
+   * 경우다(features/chat/useReplies). 숫자를 모르는 채로 "답글 0개"를 그리지 않는다.
+   */
+  replies?: {
+    count: number;
+    /** 내 글의 새 답글 수. */
+    newCount: number;
+    canWrite: boolean;
+    isMine: (id: string) => boolean;
+    onChanged: () => void;
+    onSeen: (postId: string, latestAt: string) => void;
+  };
 }) {
   const place = [message.scope.hospitalName, message.scope.sigungu ?? message.scope.sido]
     .filter(Boolean)
     .join(" · ");
   const age = postAgeDays(message.createdAt, now);
+  const [repliesOpen, setRepliesOpen] = useState(false);
+  const panelId = useId();
   const dateLabel = formatPostDate(message.createdAt, now);
 
   return (
@@ -96,7 +113,8 @@ export function ChatBubble({
         onPress={(key) => onReact(message.id, key)}
       />
 
-      <div className="mt-2 flex items-center gap-2">
+      {/* 답글 버튼도 이 줄에 넣는다. 카드에 새 줄을 만들지 않는다(원칙 4). */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2">
         {message.scope.hospitalId && !hideHospitalLink ? (
           <Link
             href={`/hospital/${message.scope.hospitalId}`}
@@ -106,6 +124,15 @@ export function ChatBubble({
           </Link>
         ) : (
           <span className="flex-1" />
+        )}
+        {replies && (
+          <ReplyToggle
+            count={replies.count}
+            newCount={message.mine ? replies.newCount : 0}
+            open={repliesOpen}
+            controls={panelId}
+            onToggle={() => setRepliesOpen((open) => !open)}
+          />
         )}
         {/* 내 글은 신고하지 않는다. 대신 지운다. */}
         {message.mine
@@ -122,6 +149,20 @@ export function ChatBubble({
           onResult={onShared}
         />
       </div>
+
+      {replies && repliesOpen && (
+        <ReplyPanel
+          id={panelId}
+          postId={message.id}
+          postIsMine={message.mine}
+          canWrite={replies.canWrite}
+          now={now}
+          isMine={replies.isMine}
+          onShared={onShared}
+          onChanged={replies.onChanged}
+          onSeen={replies.onSeen}
+        />
+      )}
     </article>
   );
 }

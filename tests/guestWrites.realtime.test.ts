@@ -396,6 +396,121 @@ describe("빠른 반응", () => {
   }, TEST_MS);
 });
 
+describe("답글", () => {
+  async function postId(writer: Browser): Promise<string> {
+    const res = await writer.writeReport();
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { id: string }).id;
+  }
+
+  const reply = (browser: Browser, parentId: string, body?: string) =>
+    browser.post("/api/field-reports", {
+      id: uuid(),
+      parentId,
+      body: body ?? `테스트 답글 방금 다녀왔어요 ${Math.random().toString(36).slice(2, 8)}`,
+    });
+
+  it("★ 답글이 저장되고, 원글 목록에는 안 나오고 답글 뷰에만 나온다(guest_id 없이)", async () => {
+    const parentId = await postId(new Browser());
+    const res = await reply(new Browser(), parentId);
+    expect(res.status).toBe(200);
+    const { id } = (await res.json()) as { id: string };
+
+    const inPosts = await anon.from("field_reports_public").select("id").eq("id", id);
+    expect(inPosts.data).toHaveLength(0);
+
+    const inReplies = await anon.from("field_report_replies_public").select("*").eq("id", id);
+    expect(inReplies.data).toHaveLength(1);
+    expect(Object.keys(inReplies.data![0]).sort()).toEqual(
+      ["body", "created_at", "handle", "id", "parent_id"].sort(),
+    );
+
+    const counts = await anon
+      .from("field_report_reply_counts")
+      .select("parent_id,count")
+      .eq("parent_id", parentId);
+    expect(counts.data).toEqual([{ parent_id: parentId, count: 1 }]);
+  }, TEST_MS);
+
+  it("★ 답글에는 답글을 달 수 없다", async () => {
+    const parentId = await postId(new Browser());
+    const first = await reply(new Browser(), parentId);
+    const { id } = (await first.json()) as { id: string };
+    expect((await reply(new Browser(), id)).status).toBe(400);
+  }, TEST_MS);
+
+  it("★ 없는 글·내려간 글에는 답글을 달 수 없다", async () => {
+    expect((await reply(new Browser(), uuid())).status).toBe(404);
+
+    const parentId = await postId(new Browser());
+    await fetch(`${REST}/field_reports?id=eq.${parentId}`, {
+      method: "PATCH",
+      headers: { ...admin, "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility: "QUARANTINED" }),
+    });
+    expect((await reply(new Browser(), parentId)).status).toBe(404);
+  }, TEST_MS);
+
+  it("★ 부모가 신고로 내려가면 답글도 함께 안 보인다", async () => {
+    const parentId = await postId(new Browser());
+    const { id } = (await (await reply(new Browser(), parentId)).json()) as { id: string };
+    await new Browser().post("/api/reports", { reportId: parentId, reason: "SPAM" });
+
+    const inReplies = await anon.from("field_report_replies_public").select("id").eq("id", id);
+    expect(inReplies.data).toHaveLength(0);
+  }, TEST_MS);
+
+  it("★ 답글도 신고하면 바로 내려간다", async () => {
+    const parentId = await postId(new Browser());
+    const { id } = (await (await reply(new Browser(), parentId)).json()) as { id: string };
+    const res = await new Browser().post("/api/reports", { reportId: id, reason: "ABUSE" });
+    expect(res.status).toBe(200);
+
+    const inReplies = await anon.from("field_report_replies_public").select("id").eq("id", id);
+    expect(inReplies.data).toHaveLength(0);
+  }, TEST_MS);
+
+  it("★ 개인정보·욕설 검사를 그대로 탄다", async () => {
+    const parentId = await postId(new Browser());
+    expect((await reply(new Browser(), parentId, "테스트 제 번호 010-1234-5678 로 연락 주세요")).status).toBe(422);
+  }, TEST_MS);
+
+  it("★ 답글 제한은 글과 따로 센다 — 글을 쓴 직후에도 답글은 된다, 답글 10초 1건", async () => {
+    const writer = new Browser();
+    const parentId = await postId(writer);
+    // 글 제한(30초 1건)에 막히지 않는다.
+    expect((await reply(writer, parentId)).status).toBe(200);
+    // 답글 제한(10초 1건)에는 막힌다.
+    const second = await reply(writer, parentId);
+    expect(second.status).toBe(429);
+    expect(DEFAULT_GUEST_LIMITS.replies[0]).toEqual({ windowMs: 10_000, max: 1 });
+  }, TEST_MS);
+
+  it("★ 답글에는 반응을 누를 수 없다", async () => {
+    const parentId = await postId(new Browser());
+    const { id } = (await (await reply(new Browser(), parentId)).json()) as { id: string };
+    const res = await new Browser().post("/api/field-reports/reactions", { reportId: id, key: "low_wait" });
+    expect(res.status).toBe(400);
+  }, TEST_MS);
+
+  it("★ 내 답글은 지울 수 있다 — 글과 같은 경로", async () => {
+    const parentId = await postId(new Browser());
+    const me = new Browser();
+    const { id } = (await (await reply(me, parentId)).json()) as { id: string };
+    expect((await me.del(`/api/field-reports/${id}`)).status).toBe(200);
+    const inReplies = await anon.from("field_report_replies_public").select("id").eq("id", id);
+    expect(inReplies.data).toHaveLength(0);
+  }, TEST_MS);
+
+  it("내 답글 id 도 /api/guest 의 내 글 목록에 들어 있다 — 새 답글에서 뺄 수 있다", async () => {
+    const parentId = await postId(new Browser());
+    const me = new Browser();
+    const { id } = (await (await reply(me, parentId)).json()) as { id: string };
+    const info = (await (await me.get("/api/guest")).json()) as { myPostIds: string[] };
+    expect(info.myPostIds).toContain(id);
+  }, TEST_MS);
+});
+
 describe("개인정보 필터", () => {
   it("★ 전화번호가 적힌 글은 올라가지 않는다", async () => {
     const browser = new Browser();
