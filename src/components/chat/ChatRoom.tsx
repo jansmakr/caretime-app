@@ -6,6 +6,7 @@ import { Toast, useToast } from "@/components/common/Toast";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ChatFilterBar } from "@/components/chat/ChatFilterBar";
+import { ComposeOpenButton } from "@/components/chat/ComposeOpenButton";
 import { ComposerClosedNotice } from "@/components/chat/ComposerClosedNotice";
 import { EmptyRoomLead } from "@/components/chat/EmptyRoomLead";
 import { ChatGuideFold } from "@/components/chat/ChatGuideFold";
@@ -74,6 +75,14 @@ export function ChatRoom({
     initialMyPostIds,
   );
   const { message: toast, show } = useToast();
+  const [composing, setComposing] = useState(false);
+  const sent = useCallback(
+    (message: string) => {
+      show(message);
+      setComposing(false);
+    },
+    [show],
+  );
   // 답글 수·내 글의 새 답글. 읽기가 실패하면 enabled 가 false 이고 답글 버튼이 없다.
   const replies = useReplies(messages, myIds);
   const isMyId = useCallback((id: string) => myIds.has(id), [myIds]);
@@ -131,14 +140,21 @@ export function ChatRoom({
       {/*
         작성 기능이 닫혀 있을 때의 안내. 지금은 열려 있다(lib/demoContent).
         플래그를 내리면 이쪽이 나온다 — 장애 때 쓰기만 닫는 경로다.
+
+        작성창은 접어 두고 [글쓰기]로 펼친다(2026-10-26). 올라온 글이 첫 화면에 먼저
+        보여야 한다. 올리면 다시 접는다 — 방금 올린 글이 목록 맨 위에 보이게.
       */}
       {isFieldTalkSharingLive ? (
-        <ChatComposer
-          myRegion={myRegion}
-          lastSentAt={lastSentAt}
-          onSent={show}
-          onPickRegion={saveRegion}
-        />
+        composing ? (
+          <ChatComposer
+            myRegion={myRegion}
+            lastSentAt={lastSentAt}
+            onSent={sent}
+            onPickRegion={saveRegion}
+          />
+        ) : (
+          <ComposeOpenButton onOpen={() => setComposing(true)} />
+        )
       ) : (
         <ComposerClosedNotice />
       )}
